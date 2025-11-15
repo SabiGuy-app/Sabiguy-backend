@@ -9,8 +9,13 @@ const cors = require ("cors");
 
 
 dotenv.config()
-app.use(cors());
-
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://sabiguy-frontend.vercel.app"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    credentials: true,
+  })
+);
 
 const routes = [
    { path: '/auth', file: './routes/auth'},

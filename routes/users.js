@@ -143,7 +143,7 @@ router.get("/providers", getAllProviders);
  *       200:
  *         description: Combined list of all users
  */
-router.get("/users", getAllUsers);
+router.get("/", getAllUsers);
 
 /**
  * @swagger
