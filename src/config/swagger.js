@@ -15,10 +15,10 @@ const options = {
                 description: 'Local server',
             },
           
-            // {
-            //     url: "https://joe-backend-6682.onrender.com", 
-            //     description: "Live server",
-            // },
+            {
+                url: "https://sabiguy-backend.onrender.com/", 
+                description: "Production server",
+            },
            
         ],
         components: {
