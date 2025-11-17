@@ -12,52 +12,166 @@ const roleModelMap = {
   provider: Provider,
 };
 
+// const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// exports.googleSignUp = async (req, res) => {
+//   const { token } = req.body;
+
+//   try {
+//     const ticket = await client.verifyIdToken({
+//       idToken: token,
+//       audience: process.env.GOOGLE_CLIENT_ID,
+//     });
+
+//     const payload = ticket.getPayload();
+//     const { email, sub: googleId} = payload;
+
+//     // Check if email exists
+
+//      const existingEmail = await Provider.findOne ({ email });
+//     if (existingEmail) {
+//         return res.status(400).json({ message: "Email already in use" });
+//     }    
+
+//     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+//     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // expires in 10 mins
+//     const newUser = new Provider({
+//         email,
+//         password: null, 
+//         otp,
+//         otpExpiresAt,
+//         isGoogleUser: true,
+//         googleId,
+//         role: "provider", 
+
+//       });
+
+//       await newUser.save();
+      
+//     try {
+//         await sendEmailOtp(email, otp);
+        
+//     } catch (OtpError) {
+//         await Provider.findByIdAndDelete(newUser._id);
+//         return res.status(500).json ({ message: 'Failed to send otp, please try again'})    
+//     }
+
+//     // Generate your app's JWT
+//     const jwtToken = jwt.sign({ id: newUser._id, role: newUser.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+//     res.status(200).json({
+//       message: "Signup successful! OTP sent to email. Please verify to complete registration.",
+//       token: jwtToken,
+//       newUser: {
+//         email: newUser.email,
+//         _id: newUser._id,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("Google signup failed:", err);
+//     res.status(401).json({ message: "Google signup failed", error: err });
+//   }
+// };
+
+const axios = require('axios');
+
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 exports.googleSignUp = async (req, res) => {
   const { token } = req.body;
 
+  // Check if token exists
+  if (!token) {
+    return res.status(400).json({ message: "Token is required" });
+  }
+
   try {
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    let email, googleId;
 
-    const payload = ticket.getPayload();
-    const { email, sub: googleId} = payload;
-
-    // Check if email exists
-
-     const existingEmail = await Provider.findOne ({ email });
-    if (existingEmail) {
-        return res.status(400).json({ message: "Email already in use" });
-    }    
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // expires in 10 mins
-    const newUser = new Provider({
-        email,
-        password: null, 
-        otp,
-        otpExpiresAt,
-        isGoogleUser: true,
-        googleId,
-        role: "provider", 
-
-      });
-
-      await newUser.save();
-      
+    // Try to verify as ID token first
     try {
-        await sendEmailOtp(email, otp);
+      const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      email = payload.email;
+      googleId = payload.sub;
+      console.log("Successfully verified as ID token");
+    } catch (idTokenError) {
+      // If ID token verification fails, treat it as access token
+      console.log("Not an ID token, verifying as access token...");
+      
+      try {
+        // Verify access token with Google
+        const tokenInfoResponse = await axios.get(
+          `https://www.googleapis.com/oauth2/v3/tokeninfo`,
+          {
+            params: { access_token: token } // Use params instead of template string
+          }
+        );
         
-    } catch (OtpError) {
-        await Provider.findByIdAndDelete(newUser._id);
-        return res.status(500).json ({ message: 'Failed to send otp, please try again'})    
+        console.log("Token info:", tokenInfoResponse.data);
+        
+        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+          return res.status(401).json({ message: "Invalid token audience" });
+        }
+
+        // Get user profile using access token
+        const userInfoResponse = await axios.get(
+          'https://www.googleapis.com/oauth2/v3/userinfo',
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+        
+        console.log("User info:", userInfoResponse.data);
+        
+        email = userInfoResponse.data.email;
+        googleId = userInfoResponse.data.sub;
+        console.log("Successfully verified as access token");
+      } catch (accessTokenError) {
+        console.error("Access token verification failed:", accessTokenError.response?.data || accessTokenError.message);
+        return res.status(401).json({ 
+          message: "Invalid token", 
+          error: accessTokenError.response?.data || accessTokenError.message 
+        });
+      }
     }
 
-    // Generate your app's JWT
-    const jwtToken = jwt.sign({ id: newUser._id, role: newUser.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    // Check if email exists
+    const existingEmail = await Provider.findOne({ email });
+    if (existingEmail) {
+      return res.status(400).json({ message: "Email already in use" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    
+    const newUser = new Provider({
+      email,
+      password: null,
+      otp,
+      otpExpiresAt,
+      isGoogleUser: true,
+      googleId,
+      role: "provider",
+    });
+
+    await newUser.save();
+
+    try {
+      await sendEmailOtp(email, otp);
+    } catch (OtpError) {
+      await Provider.findByIdAndDelete(newUser._id);
+      return res.status(500).json({ message: 'Failed to send otp, please try again' });
+    }
+
+    const jwtToken = jwt.sign(
+      { id: newUser._id, role: newUser.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
 
     res.status(200).json({
       message: "Signup successful! OTP sent to email. Please verify to complete registration.",
@@ -69,25 +183,72 @@ exports.googleSignUp = async (req, res) => {
     });
   } catch (err) {
     console.error("Google signup failed:", err);
-    res.status(401).json({ message: "Google signup failed", error: err });
+    res.status(401).json({ message: "Google signup failed", error: err.message });
   }
 };
-
 
 
 exports.googleSignUpBuyer = async (req, res) => {
   const { token } = req.body;
 
+  if (!token) {
+    return res.status(400).json({ message: "Token is required" });
+  }
+
   try {
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    let email, googleId;
 
-    const payload = ticket.getPayload();
-    const { email, sub: googleId} = payload;
+    // Try to verify as ID token first
+    try {
+      const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      email = payload.email;
+      googleId = payload.sub;
+      console.log("Successfully verified as ID token");
+    } catch (idTokenError) {
+      // If ID token verification fails, treat it as access token
+      console.log("Not an ID token, verifying as access token...");
+      
+      try {
+        // Verify access token with Google
+        const tokenInfoResponse = await axios.get(
+          `https://www.googleapis.com/oauth2/v3/tokeninfo`,
+          {
+            params: { access_token: token } // Use params instead of template string
+          }
+        );
+        
+        console.log("Token info:", tokenInfoResponse.data);
+        
+        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+          return res.status(401).json({ message: "Invalid token audience" });
+        }
 
-    // Check if email exists
+        // Get user profile using access token
+        const userInfoResponse = await axios.get(
+          'https://www.googleapis.com/oauth2/v3/userinfo',
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+        
+        console.log("User info:", userInfoResponse.data);
+        
+        email = userInfoResponse.data.email;
+        googleId = userInfoResponse.data.sub;
+        console.log("Successfully verified as access token");
+      } catch (accessTokenError) {
+        console.error("Access token verification failed:", accessTokenError.response?.data || accessTokenError.message);
+        return res.status(401).json({ 
+          message: "Invalid token", 
+          error: accessTokenError.response?.data || accessTokenError.message 
+        });
+      }
+    }
+
 
      const existingEmail = await Buyer.findOne ({ email });
     if (existingEmail) {
@@ -133,46 +294,150 @@ exports.googleSignUpBuyer = async (req, res) => {
     res.status(401).json({ message: "Google signup failed", error: err });
   }
 };
+
+// exports.googleLogIn = async (req, res) => {
+//   const { token } = req.body;
+
+//   try {
+//     const ticket = await client.verifyIdToken({
+//       idToken: token,
+//       audience: process.env.GOOGLE_CLIENT_ID,
+//     });
+
+//     const payload = ticket.getPayload();
+//     const { email, sub: googleId} = payload;
+
+//     // Check if email exists
+
+//      const user = await Provider.findOne ({ email });
+//     if (!user) {
+//         return res.status(400).json({ message: "Account not found. Please sign up" });
+//     }    
+// if (!user.isGoogleUser) {
+//       return res.status(400).json({ message: "This email was registered with a password. Use email/password login." });
+//     }
+    
+
+//     // Generate your app's JWT
+//     const jwtToken = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+//     res.status(200).json({
+//       message: "Login successful",
+//       token: jwtToken,
+//       newUser: {
+//         email: user.email,
+//         _id: user._id,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("Google login failed:", err);
+//     res.status(401).json({ message: "Google login failed", error: err });
+//   }
+// };
+
 exports.googleLogIn = async (req, res) => {
   const { token } = req.body;
 
+  // Check if token exists
+  if (!token) {
+    return res.status(400).json({ message: "Token is required" });
+  }
+
   try {
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    let email, googleId;
 
-    const payload = ticket.getPayload();
-    const { email, sub: googleId} = payload;
+    // Try to verify as ID token first
+    try {
+      const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      email = payload.email;
+      googleId = payload.sub;
+      console.log("Successfully verified as ID token");
+    } catch (idTokenError) {
+      // If ID token verification fails, treat it as access token
+      console.log("Not an ID token, verifying as access token...");
+      
+      try {
+        // Verify access token with Google
+        const tokenInfoResponse = await axios.get(
+          `https://www.googleapis.com/oauth2/v3/tokeninfo`,
+          {
+            params: { access_token: token }
+          }
+        );
+        
+        console.log("Token info:", tokenInfoResponse.data);
+        
+        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+          return res.status(401).json({ message: "Invalid token audience" });
+        }
 
-    // Check if email exists
-
-     const user = await Provider.findOne ({ email });
-    if (!user) {
-        return res.status(400).json({ message: "Account not found. Please sign up" });
-    }    
-if (!user.isGoogleUser) {
-      return res.status(400).json({ message: "This email was registered with a password. Use email/password login." });
+        // Get user profile using access token
+        const userInfoResponse = await axios.get(
+          'https://www.googleapis.com/oauth2/v3/userinfo',
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        );
+        
+        console.log("User info:", userInfoResponse.data);
+        
+        email = userInfoResponse.data.email;
+        googleId = userInfoResponse.data.sub;
+        console.log("Successfully verified as access token");
+      } catch (accessTokenError) {
+        console.error("Access token verification failed:", accessTokenError.response?.data || accessTokenError.message);
+        return res.status(401).json({ 
+          message: "Invalid token", 
+          error: accessTokenError.response?.data || accessTokenError.message 
+        });
+      }
     }
-    
+
+    // Check if user exists
+    const user = await Provider.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: "Account not found. Please sign up" });
+    }
+
+    // Check if user registered with Google
+    if (!user.isGoogleUser) {
+      return res.status(400).json({ 
+        message: "This email was registered with a password. Use email/password login." 
+      });
+    }
+
+    // Optional: Verify googleId matches
+    if (user.googleId && user.googleId !== googleId) {
+      return res.status(401).json({ 
+        message: "Google account mismatch. Please use the correct Google account." 
+      });
+    }
 
     // Generate your app's JWT
-    const jwtToken = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const jwtToken = jwt.sign(
+      { id: user._id, role: user.role }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '1h' }
+    );
 
     res.status(200).json({
       message: "Login successful",
       token: jwtToken,
-      newUser: {
+      user: {
         email: user.email,
         _id: user._id,
+        role: user.role,
       },
     });
   } catch (err) {
     console.error("Google login failed:", err);
-    res.status(401).json({ message: "Google login failed", error: err });
+    res.status(401).json({ message: "Google login failed", error: err.message });
   }
 };
-
 exports.registerBuyer = async (req, res) => {
     const { email, password, phoneNumber, city, fullName } = req.body;
 
