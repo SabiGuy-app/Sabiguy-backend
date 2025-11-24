@@ -7,6 +7,17 @@ const serviceUserSchema = new mongoose.Schema ({
     createdAt: { type: Date, default: Date.now},
     emailVerified: { type: Boolean, default: false },
     otp: { type: String },
+     otpExpiresAt: {
+  type: Date,
+},
+lastVerificationOtpSentAt: {
+  type: Date,
+  default: null,
+},
+   lastResetOtpSentAt: {
+  type: Date,
+  default: null,
+},   
     isGoogleUser: { type: Boolean, default: false },
     googleId: String,
     role: {

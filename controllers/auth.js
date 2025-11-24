@@ -403,6 +403,12 @@ exports.googleLogIn = async (req, res) => {
       return res.status(400).json({ message: "Account not found. Please sign up" });
     }
 
+    // Check if email is verified 
+
+    if (!user.emailVerified) {
+       return res.status(403).json({ message: "Please verify your email before logging in" });
+    }
+
     // Check if user registered with Google
     if (!user.isGoogleUser) {
       return res.status(400).json({ 
@@ -601,6 +607,58 @@ try {
     res.status(500).json ({ message: 'Something went wrong.' });
     
 }
+};
+
+exports.resendOTP = async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    let user = await Buyer.findOne({ email });
+    let role = "buyer";
+
+    if (!user) {
+      user = await Provider.findOne({ email });
+      role = "provider";
+    }    
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: 'Email already verified' });
+    }
+
+   const now = new Date();
+const lastSent = new Date(user.lastVerificationOtpSentAt);
+
+if (user.lastVerificationOtpSentAt && now.getTime() - lastSent.getTime() < 60 * 1000) {
+  return res.status(429).json({ message: 'Please wait before requesting another OTP' });
+}
+
+    // Generate new OTP and expiration
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    user.otp = otp;
+    user.otpExpiresAt = otpExpiresAt;
+    user.lastVerificationOtpSentAt = now; 
+    await user.save();
+
+ try {
+         await sendEmailOtp(email, otp);
+
+          
+        } catch (OtpError) {
+          await user.findByIdAndDelete(user._id);
+          return res.status (500).json ({ message: 'Failed to send OTP. Please try again'})
+          
+        }
+    return res.status(200).json({ message: 'OTP resent successfully' });
+  } catch (err) {
+    console.error('Resend OTP error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
 };
 
 exports.login = async (req, res) => {

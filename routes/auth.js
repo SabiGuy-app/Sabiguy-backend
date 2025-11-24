@@ -1,5 +1,14 @@
 const express = require ('express');
-const { registerBuyer, registerProvider, login, verifyEmail, forgotPassword, resetPassword, googleSignUp, googleSignUpBuyer, googleLogIn} = require ('../controllers/auth');
+const { registerBuyer,
+     registerProvider,
+     login, 
+     verifyEmail,
+     forgotPassword,
+     resetPassword, 
+     googleSignUp, 
+     googleSignUpBuyer, 
+     googleLogIn,
+    resendOTP} = require ('../controllers/auth');
 const router = express.Router();
 
 // const authMiddleware = require ('../middleware/authMiddleware');
@@ -47,6 +56,8 @@ const router = express.Router();
  *         description: Invalid request
  */
 router.post("/buyer", registerBuyer);
+
+
 
 /**
  * @swagger
@@ -264,6 +275,9 @@ router.post("/password", forgotPassword);
  *         description: Invalid or expired token
  */
 router.post("/reset", resetPassword);
+
+router.post("/resend-otp", resendOTP);
+
 
 
 
