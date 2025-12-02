@@ -43,8 +43,9 @@ const serviceProviderSchema = new mongoose.Schema({
          service: { type: String } ,
          title: { type: String } ,
          tagLine: { type: String } 
-        },
-    ],
+        }
+      ],
+    
     service:[
          {
          serviceName: { type: String } ,
@@ -59,6 +60,9 @@ const serviceProviderSchema = new mongoose.Schema({
     videos: [{ type: String }]
   }
 ],
+  radius: { type: Number },  
+  allowAnywhere: { type: Boolean, default: false },
+
     files: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }]
 
 });

@@ -4,7 +4,8 @@ const Provider = require ('../models/ServiceProvider');
 
 exports.ProfileInfo = async (req, res) => {
   try {
-    const { gender, city, address, accountType, ninSlip } = req.body;
+    const { gender, city, address, accountType, ninSlip,radius, allowAnywhere
+ } = req.body;
 
     const provider = await Provider.findById(req.user.id);
     if (!provider) {
@@ -16,6 +17,9 @@ exports.ProfileInfo = async (req, res) => {
     provider.address = address 
     provider.accountType = accountType 
     provider.ninSlip = ninSlip
+    provider.radius = radius
+    provider.allowAnywhere = allowAnywhere
+
 
     await provider.save();
 

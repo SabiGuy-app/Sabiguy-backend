@@ -12,67 +12,6 @@ const roleModelMap = {
   provider: Provider,
 };
 
-// const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-// exports.googleSignUp = async (req, res) => {
-//   const { token } = req.body;
-
-//   try {
-//     const ticket = await client.verifyIdToken({
-//       idToken: token,
-//       audience: process.env.GOOGLE_CLIENT_ID,
-//     });
-
-//     const payload = ticket.getPayload();
-//     const { email, sub: googleId} = payload;
-
-//     // Check if email exists
-
-//      const existingEmail = await Provider.findOne ({ email });
-//     if (existingEmail) {
-//         return res.status(400).json({ message: "Email already in use" });
-//     }    
-
-//     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-//     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // expires in 10 mins
-//     const newUser = new Provider({
-//         email,
-//         password: null, 
-//         otp,
-//         otpExpiresAt,
-//         isGoogleUser: true,
-//         googleId,
-//         role: "provider", 
-
-//       });
-
-//       await newUser.save();
-      
-//     try {
-//         await sendEmailOtp(email, otp);
-        
-//     } catch (OtpError) {
-//         await Provider.findByIdAndDelete(newUser._id);
-//         return res.status(500).json ({ message: 'Failed to send otp, please try again'})    
-//     }
-
-//     // Generate your app's JWT
-//     const jwtToken = jwt.sign({ id: newUser._id, role: newUser.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-//     res.status(200).json({
-//       message: "Signup successful! OTP sent to email. Please verify to complete registration.",
-//       token: jwtToken,
-//       newUser: {
-//         email: newUser.email,
-//         _id: newUser._id,
-//       },
-//     });
-//   } catch (err) {
-//     console.error("Google signup failed:", err);
-//     res.status(401).json({ message: "Google signup failed", error: err });
-//   }
-// };
-
 const axios = require('axios');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -86,7 +25,7 @@ exports.googleSignUp = async (req, res) => {
   }
 
   try {
-    let email, googleId;
+    let email, googleId, name, picture;
 
     // Try to verify as ID token first
     try {
@@ -98,6 +37,12 @@ exports.googleSignUp = async (req, res) => {
       email = payload.email;
       googleId = payload.sub;
       console.log("Successfully verified as ID token");
+
+      email = payload.email;
+      googleId = payload.sub;
+      name = payload.name || `${payload.given_name || ""} ${payload.family_name || ""}`.trim();
+      picture = payload.picture;
+
     } catch (idTokenError) {
       // If ID token verification fails, treat it as access token
       console.log("Not an ID token, verifying as access token...");
@@ -111,7 +56,6 @@ exports.googleSignUp = async (req, res) => {
           }
         );
         
-        console.log("Token info:", tokenInfoResponse.data);
         
         if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
           return res.status(401).json({ message: "Invalid token audience" });
@@ -124,12 +68,16 @@ exports.googleSignUp = async (req, res) => {
             headers: { Authorization: `Bearer ${token}` }
           }
         );
+
+         const info = userInfoResponse.data;
         
         console.log("User info:", userInfoResponse.data);
         
-        email = userInfoResponse.data.email;
-        googleId = userInfoResponse.data.sub;
-        console.log("Successfully verified as access token");
+        email = info.email;
+        googleId = info.sub;
+        name = info.name || `${info.given_name || ""} ${info.family_name || ""}`.trim();
+        picture = info.picture;
+
       } catch (accessTokenError) {
         console.error("Access token verification failed:", accessTokenError.response?.data || accessTokenError.message);
         return res.status(401).json({ 
@@ -150,6 +98,7 @@ exports.googleSignUp = async (req, res) => {
     
     const newUser = new Provider({
       email,
+      fullName: name,
       password: null,
       otp,
       otpExpiresAt,
@@ -196,50 +145,53 @@ exports.googleSignUpBuyer = async (req, res) => {
   }
 
   try {
-    let email, googleId;
+    let email, googleId, name, picture;
 
-    // Try to verify as ID token first
+    // Try verifying as ID token
     try {
       const ticket = await client.verifyIdToken({
         idToken: token,
         audience: process.env.GOOGLE_CLIENT_ID,
       });
+
       const payload = ticket.getPayload();
-      email = payload.email;
+       email = payload.email;
       googleId = payload.sub;
       console.log("Successfully verified as ID token");
+
+      email = payload.email;
+      googleId = payload.sub;
+      name = payload.name || `${payload.given_name || ""} ${payload.family_name || ""}`.trim();
+      picture = payload.picture;
+
     } catch (idTokenError) {
-      // If ID token verification fails, treat it as access token
+      // Try verifying as access token
       console.log("Not an ID token, verifying as access token...");
-      
+
       try {
-        // Verify access token with Google
         const tokenInfoResponse = await axios.get(
-          `https://www.googleapis.com/oauth2/v3/tokeninfo`,
-          {
-            params: { access_token: token } // Use params instead of template string
-          }
+          "https://www.googleapis.com/oauth2/v3/tokeninfo",
+          { params: { access_token: token } }
         );
-        
-        console.log("Token info:", tokenInfoResponse.data);
-        
+
         if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
-        // Get user profile using access token
         const userInfoResponse = await axios.get(
-          'https://www.googleapis.com/oauth2/v3/userinfo',
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
+          "https://www.googleapis.com/oauth2/v3/userinfo",
+          { headers: { Authorization: `Bearer ${token}` } }
         );
-        
-        console.log("User info:", userInfoResponse.data);
-        
-        email = userInfoResponse.data.email;
-        googleId = userInfoResponse.data.sub;
-        console.log("Successfully verified as access token");
+
+        const info = userInfoResponse.data;
+
+        console.log("Access token verified. User info:", info);
+
+        email = info.email;
+        googleId = info.sub;
+        name = info.name || `${info.given_name || ""} ${info.family_name || ""}`.trim();
+        picture = info.picture;
+
       } catch (accessTokenError) {
         console.error("Access token verification failed:", accessTokenError.response?.data || accessTokenError.message);
         return res.status(401).json({ 
@@ -249,37 +201,41 @@ exports.googleSignUpBuyer = async (req, res) => {
       }
     }
 
-
-     const existingEmail = await Buyer.findOne ({ email });
+    // Check if email already exists
+    const existingEmail = await Buyer.findOne({ email });
     if (existingEmail) {
-        return res.status(400).json({ message: "Email already in use" });
-    }    
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // expires in 10 mins
-    const newUser = new Buyer({
-        email,
-        password: null, 
-        otp,
-        otpExpiresAt,
-        isGoogleUser: true,
-        googleId,
-        role: "buyer", 
-
-      });
-
-      await newUser.save();
-      
-    try {
-        await sendEmailOtp(email, otp);
-        
-    } catch (OtpError) {
-        await Buyer.findByIdAndDelete(newUser._id);
-        return res.status(500).json ({ message: 'Failed to send otp, please try again'})    
+      return res.status(400).json({ message: "Email already in use" });
     }
 
-    // Generate your app's JWT
-    const jwtToken = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    // Generate OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Create new user
+    const newUser = new Buyer({
+      email,
+      fullName: name,
+      password: null,
+      otp,
+      profilePicture: picture,
+      otpExpiresAt,
+      isGoogleUser: true,
+      googleId,
+      role: "buyer",
+    });
+
+    await newUser.save();
+
+    // Send OTP
+    try {
+      await sendEmailOtp(email, otp);
+    } catch (OtpError) {
+      await Buyer.findByIdAndDelete(newUser._id);
+      return res.status(500).json({ message: "Failed to send OTP, please try again" });
+    }
+
+    // Generate JWT
+    const jwtToken = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
     res.status(200).json({
       message: "Signup successful! OTP sent to email. Please verify to complete registration.",
@@ -289,51 +245,13 @@ exports.googleSignUpBuyer = async (req, res) => {
         _id: newUser._id,
       },
     });
+
   } catch (err) {
     console.error("Google signup failed:", err);
     res.status(401).json({ message: "Google signup failed", error: err });
   }
 };
 
-// exports.googleLogIn = async (req, res) => {
-//   const { token } = req.body;
-
-//   try {
-//     const ticket = await client.verifyIdToken({
-//       idToken: token,
-//       audience: process.env.GOOGLE_CLIENT_ID,
-//     });
-
-//     const payload = ticket.getPayload();
-//     const { email, sub: googleId} = payload;
-
-//     // Check if email exists
-
-//      const user = await Provider.findOne ({ email });
-//     if (!user) {
-//         return res.status(400).json({ message: "Account not found. Please sign up" });
-//     }    
-// if (!user.isGoogleUser) {
-//       return res.status(400).json({ message: "This email was registered with a password. Use email/password login." });
-//     }
-    
-
-//     // Generate your app's JWT
-//     const jwtToken = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-//     res.status(200).json({
-//       message: "Login successful",
-//       token: jwtToken,
-//       newUser: {
-//         email: user.email,
-//         _id: user._id,
-//       },
-//     });
-//   } catch (err) {
-//     console.error("Google login failed:", err);
-//     res.status(401).json({ message: "Google login failed", error: err });
-//   }
-// };
 
 exports.googleLogIn = async (req, res) => {
   const { token } = req.body;
@@ -694,7 +612,7 @@ exports.login = async (req, res) => {
 
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "20h" });
 
-    res.json({ message: "Login successful", role, token, id: user._id });
+    res.json({ message: "Login successful", role, email: user.email, token, id: user._id });
 
   } catch (error) {
     console.error("Login error:", error);
