@@ -19,6 +19,10 @@ const options = {
                 url: "https://sabiguy-backend.onrender.com/", 
                 description: "Production server",
             },
+            {
+                url: "https://abiguy-backend-sabi-guy5356-92laxgmt.leapcell.dev", 
+                description: "Production server",
+            },
            
         ],
         components: {
