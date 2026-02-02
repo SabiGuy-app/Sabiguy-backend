@@ -19,7 +19,7 @@ const authMiddleware = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const { id, role } = decoded;
+    const { id, role, email } = decoded;
 
     const Model = roleModelMap[role];
     if (!Model) {
@@ -31,7 +31,7 @@ const authMiddleware = async (req, res, next) => {
       return res.status(404).json({ message: `${role} not found` });
     }
 
-    req.user = { id: user._id, role };
+    req.user = { id: user._id, role, email };
     next();
   } catch (err) {
     return res.status(401).json({ message: "Invalid token" });

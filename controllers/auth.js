@@ -117,7 +117,7 @@ exports.googleSignUp = async (req, res) => {
     }
 
     const jwtToken = jwt.sign(
-      { id: newUser._id, role: newUser.role },
+      { id: newUser._id, role: newUser.role, email: newUser.email },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
@@ -343,7 +343,7 @@ exports.googleLogIn = async (req, res) => {
 
     // Generate your app's JWT
     const jwtToken = jwt.sign(
-      { id: user._id, role: user.role }, 
+      { id: user._id, role: user.role, email: user.email }, 
       process.env.JWT_SECRET, 
       { expiresIn: '1h' }
     );
@@ -410,7 +410,7 @@ exports.registerBuyer = async (req, res) => {
         return res.status(500).json ({ message: 'Failed to send otp, please try again'})    
     }
 
-        const token = jwt.sign({ id: newBuyer._id, role: newBuyer.role }, process.env.JWT_SECRET, { expiresIn: "20h" });
+        const token = jwt.sign({ id: newBuyer._id, role: newBuyer.role, email: newBuyer.email }, process.env.JWT_SECRET, { expiresIn: "20h" });
 
     return res.status(201).json ({
         message: 'OTP sent to email. Please verify to complete registration.',
@@ -476,7 +476,7 @@ exports.registerProvider = async (req, res) => {
         await Provider.findByIdAndDelete(newProvider._id);
         return res.status(500).json ({ message: 'Failed to send otp, please try again'})    
     }
-        const token = jwt.sign({ id: newProvider._id, role: newProvider.role }, process.env.JWT_SECRET, { expiresIn: "20h" });
+        const token = jwt.sign({ id: newProvider._id, role: newProvider.role, email: newProvider.email }, process.env.JWT_SECRET, { expiresIn: "20h" });
 
     return res.status(201).json ({
         message: 'OTP sent to email. Please verify to complete registration.',
@@ -610,7 +610,7 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "20h" });
+    const token = jwt.sign({ id: user._id, role: user.role, email: user.email }, process.env.JWT_SECRET, { expiresIn: "20h" });
 
     res.json({ message: "Login successful", role, email: user.email, token, id: user._id });
 

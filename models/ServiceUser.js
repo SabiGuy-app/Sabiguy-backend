@@ -25,6 +25,18 @@ lastVerificationOtpSentAt: {
   enum: ["buyer"],
   default: "buyer",
 },
+fcmToken: {
+    type: String,
+    select: false // Don't return in normal queries for security
+  },
+  device: {
+    type: {
+      type: String,
+      enum: ['ios', 'android', 'web', 'unknown']
+    },
+    id: String,
+    updatedAt: Date
+  },
     resetOtp: { type: String },
     resetOtpExpires: { type: Date },
     emailVerificationExpires: { type: Date },

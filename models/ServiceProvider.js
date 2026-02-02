@@ -32,7 +32,9 @@ const serviceProviderSchema = new mongoose.Schema({
     ninSlip: { type: String },
     jobTitle: { type: String },
     service: { type: String },
+    accountNumber: { type: String },
     bankName: { type: String },
+    bankCode: { type: String },
     accountName: { type: String },
     BusinessName: { type: String },
     regNumber: { type: String },
@@ -42,7 +44,9 @@ const serviceProviderSchema = new mongoose.Schema({
          {
          service: { type: String } ,
          title: { type: String } ,
-         tagLine: { type: String } 
+         tagLine: { type: String },
+         startingPrice: {type: String},
+
         }
       ],
     
@@ -53,19 +57,90 @@ const serviceProviderSchema = new mongoose.Schema({
          price: { type: String } 
         },
     ],
-    accountNumber: { type: String },
     workVisuals: [
   {
     pictures: [{ type: String }],
     videos: [{ type: String }]
   }
 ],
+fcmToken: {
+    type: String,
+    select: false // Don't return in normal queries for security
+  },
+  device: {
+    type: {
+      type: String,
+      enum: ['ios', 'android', 'web', 'unknown']
+    },
+    id: String,
+    updatedAt: Date
+  },
   radius: { type: Number },  
   allowAnywhere: { type: Boolean, default: false },
 
-    files: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }]
+    files: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }],
+  //    userId: {
+  //   type: mongoose.Schema.Types.ObjectId,
+  //   ref: 'User',
+  //   required: true
+  // },
+   // Current location (always updated)
+  currentLocation: {
+      address: String,
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point'
+      },
+      coordinates: {
+        type: [Number],  // [longitude, latitude]
+        index: '2dsphere'
+      }
+    },
+  
+  availability: {
+    isAvailable: {
+      type: Boolean,
+      default: false
+    },
+    lastUpdated: Date
+  },
+  
+  // Pricing
+  
+  // Ratings
+  rating: {
+    average: {
+      type: Number,
+      default: 0
+    },
+    count: {
+      type: Number,
+      default: 0
+    }
+  },
+  
+  // // Account details for payments
+  // bankAccount: {
+  //   accountName: String,
+  //   bankCode: String,
+  //   bankName: String,
+  // },
 
+    paystackRecipientCode: String, // Auto-generated
+
+  
+  completedJobs: {
+    type: Number,
+    default: 0
+  }
+}, {
+  timestamps: true
 });
+
+// Index for geospatial queries
+serviceProviderSchema.index({ 'currentLocation.coordinates': '2dsphere' });
+
 
 module.exports =  mongoose.model ("Provider", serviceProviderSchema);
 
