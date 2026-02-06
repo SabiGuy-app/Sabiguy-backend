@@ -26,7 +26,8 @@ const notificationSchema = new mongoose.Schema({
       'message_received',
       'test',
       'counter_offer',
-      'job_completed_confirmed'
+      'job_completed_confirmed',
+      'new_message'
     ]
   },
   title: {

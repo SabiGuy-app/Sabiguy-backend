@@ -46,7 +46,7 @@ class paymentService {
         `${this.paystackBaseURL}/transaction/initialize`,
         {
           email: booking.userId.email,
-          amount: totalAmount * 100, // Paystack uses kobo (smallest currency unit)
+          amount: totalAmount * 100, 
           currency: 'NGN',
           reference: this.generateReference(),
           callback_url: `${process.env.FRONTEND_URL}/payment/callback`,
@@ -94,16 +94,6 @@ class paymentService {
       await booking.save();
 
       await Transaction.create ({
-        // bookingId: booking._id,
-        // userId,
-        // providerId: booking.providerId,
-        // reference: paystackResponse.data.data.reference,
-        // amount: totalAmount,
-        // agreedPrice,
-        // serviceFee,
-        // status: 'pending',
-        // type: 'payment',
-        // gateway: 'paystack'
         reference: paystackResponse.data.data.reference,
         type: 'payment',
         from: {
@@ -193,9 +183,6 @@ class paymentService {
         },
         { new: true }
       );
-      // if (!transaction) {
-      //   throw new Error('Transaction not found');
-      // }
       if (!updatedTransaction) {
       return {
         success: true,
@@ -481,7 +468,7 @@ if (booking.status === 'funds_released') {
       async createTransferRecipient(provider) {
 
     try {
-      if (!provider.bankName || !provider.accountName || !provider.bankCode) {
+      if (!provider.accountName || !provider.bankCode) {
         throw new Error('Provider bank details not found. Please update your bank information.');
       }
 
@@ -591,16 +578,6 @@ if (booking.status === 'funds_released') {
         return;
       }
 
-      // Update transaction
-      // await Transaction.findOneAndUpdate(
-      //   { reference },
-      //   {
-      //     status: 'success',
-      //     paystackResponse: data,
-      //     paidAt: new Date()
-      //   }
-      // );
-
        await Transaction.findOneAndUpdate(
         { reference, type: 'payment' },
         {
@@ -630,17 +607,6 @@ if (booking.status === 'funds_released') {
   async handleTransferSuccess(data) {
     try {
       const reference = data.reference;
-
-      // Update transaction
-      // const transaction = await Transaction.findOneAndUpdate(
-      //   { reference },
-      //   {
-      //     status: 'success',
-      //     paystackResponse: data,
-      //     completedAt: new Date()
-      //   },
-      //   { new: true }
-      // );
 
       const transaction = await Transaction.findOneAndUpdate(
         { reference, type: 'payout' },
@@ -675,17 +641,6 @@ if (booking.status === 'funds_released') {
     try {
       const reference = data.reference;
 
-      // Update transaction
-      // const transaction = await Transaction.findOneAndUpdate(
-      //   { reference },
-      //   {
-      //     status: 'failed',
-      //     paystackResponse: data,
-      //     failureReason: data.reason || 'Transfer failed'
-      //   },
-      //   { new: true }
-      // );
-
        const transaction = await Transaction.findOneAndUpdate(
         { reference, type: 'payout' },
         {
@@ -718,15 +673,6 @@ if (booking.status === 'funds_released') {
   async handleRefundProcessed(data) {
     try {
       const reference = data.reference;
-
-      // await Transaction.findOneAndUpdate(
-      //   { reference },
-      //   {
-      //     status: 'success',
-      //     paystackResponse: data,
-      //     completedAt: new Date()
-      //   }
-      // );
 
       await Transaction.findOneAndUpdate(
         { reference, type: 'refund' },
@@ -778,7 +724,7 @@ if (booking.status === 'funds_released') {
   /**
    * Verify bank account
    */
-  async verifyBankAccount(accountNumber, bankCode) {
+async verifyBankAccount({ accountNumber, bankCode }) {  // Destructure the object
     try {
       const response = await axios.get(
         `${this.paystackBaseURL}/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,

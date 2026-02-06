@@ -1,6 +1,7 @@
 const Provider = require ('../models/ServiceProvider');
 const Booking = require('../models/Bookings');
 const notificationService = require('../src/services/notification.service')
+const paymentService = require ('../src/services/payment.service');
 
 class ProviderController {
   
@@ -391,36 +392,36 @@ async setProfilePicture(req, res) {
     }
   }
 
-  async getBookingDetails(req, res) {
-    try {
-      const providerId = req.user.providerId;
-      const { bookingId } = req.params;
+  // async getBookingDetails(req, res) {
+  //   try {
+  //     const providerId = req.user.providerId;
+  //     const { bookingId } = req.params;
 
-      const booking = await Booking.findOne({
-        _id: bookingId,
-        providerId
-      }).populate('userId', 'firstName lastName avatar phoneNumber email');
+  //     const booking = await Booking.findOne({
+  //       _id: bookingId,
+  //       providerId
+  //     }).populate('userId', 'firstName lastName avatar phoneNumber email');
 
-      if (!booking) {
-        return res.status(404).json({
-          success: false,
-          message: 'Booking not found'
-        });
-      }
+  //     if (!booking) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         message: 'Booking not found'
+  //       });
+  //     }
 
-      return res.status(200).json({
-        success: true,
-        data: booking
-      });
-    } catch (error) {
-      console.error('Get booking details error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Error fetching booking details',
-        error: error.message
-      });
-    }
-  }
+  //     return res.status(200).json({
+  //       success: true,
+  //       data: booking
+  //     });
+  //   } catch (error) {
+  //     console.error('Get booking details error:', error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: 'Error fetching booking details',
+  //       error: error.message
+  //     });
+  //   }
+  // }
 
    async acceptBooking(req, res) {
   try {
@@ -766,60 +767,86 @@ async cancelBooking(req, res) {
     }
   }
 
+
 async addBankAccount(req, res) {
-    try {
-      const providerId = req.user.providerId;
-      const { accountNumber, bankCode } = req.body;
-
-      if (!accountNumber || !bankCode) {
-        return res.status(400).json({
-          success: false,
-          message: 'Account number and bank code are required'
-        });
-      }
-
-      // Verify account with Paystack
-      const accountDetails = await paystackService.verifyBankAccount({
-        accountNumber,
-        bankCode
-      });
-
-      // Create transfer recipient
-      const recipient = await paystackService.createTransferRecipient({
-        accountNumber,
-        accountName: accountDetails.account_name,
-        bankCode
-      });
-
-      // Update provider with bank details
-      const provider = await Provider.findByIdAndUpdate(
-        providerId,
-        {
-          bankAccount: {
-            accountNumber,
-            accountName: accountDetails.account_name,
-            bankCode,
-            bankName: accountDetails.bank_name,
-            recipientCode: recipient.recipient_code
-          }
-        },
-        { new: true }
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: 'Bank account added successfully',
-        data: provider.bankAccount
-      });
-    } catch (error) {
-      console.error('Add bank account error:', error);
-      return res.status(500).json({
+  try {
+    const providerId = req.user.providerId;
+    const { accountNumber, bankCode, verifyOnly } = req.body;
+    
+    if (!accountNumber || !bankCode) {
+      return res.status(400).json({
         success: false,
-        message: 'Error adding bank account',
-        error: error.message
+        message: 'Account number and bank code are required'
       });
     }
+
+    // Verify account with Paystack
+    const accountDetails = await paymentService.verifyBankAccount({
+      accountNumber,
+      bankCode
+    });
+    
+    console.log('Account verification response:', accountDetails);
+    
+    // If only verifying, return the details without saving
+    if (verifyOnly) {
+      return res.status(200).json({
+        success: true,
+        message: 'Account verified',
+        data: {
+          accountName: accountDetails.accountName,
+          accountNumber: accountDetails.accountNumber
+        },
+        verificationDetails: accountDetails // Include full verification response
+      });
+    }
+
+    // Get bank name from the banks list
+    const banks = await paymentService.getBanks();
+    const selectedBank = banks.find(bank => bank.code === bankCode);
+    const bankName = selectedBank ? selectedBank.name : '';
+
+    // Save the bank details
+    const provider = await Provider.findByIdAndUpdate(
+      providerId,
+      {
+        accountNumber,
+        accountName: accountDetails.accountName,
+        bankCode,
+        bankName // Save bank name to DB
+      },
+      { new: true }
+    );
+
+    if (!provider) {
+      return res.status(404).json({
+        success: false,
+        message: 'Provider not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Bank account added successfully',
+      data: {
+        accountNumber: provider.accountNumber,
+        accountName: provider.accountName,
+        bankCode: provider.bankCode,
+        bankName: provider.bankName
+      },
+      verificationDetails: accountDetails // Include full verification response
+    });
+    
+  } catch (error) {
+    console.error('Add bank account error:', error);
+    console.error('Error details:', error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Error adding bank account',
+      error: error.message
+    });
   }
+}
 
   async verifyBankAccount(req, res) {
     try {
@@ -832,7 +859,7 @@ async addBankAccount(req, res) {
         });
       }
 
-      const accountDetails = await paystackService.verifyBankAccount({
+      const accountDetails = await paymentService.verifyBankAccount({
         accountNumber,
         bankCode
       });

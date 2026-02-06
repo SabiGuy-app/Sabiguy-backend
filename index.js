@@ -21,7 +21,9 @@ const io = socketIO(server, {
    credentials: true,
   },
   pingTimeout: 60000,
-  pingInterval: 25000
+  pingInterval: 25000,
+  transports: ['websocket', 'polling']
+
 });
 app.use(
   cors({
@@ -44,7 +46,7 @@ const routes = [
    { path: '/notifications', file: './routes/notifications'},
    { path: '/payment', file: './routes/payment'},
    { path: '/wallet', file: './routes/wallet'},
-
+   { path: '/chats', file: './routes/chat'},
 ];
 app.use(cors());
 
@@ -138,15 +140,113 @@ io.on('connection', (socket) => {
     }
   });
 
+  /**
+   * Join a booking chat room
+   * Automatically validates if user can access based on booking status
+   */
+  socket.on('join_chat', async (data) => {
+    try {
+      const { bookingId } = data;
+      const chatService = require('./src/services/chat.service');
+      
+      // Check if user can access this chat
+      const access = await chatService.canAccessChat(bookingId, socket.userId);
+      
+      if (!access.allowed) {
+        socket.emit('error', { 
+          message: 'Cannot access this chat - booking not in progress' 
+        });
+        return;
+      }
+
+      const chatRoom = `booking:${bookingId}`;
+      socket.join(chatRoom);
+      
+      console.log(`💬 ${socket.userType} ${socket.userId} joined chat: ${chatRoom}`);
+      
+      // Notify the other party
+      socket.to(chatRoom).emit('user_joined_chat', {
+        userId: socket.userId,
+        userType: socket.userType,
+        bookingId
+      });
+
+      socket.emit('chat_joined', { 
+        bookingId, 
+        room: chatRoom,
+        chatAvailable: true 
+      });
+      
+    } catch (error) {
+      console.error('Join chat error:', error);
+      socket.emit('error', { message: error.message });
+    }
+  });
+
+  socket.on('send_message', async (data) => {
+    try {
+      const { bookingId, message, messageType, attachments } = data;
+      
+      const chatService = require('./src/services/chat.service');
+      const userModel = socket.userType === 'provider' ? 'Provider' : 'Buyer';
+      
+      const result = await chatService.sendMessage(
+        bookingId,
+        socket.userId,
+        userModel,
+        { message, messageType, attachments }
+      );
+
+      const chatRoom = `booking:${bookingId}`;
+      
+      // Broadcast to all in the room
+      io.to(chatRoom).emit('new_message', {
+        bookingId,
+        message: result.message,
+        sender: {
+          id: socket.userId,
+          type: socket.userType
+        }
+      });
+
+      console.log(`📨 Message sent in ${chatRoom}`);
+      
+    } catch (error) {
+      console.error('Send message error:', error);
+      socket.emit('error', { message: error.message });
+    }
+  });
   // Handle typing indicators (for chat feature)
   socket.on('typing', (data) => {
     const { bookingId, isTyping } = data;
+    const chatRoom = `booking:${bookingId}`;
+
     // Notify the other party
-    socket.to(`booking:${bookingId}`).emit('user_typing', {
+   socket.to(chatRoom).emit('user_typing', {
       userId: socket.userId,
+      userType: socket.userType,
       isTyping
     });
   });
+
+  socket.on('mark_read', async (data) => {
+    try {
+      const { bookingId } = data;
+      
+      const chatService = require('./src/services/chat.service');
+      await chatService.markAsRead(bookingId, socket.userId);
+      
+      const chatRoom = `booking:${bookingId}`;
+      socket.to(chatRoom).emit('messages_read', {
+        userId: socket.userId,
+        bookingId
+      });
+      
+    } catch (error) {
+      console.error('Mark read error:', error);
+    }
+  });
+
   socket.on('mark_notification_read', async (data) => {
     try {
       const { notificationId } = data;
@@ -155,6 +255,18 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Mark notification read error:', error.message);
     }
+  });
+
+  socket.on('leave_chat', (data) => {
+    const { bookingId } = data;
+    const chatRoom = `booking:${bookingId}`;
+    
+    socket.leave(chatRoom);
+    console.log(`👋 ${socket.userType} ${socket.userId} left chat: ${chatRoom}`);
+    
+    socket.to(chatRoom).emit('user_left_chat', {
+      userId: socket.userId
+    });
   });
 
   // Handle disconnect
@@ -185,7 +297,7 @@ io.on('connection', (socket) => {
 
 Port = process.env.PORT
 
-app.listen (Port, () => {
+server.listen (Port, () => {
    console.log(`Server is running on port ${Port}`)
 });
 

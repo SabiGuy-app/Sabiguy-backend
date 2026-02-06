@@ -156,7 +156,7 @@ transactionSchema.index({ 'from.userId': 1, createdAt: -1 });
 transactionSchema.index({ 'to.userId': 1, createdAt: -1 });
 transactionSchema.index({ bookingId: 1 });
 transactionSchema.index({ type: 1, status: 1 });
-transactionSchema.index({ reference: 1 }, { unique: true });
+// transactionSchema.index({ reference: 1 }, { unique: true });
 
 // Methods
 transactionSchema.methods.markCompleted = function() {

@@ -416,30 +416,30 @@ router.put('/availability/toggle', authMiddleware, ProviderController.toggleAvai
  */
 router.get('/bookings', authMiddleware, ProviderController.getBookings);
 
-/**
- * @swagger
- * /api/provider/bookings/{bookingId}:
- *   get:
- *     summary: Get booking details
- *     tags: [Provider]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: bookingId
- *         required: true
- *         schema:
- *           type: string
- *         description: Booking ID
- *     responses:
- *       200:
- *         description: Booking details retrieved
- *       404:
- *         description: Booking not found
- *       500:
- *         description: Server error
- */
-router.get('/bookings/:bookingId', authMiddleware, ProviderController.getBookingDetails);
+// /**
+//  * @swagger
+//  * /api/v1/provider/bookings/{bookingId}:
+//  *   get:
+//  *     summary: Get booking details
+//  *     tags: [Provider]
+//  *     security:
+//  *       - bearerAuth: []
+//  *     parameters:
+//  *       - in: path
+//  *         name: bookingId
+//  *         required: true
+//  *         schema:
+//  *           type: string
+//  *         description: Booking ID
+//  *     responses:
+//  *       200:
+//  *         description: Booking details retrieved
+//  *       404:
+//  *         description: Booking not found
+//  *       500:
+//  *         description: Server error
+//  */
+// router.get('/bookings/:bookingId', authMiddleware, ProviderController.getBookingDetails);
 
 /**
  * @swagger

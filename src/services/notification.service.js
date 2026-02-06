@@ -94,6 +94,29 @@ class NotificationService {
   }
 }
 
+async sendNotification(userId, userModel, data) {
+    try {
+      // Create notification in database
+      const notification = await this.createNotification(userId, userModel, data);
+
+      // Determine the correct room based on userModel
+      const room = `${userModel.toLowerCase()}:${userId}`;
+
+      // Real-time notification via Socket.IO
+      if (this.io) {
+        this.io.to(room).emit('notification', notification);
+        console.log(`📢 Real-time notification sent to room: ${room}`);
+      }
+
+      // Push notification via FCM
+      await this.sendPushNotification(userId, userModel, data);
+
+      return notification;
+    } catch (error) {
+      console.error('Send notification error:', error.message);
+      throw error;
+    }
+  }
 
   /**
    * Notify when booking is taken by another provider

@@ -522,15 +522,129 @@ bookingData.dropoffLocation = {
     }
   }
 
- 
+ async getAllBookings(req, res) {
+  try {
+    const { 
+      status, 
+      providerId,
+      userId,
+      search,
+      startDate,
+      endDate,
+      page = 1, 
+      limit = 10,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
 
-  async getBooking(req, res) {
+    // Build query object
+    const query = {};
+
+    // Filter by status
+    if (status) {
+      query.status = status;
+    }
+
+    // Filter by provider
+    if (providerId) {
+      if (!mongoose.Types.ObjectId.isValid(providerId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid provider ID format'
+        });
+      }
+      query.providerId = providerId;
+    }
+
+    // Filter by user
+    if (userId) {
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid user ID format'
+        });
+      }
+      query.userId = userId;
+    }
+
+    // Search by reference or booking ID
+    if (search) {
+      query.$or = [
+        { reference: { $regex: search, $options: 'i' } },
+        { bookingId: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        query.createdAt.$lte = new Date(endDate);
+      }
+    }
+
+    // Sort configuration
+    const sortConfig = {};
+    sortConfig[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+    // Execute query with pagination
+    const bookings = await Booking.find(query)
+      .populate('userId', 'fullName email phoneNumber profilePicture')
+      .populate('providerId', 'fullName profilePicture phoneNumber email')
+      .sort(sortConfig)
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .lean();
+
+    // Get total count for pagination
+    const count = await Booking.countDocuments(query);
+
+    // Calculate stats (optional)
+    const stats = await Booking.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: bookings,
+      pagination: {
+        total: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page),
+        perPage: parseInt(limit)
+      },
+      stats: stats.reduce((acc, item) => {
+        acc[item._id] = item.count;
+        return acc;
+      }, {})
+    });
+
+  } catch (error) {
+    console.error('Get all bookings error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching bookings',
+      error: error.message
+    });
+  }
+}
+
+  async getBookingById(req, res) {
     try {
       const bookingId = req.params.id;
       
       const booking = await Booking.findById(bookingId)
-        .populate('userId', 'firstName lastName email phone avatar')
-        .populate('providerId', 'userId job rating completedJobs');
+        .populate('userId', 'fullName email phone avatar')
+        .populate('providerId', 'userId fullName job rating completedJobs');
 
       if (!booking) {
         return res.status(404).json({
@@ -553,6 +667,41 @@ bookingData.dropoffLocation = {
       });
     }
   }
+
+   async getUserBookings(req, res) {
+      try {
+        const userId = req.user.id;
+        const { status, page = 1, limit = 10 } = req.query;
+  
+        const query = { userId };
+        if (status) {
+          query.status = status;
+        }
+  
+        const bookings = await Booking.find(query)
+          .populate('providerId', 'fullName avatar phoneNumber email')
+          .sort({ createdAt: -1 })
+          .limit(limit * 1)
+          .skip((page - 1) * limit);
+  
+        const count = await Booking.countDocuments(query);
+  
+        return res.status(200).json({
+          success: true,
+          data: bookings,
+          totalPages: Math.ceil(count / limit),
+          currentPage: parseInt(page),
+          total: count
+        });
+      } catch (error) {
+        console.error('Get bookings error:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Error fetching bookings',
+          error: error.message
+        });
+      }
+    }
 
 
   /* -----------------------------
@@ -866,7 +1015,7 @@ bookingData.dropoffLocation = {
                 completedJobs: 1,
                 distance: 1,
                 name: { 
-                  $concat: ['$userInfo.firstName', ' ', '$userInfo.lastName'] 
+                  $concat: ['$userInfo.fullName', ' ', '$userInfo.lastName'] 
                 },
                 avatar: '$userInfo.avatar',
                 phoneNumber: '$userInfo.phoneNumber'
@@ -889,7 +1038,7 @@ bookingData.dropoffLocation = {
         console.log('🔄 Using fallback query...');
         
         providers = await Provider.find(query)
-          .populate('userId', 'firstName lastName avatar phoneNumber')
+          .populate('userId', 'fullName  avatar phoneNumber')
           .sort({ 'rating.average': -1, completedJobs: -1 })
           .limit(20)
           .lean();

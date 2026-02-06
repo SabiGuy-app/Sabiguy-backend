@@ -31,7 +31,7 @@ const bookingSchema = new mongoose.Schema(
    location: {
   address: {
     type: String,
-    required: false  // ✅ boolean, not a type
+    required: false  
   },
   coordinates: {
     type: {
@@ -92,7 +92,7 @@ dropoffLocation: {
     // Pricing
     budget: {
       type: Number,
-      required: true
+      required: false
     },
     agreedPrice: Number,
     calculatedPrice: Number, // Auto-calculated for transport/logistics

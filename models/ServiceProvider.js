@@ -36,6 +36,9 @@ const serviceProviderSchema = new mongoose.Schema({
     bankName: { type: String },
     bankCode: { type: String },
     accountName: { type: String },
+     verifyOnly: { type: String },
+
+
     BusinessName: { type: String },
     regNumber: { type: String },
     BusinessAddress: { type: String },
@@ -123,6 +126,7 @@ fcmToken: {
   // // Account details for payments
   // bankAccount: {
   //   accountName: String,
+  //   accountNumber: String,
   //   bankCode: String,
   //   bankName: String,
   // },
@@ -139,7 +143,7 @@ fcmToken: {
 });
 
 // Index for geospatial queries
-serviceProviderSchema.index({ 'currentLocation.coordinates': '2dsphere' });
+// serviceProviderSchema.index({ 'currentLocation.coordinates': '2dsphere' });
 
 
 module.exports =  mongoose.model ("Provider", serviceProviderSchema);
