@@ -1,21 +1,23 @@
-const { registerVersion } = require('firebase/app');
-const Booking = require('../models/Bookings');
-const Provider = require('../models/ServiceProvider');
-const geolocationService = require('../src/services/geolocation.service');
-const notificationService = require('../src/services/notification.service');
-const pricingService = require('../src/services/pricing.service');
+const Booking = require("../models/Bookings");
+const Provider = require("../models/ServiceProvider");
+const Buyer = require("../models/ServiceUser");
+const geolocationService = require("../src/services/geolocation.service");
+const notificationService = require("../src/services/notification.service");
+const pricingService = require("../src/services/pricing.service");
 
 class BookingController {
-   constructor() {
+  constructor() {
     this.createBooking = this.createBooking.bind(this);
     this.findNearbyProviders = this.findNearbyProviders.bind(this);
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
     this.notifyProvidersForFastestFinger = this.notifyProvidersForFastestFinger.bind(this);
     this.calculateDistance = this.calculateDistance.bind(this);
     this.mockGeocode = this.mockGeocode.bind(this);
+    this.geocodeWithFallback = this.geocodeWithFallback.bind(this);
+    this.getDirectionsWithFallback = this.getDirectionsWithFallback.bind(this);
   }
+
   async createBooking(req, res) {
-    
     try {
       const userId = req.user.id;
       const {
@@ -24,44 +26,45 @@ class BookingController {
         title,
         description,
         address,
-        pickupAddress,    // For transport/logistics
-        dropoffAddress,   // For transport/logistics
+        pickupAddress,
+        dropoffAddress,
         scheduleType,
         startDate,
         endDate,
         budget,
-        attachments
+        attachments,
       } = req.body;
 
       /* -----------------------------
          1️⃣ Validation
       ------------------------------*/
       const isTransport = this.isTransportLogistics(serviceType);
-      
-      if (!serviceType || !scheduleType || !budget) {
+
+      if (!serviceType || !scheduleType) {
         return res.status(400).json({
           success: false,
-          message: 'serviceType, scheduleType and budget are required'
+          message: "serviceType and scheduleType are required",
         });
       }
 
-      // Validate locations based on service type
       if (isTransport && (!pickupAddress || !dropoffAddress)) {
         return res.status(400).json({
           success: false,
-          message: 'pickupAddress and dropoffAddress are required for transport/logistics'
+          message:
+            "pickupAddress and dropoffAddress are required for transport/logistics",
         });
       }
 
-      if (!isTransport && !address) {
+      // Validate that pickup and dropoff are different for transport
+      if (isTransport && pickupAddress === dropoffAddress) {
         return res.status(400).json({
           success: false,
-          message: 'address is required'
+          message: "Pickup and dropoff addresses must be different",
         });
       }
 
       /* -----------------------------
-         2️⃣ Geocode addresses
+         2️⃣ Geocode addresses with fallback
       ------------------------------*/
       let bookingData = {
         userId,
@@ -76,169 +79,83 @@ class BookingController {
         attachments: attachments || [],
       };
 
-      // let searchCoordinates;
+      let searchCoordinates;
 
-      // if (isTransport) {
-      //   // Geocode both pickup and dropoff
-      //   const [pickupGeo, dropoffGeo] = await Promise.all([
-      //     geolocationService.geocodeAddress(pickupAddress),
-      //     geolocationService.geocodeAddress(dropoffAddress)
-      //   ]);
+      if (isTransport) {
+        // Geocode both pickup and dropoff with fallback
+        const [pickupGeo, dropoffGeo] = await Promise.all([
+          this.geocodeWithFallback(pickupAddress),
+          this.geocodeWithFallback(dropoffAddress),
+        ]);
 
-      //   bookingData.pickupLocation = {
-      //     address: pickupGeo.formattedAddress,
-      //     coordinates: {
-      //       type: 'Point',
-      //       coordinates: [pickupGeo.longitude, pickupGeo.latitude]
-      //     }
-      //   };
+        bookingData.pickupLocation = {
+          address: pickupGeo.formattedAddress,
+          coordinates: {
+            type: "Point",
+            coordinates: [pickupGeo.longitude, pickupGeo.latitude],
+          },
+        };
 
-      //   bookingData.dropoffLocation = {
-      //     address: dropoffGeo.formattedAddress,
-      //     coordinates: {
-      //       type: 'Point',
-      //       coordinates: [dropoffGeo.longitude, dropoffGeo.latitude]
-      //     }
-      //   };
+        bookingData.dropoffLocation = {
+          address: dropoffGeo.formattedAddress,
+          coordinates: {
+            type: "Point",
+            coordinates: [dropoffGeo.longitude, dropoffGeo.latitude],
+          },
+        };
 
-      //   // Calculate distance
-      //   // const distance = this.calculateDistance(
-      //   //   pickupGeo.latitude,
-      //   //   pickupGeo.longitude,
-      //   //   dropoffGeo.latitude,
-      //   //   dropoffGeo.longitude
-      //   // );
-      //    const directions = await geolocationService.getDirections(
-      //     [pickupGeo.longitude, pickupGeo.latitude],
-      //     [dropoffGeo.longitude, dropoffGeo.latitude],
-      //     'driving'
-      //   );
+        // Get directions with fallback
+        const directions = await this.getDirectionsWithFallback(
+          [pickupGeo.longitude, pickupGeo.latitude],
+          [dropoffGeo.longitude, dropoffGeo.latitude],
+        );
 
-      //   bookingData.distance = {
-      //     value: parseFloat(directions.distance.value),
-      //     unit: 'km'
-      //   };
+        bookingData.distance = {
+          value: parseFloat(directions.distance.value),
+          unit: "km",
+        };
 
-      //   // Calculate price based on distance
-      //   const calculatedPrice = pricingService.calculateTransportPrice(
-      //     parseFloat(directions.distance.value),
-      //     serviceType
-      //   );
+        console.log("📦 Transport Booking Distance:", bookingData.distance);
 
-      //   bookingData.calculatedPrice = calculatedPrice;
-      //   bookingData.agreedPrice = calculatedPrice; // Can be negotiated later
-        
-      //   // Use pickup location to find nearby providers
-      //   searchCoordinates = {
-      //     latitude: pickupGeo.latitude,
-      //     longitude: pickupGeo.longitude
-      //   };
+        // Calculate price based on distance
+        const calculatedPrice = pricingService.calculateTransportPrice(
+          parseFloat(directions.distance.value),
+          serviceType,
+        );
 
-      // } else {
-      //   // Regular service - single location
-      //   const geo = await geolocationService.geocodeAddress(address);
+        bookingData.calculatedPrice = calculatedPrice;
+        bookingData.agreedPrice = calculatedPrice;
 
-      //   bookingData.location = {
-      //     address: geo.formattedAddress,
-      //     coordinates: {
-      //       type: 'Point',
-      //       coordinates: [geo.longitude, geo.latitude]
-      //     }
-      //   };
+        searchCoordinates = {
+          latitude: pickupGeo.latitude,
+          longitude: pickupGeo.longitude,
+        };
+      } else {
+        // Regular service - single location with fallback
+        const geo = await this.geocodeWithFallback(address);
 
-      //   bookingData.agreedPrice = budget;
-        
-      //   searchCoordinates = {
-      //     latitude: geo.latitude,
-      //     longitude: geo.longitude
-      //   };
-      // }
-// In your booking controller
+        bookingData.location = {
+          address: geo.formattedAddress,
+          coordinates: {
+            type: "Point",
+            coordinates: [geo.longitude, geo.latitude],
+          },
+        };
 
-let searchCoordinates;
+        bookingData.agreedPrice = budget;
 
-if (isTransport) {
-  const pickupGeo = await this.mockGeocode(pickupAddress);
-  const dropoffGeo = await this.mockGeocode(dropoffAddress);
-  
-  // Set pickup location - CORRECT FORMAT
- bookingData.pickupLocation = {
-  address: pickupAddress,
-  coordinates: {
-    type: 'Point',
-    coordinates: [pickupGeo.longitude, pickupGeo.latitude]
-  }
-};
-
-bookingData.dropoffLocation = {
-  address: dropoffAddress,
-  coordinates: {
-    type: 'Point',
-    coordinates: [dropoffGeo.longitude, dropoffGeo.latitude]
-  }
-};
-  
- 
-  // Calculate distance
-  const distance = this.calculateDistance(
-    pickupGeo.latitude,
-    pickupGeo.longitude,
-    dropoffGeo.latitude,
-    dropoffGeo.longitude
-  );
-  
-  bookingData.distance = { 
-    value: distance, 
-    unit: 'km' 
-  };
-  
-  const calculatedPrice = pricingService.calculateTransportPrice(distance, serviceType);
-  bookingData.calculatedPrice = calculatedPrice;
-  bookingData.agreedPrice = calculatedPrice;
-  
-  // Use pickup location for provider search
-  searchCoordinates = {
-    latitude: pickupGeo.latitude,
-    longitude: pickupGeo.longitude
-  };
-  
-  // DON'T set location field for transport bookings
-  bookingData.location = undefined;
-  
-} else {
-  // Regular service
-  const geo = await this.mockGeocode(address);
-  
-  // Set location - CORRECT FORMAT
-  if (!isTransport) {
-  bookingData.location = {
-  address,
-  coordinates: {
-    type: 'Point',
-    coordinates: [geo.longitude, geo.latitude]
-  }
-};
-  }
-  
-  bookingData.agreedPrice = budget;
-  
-  searchCoordinates = {
-    latitude: geo.latitude,
-    longitude: geo.longitude
-  };
-  
-  // DON'T set pickup/dropoff for regular services
-  bookingData.pickupLocation = undefined;
-  bookingData.dropoffLocation = undefined;
-}
-
+        searchCoordinates = {
+          latitude: geo.latitude,
+          longitude: geo.longitude,
+        };
+      }
 
       /* -----------------------------
          3️⃣ Set initial status
       ------------------------------*/
       bookingData.status = isTransport
-        ? 'awaiting_provider_acceptance'
-        : 'pending_providers';
+        ? "awaiting_provider_acceptance"
+        : "pending_providers";
 
       /* -----------------------------
          4️⃣ Create booking
@@ -246,69 +163,102 @@ bookingData.dropoffLocation = {
       const booking = await Booking.create(bookingData);
 
       /* -----------------------------
+         4️⃣b Check user allowSystem flag (for transport only)
+      ------------------------------*/
+      let userAllowSystem = false;
+      if (isTransport) {
+        const user = await Buyer.findById(userId).select("allowSystem").lean();
+        userAllowSystem = user?.allowSystem || false;
+        console.log("🔔 User allowSystem:", userAllowSystem);
+      }
+
+      /* -----------------------------
          5️⃣ Find nearby providers
       ------------------------------*/
-     const nearbyProviders = await this.findNearbyProviders(
-  searchCoordinates,  // Pass coordinates object
-  serviceType,        // Pass serviceType as 2nd parameter
-  subCategory,        // Pass subCategory as 3rd parameter
-  10                  // radiusInKm (10km)
-);
-
-    // const nearbyProviders = await this.findNearbyProviders(
-    //     searchCoordinates,
-    //     serviceType,
-    //     subCategory
-    //   );
+      const nearbyProviders = await this.findNearbyProviders(
+        searchCoordinates,
+        serviceType,
+        subCategory,
+        10, // 10km radius
+      );
 
       if (!nearbyProviders.length) {
         return res.status(201).json({
           success: true,
-          message: 'Booking created but no providers available nearby',
-          data: { booking, 
+          message: "Booking created but no providers available nearby",
+          data: {
+            booking,
             providers: [],
-            note: 'No providers found matching this service type'
-
-           }
+            note: "No providers found matching this service type",
+          },
         });
       }
 
       /* -----------------------------
          6️⃣ Transport/Logistics Flow
-         (Fastest finger)
       ------------------------------*/
       if (isTransport) {
-        booking.notifiedProviders = nearbyProviders.map(p => p._id);
-        await booking.save();
+        // Check user preference
+        if (userAllowSystem) {
+          // ⚡ Fastest Finger Method: Notify all providers
+          booking.notifiedProviders = nearbyProviders.map((p) => p._id);
+          booking.status = "awaiting_provider_acceptance";
+          await booking.save();
 
-        // Notify providers asynchronously
-        this.notifyProvidersForFastestFinger(booking, nearbyProviders);
+          // Notify providers asynchronously
+          this.notifyProvidersForFastestFinger(booking, nearbyProviders);
 
-        return res.status(201).json({
-          success: true,
-          message: 'Booking created. Providers notified.',
-          data: {
-            booking,
-            notifiedProvidersCount: nearbyProviders.length,
-            calculatedPrice: booking.calculatedPrice,
-            distance: booking.distance
-          }
-        });
+          return res.status(201).json({
+            success: true,
+            message: "Booking created. Providers notified.",
+            data: {
+              booking,
+              notifiedProvidersCount: nearbyProviders.length,
+              calculatedPrice: booking.calculatedPrice,
+              distance: booking.distance,
+              flowType: "fastest_finger",
+            },
+          });
+        } else {
+          // 👤 User Selection Method: Suggest providers for user to choose
+          booking.suggestedProviders = nearbyProviders.map((p) => p._id);
+          booking.status = "pending_providers"; // Same status as regular services
+          await booking.save();
+
+          return res.status(201).json({
+            success: true,
+            message: "Booking created successfully",
+            data: {
+              booking,
+              providers: nearbyProviders.map((p) => ({
+                id: p._id,
+                fullName: p.fullName,
+                email: p.email,
+                rating: p.rating,
+                completedJobs: p.completedJobs,
+                distance: p.distance,
+                profilePicture: p.profilePicture,
+                startingPrice: p.startingPrice,
+                services: p.job,
+              })),
+              flowType: "user_selection",
+            },
+          });
+        }
       }
 
       /* -----------------------------
-         7️⃣ Regular Services Flow
-         (User selects provider)
+         7️⃣ Regular Services Flow (User selects provider)
       ------------------------------*/
-      booking.suggestedProviders = nearbyProviders.map(p => p._id);
+      booking.suggestedProviders = nearbyProviders.map((p) => p._id);
       await booking.save();
 
       return res.status(201).json({
         success: true,
-        message: 'Booking created successfully',
+        message: "Booking created successfully",
         data: {
           booking,
-          providers: nearbyProviders.map(p => ({
+          providers: nearbyProviders.map((p) => ({
             id: p._id,
             fullName: p.fullName,
             email: p.email,
@@ -317,81 +267,329 @@ bookingData.dropoffLocation = {
             distance: p.distance,
             profilePicture: p.profilePicture,
             startingPrice: p.startingPrice,
-            services: p.job
-
-          }))
-        }
+            services: p.job,
+          })),
+        },
       });
-
     } catch (error) {
-      console.error('Create booking error:', error);
+      console.error("Create booking error:", error);
       return res.status(500).json({
         success: false,
-        message: 'Error creating booking',
-        error: error.message
+        message: "Error creating booking",
+        error: error.message,
       });
     }
   }
 
+  /* -----------------------------
+     Geocoding with Fallback
+  ------------------------------*/
+  async geocodeWithFallback(address) {
+    try {
+      console.log("🗺️ Attempting real geocoding for:", address);
+      const result = await geolocationService.geocodeAddress(address);
+      console.log("✅ Real geocoding successful");
+      return result;
+    } catch (error) {
+      console.warn("⚠️ Real geocoding failed, using mock:", error.message);
+      return await this.mockGeocode(address);
+    }
+  }
+
+  async getDirectionsWithFallback(origin, destination) {
+    try {
+      console.log("🗺️ Attempting real directions API");
+      const result = await geolocationService.getDirections(
+        origin,
+        destination,
+        "driving",
+      );
+      console.log("✅ Real directions successful");
+      return result;
+    } catch (error) {
+      console.warn(
+        "⚠️ Directions API failed, using Haversine estimate:",
+        error.message,
+      );
+
+      // Fallback: Calculate straight-line distance
+      const distance = this.calculateDistance(
+        origin[1],
+        origin[0], // latitude, longitude
+        destination[1],
+        destination[0],
+      );
+
+      // Ensure minimum distance of 0.5km to avoid 0 pricing
+      const finalDistance = distance < 0.5 ? 0.5 : distance;
+
+      console.log(
+        "📍 Calculated distance:",
+        distance,
+        "km -> Using:",
+        finalDistance,
+        "km",
+      );
+
+      return {
+        distance: {
+          value: finalDistance.toFixed(2),
+          unit: "km",
+        },
+        duration: {
+          value: Math.ceil(finalDistance * 2), // Estimate: 2 min per km
+          unit: "minutes",
+        },
+        isEstimate: true,
+      };
+    }
+  }
+
+  /* -----------------------------
+     Find Nearby Providers
+  ------------------------------*/
+  async findNearbyProviders(
+    coordinates,
+    serviceType,
+    subCategory,
+    radiusInKm = 50,
+  ) {
+    try {
+      console.log("🔍 Finding providers with:", {
+        coordinates,
+        serviceType,
+        subCategory,
+        radiusInKm,
+      });
+
+      const query = {
+        "availability.isAvailable": true,
+        job: {
+          $elemMatch: {
+            service: serviceType,
+          },
+        },
+      };
+
+      if (subCategory) {
+        query["job"].$elemMatch.title = subCategory;
+      }
+
+      let providers;
+
+      // Check if providers have geospatial data
+      const hasGeoData = await Provider.countDocuments({
+        "currentLocation.coordinates": { $exists: true, $ne: [] },
+      });
+
+      console.log("📍 Providers with geo data:", hasGeoData);
+
+      if (hasGeoData > 0) {
+        // Try $geoNear if providers have location data
+        try {
+          providers = await Provider.aggregate([
+            {
+              $geoNear: {
+                near: {
+                  type: "Point",
+                  coordinates: [coordinates.longitude, coordinates.latitude],
+                },
+                distanceField: "distance",
+                maxDistance: radiusInKm * 1000, // Convert km to meters
+                spherical: true,
+                query: query,
+              },
+            },
+            {
+              $project: {
+                fullName: 1,
+                email: 1,
+                profilePicture: 1,
+                job: 1,
+                rating: 1,
+                completedJobs: 1,
+                distance: 1,
+              },
+            },
+            { $sort: { "rating.average": -1, completedJobs: -1 } },
+            { $limit: 20 },
+          ]);
+
+          console.log("✅ GeoNear succeeded, found:", providers.length);
+        } catch (geoError) {
+          console.log("⚠️ GeoNear failed:", geoError.message);
+          providers = null; // Force fallback
+        }
+      }
+
+      // Fallback to regular query if geoNear didn't work
+      if (!providers || providers.length === 0) {
+        console.log("🔄 Using fallback query without geolocation...");
+
+        providers = await Provider.find(query)
+          .select("fullName email profilePicture job rating completedJobs")
+          .sort({ "rating.average": -1, completedJobs: -1 })
+          .limit(20)
+          .lean();
+
+        console.log("✅ Regular query found:", providers.length);
+
+        // Add mock distance
+        providers = providers.map((p) => ({
+          ...p,
+          distance: Math.random() * radiusInKm, // Random distance within radius
+        }));
+      }
+
+      console.log("🎯 Final providers returned:", providers.length);
+      return providers;
+    } catch (error) {
+      console.error("❌ Find nearby providers error:", error);
+      return [];
+    }
+  }
+
+  /* -----------------------------
+     Helper Methods
+  ------------------------------*/
+  isTransportLogistics(serviceType) {
+    if (!serviceType) return false;
+
+    const transportKeywords = [
+      "transport",
+      "logistics",
+      "delivery",
+      "courier",
+      "moving",
+      "taxi",
+      "ride",
+    ];
+
+    return transportKeywords.some((keyword) =>
+      serviceType.toLowerCase().includes(keyword),
+    );
+  }
+
+  calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Earth radius in km
+    const dLat = this.toRad(lat2 - lat1);
+    const dLon = this.toRad(lon2 - lon1);
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRad(lat1)) *
+        Math.cos(this.toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+
+    return Math.round(distance * 100) / 100;
+  }
+
+  toRad(degrees) {
+    return degrees * (Math.PI / 180);
+  }
+
+  async mockGeocode(address) {
+    // Mock Lagos coordinates with address-based variation
+    const baseLat = 6.5244;
+    const baseLng = 3.3792;
+
+    // Simple hash function for address-based seeding
+    let hash = 0;
+    for (let i = 0; i < address.length; i++) {
+      const char = address.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+
+    // Use hash to generate consistent but varied offsets
+    const seed = Math.abs(hash % 1000) / 1000;
+    const latOffset = (seed - 0.5) * 0.3; // ±17km variation based on address
+    const lngOffset = (((seed * 7) % 1) - 0.5) * 0.3; // Different seed for longitude
+
+    return {
+      latitude: baseLat + latOffset,
+      longitude: baseLng + lngOffset,
+      formattedAddress: address,
+    };
+  }
+
+  async notifyProvidersForFastestFinger(booking, providers) {
+    providers.forEach((provider) => {
+      notificationService.notifyProvider(provider._id, {
+        type: "new_booking_request",
+        title: "🔔 New Booking Request",
+        message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || "N/A"} km away`,
+        bookingId: booking._id,
+        serviceType: booking.serviceType,
+        pickupAddress: booking.pickupLocation?.address,
+        dropoffAddress: booking.dropoffLocation?.address,
+        distance: booking.distance?.value,
+        calculatedPrice: booking.calculatedPrice,
+        urgency: "high",
+      });
+    });
+  }
   async acceptJobCompleted(req, res) {
     try {
       const bookingId = req.params.id;
-      const userId = req.user.id;  
+      const userId = req.user.id;
       const { score, review } = req.body;
 
-
-       if (score && (score < 1 || score > 5)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Rating score must be between 1 and 5'
-      });
-    }
+      if (score && (score < 1 || score > 5)) {
+        return res.status(400).json({
+          success: false,
+          message: "Rating score must be between 1 and 5",
+        });
+      }
 
       const booking = await Booking.findOne({
-          _id: bookingId,
-          status: 'completed',
-          userId
-        });
+        _id: bookingId,
+        status: "completed",
+        userId,
+      });
 
       if (!booking) {
         return res.status(409).json({
           success: false,
-          message: 'Booking not marked completed by provider'
+          message: "Booking not marked completed by provider",
         });
       }
 
-        booking.status = 'user_accepted_completion';
+      booking.status = "user_accepted_completion";
 
-         if (score || review) {
-      booking.rating = {
-        score,
-        review,
-        ratedAt: new Date()
-      };
-    }
+      if (score || review) {
+        booking.rating = {
+          score,
+          review,
+          ratedAt: new Date(),
+        };
+      }
 
-    await booking.save();
+      await booking.save();
 
-    await notificationService.notifyUser(booking.providerId._id, {
-        type: 'job_completed_confirmed',
-        title: '✅ Job Completion Confirmed',
+      await notificationService.notifyUser(booking.providerId._id, {
+        type: "job_completed_confirmed",
+        title: "✅ Job Completion Confirmed",
         message: `Your customer confirmed completion of the ${booking.serviceType} service.`,
         bookingId: booking._id,
-        userId
+        userId,
       });
 
       return res.status(200).json({
         success: true,
-        message: 'Job completed accepted successfully',
-        data: booking
+        message: "Job completed accepted successfully",
+        data: booking,
       });
-
     } catch (error) {
-      console.error('Accept job completion error:', error);
+      console.error("Accept job completion error:", error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to accept job completion',
-        error: error.message
+        message: "Failed to accept job completion",
+        error: error.message,
       });
     }
   }
@@ -406,63 +604,62 @@ bookingData.dropoffLocation = {
       if (!providerId) {
         return res.status(400).json({
           success: false,
-          message: 'providerId is required'
+          message: "providerId is required",
         });
       }
 
       const booking = await Booking.findOne({
         _id: bookingId,
         userId,
-        status: 'pending_providers'
+        status: "pending_providers",
       });
 
       if (!booking) {
         return res.status(404).json({
           success: false,
-          message: 'Booking not found or not selectable'
+          message: "Booking not found or not selectable",
         });
       }
 
       // Ensure provider was suggested
       if (
         booking.suggestedProviders &&
-        !booking.suggestedProviders.some(id => id.toString() === providerId)
+        !booking.suggestedProviders.some((id) => id.toString() === providerId)
       ) {
         return res.status(400).json({
           success: false,
-          message: 'Provider was not suggested for this booking'
+          message: "Provider was not suggested for this booking",
         });
       }
 
       booking.providerId = providerId;
-      booking.status = 'provider_selected';
+      booking.status = "provider_selected";
       booking.selectedAt = new Date();
 
       await booking.save();
 
       // Notify provider
       notificationService.notifyProvider(providerId, {
-        type: 'booking_selected',
-        title: '🎉 You\'ve Been Selected!',
+        type: "booking_selected",
+        title: "🎉 You've Been Selected!",
         message: `A customer has selected you for a ${booking.serviceType} booking`,
         bookingId: booking._id,
         serviceType: booking.serviceType,
         location: booking.location?.address,
-        budget: booking.budget
+        budget: booking.budget,
       });
 
       return res.status(200).json({
         success: true,
-        message: 'Provider selected successfully',
-        data: booking
+        message: "Provider selected successfully",
+        data: booking,
       });
-
     } catch (error) {
-      console.error('Select provider error:', error);
+      console.error("Select provider error:", error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to select provider',
-        error: error.message
+        message: "Failed to select provider",
+        error: error.message,
       });
     }
   }
@@ -478,673 +675,282 @@ bookingData.dropoffLocation = {
         {
           _id: bookingId,
           userId,
-          status: { $in: ['pending_providers', 'awaiting_provider_acceptance', 'provider_selected'] }
+          status: {
+            $in: [
+              "pending_providers",
+              "awaiting_provider_acceptance",
+              "provider_selected",
+            ],
+          },
         },
         {
-          status: 'cancelled',
+          status: "cancelled",
           cancellationReason: reason,
           cancelledBy: userId,
-          cancelledByModel: 'User'
+          cancelledByModel: "User",
         },
-        { new: true }
+        { new: true },
       );
 
       if (!booking) {
         return res.status(404).json({
           success: false,
-          message: 'Booking not found or cannot be cancelled'
+          message: "Booking not found or cannot be cancelled",
         });
       }
 
       // 🔔 Notify provider if one was assigned
       if (booking.providerId) {
         await notificationService.notifyProvider(booking.providerId, {
-          type: 'booking_cancelled',
-          title: '❌ Booking Cancelled',
+          type: "booking_cancelled",
+          title: "❌ Booking Cancelled",
           message: `The customer has cancelled the booking. Reason: ${reason}`,
-          bookingId: booking._id
+          bookingId: booking._id,
         });
       }
 
       return res.status(200).json({
         success: true,
-        message: 'Booking cancelled successfully',
-        data: booking
+        message: "Booking cancelled successfully",
+        data: booking,
       });
-
     } catch (error) {
-      console.error('Cancel booking error:', error);
+      console.error("Cancel booking error:", error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to cancel booking',
-        error: error.message
+        message: "Failed to cancel booking",
+        error: error.message,
       });
     }
   }
 
- async getAllBookings(req, res) {
-  try {
-    const { 
-      status, 
-      providerId,
-      userId,
-      search,
-      startDate,
-      endDate,
-      page = 1, 
-      limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc'
-    } = req.query;
+  async getAllBookings(req, res) {
+    try {
+      const {
+        status,
+        providerId,
+        userId,
+        search,
+        startDate,
+        endDate,
+        page = 1,
+        limit = 10,
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = req.query;
 
-    // Build query object
-    const query = {};
+      // Build query object
+      const query = {};
 
-    // Filter by status
-    if (status) {
-      query.status = status;
-    }
-
-    // Filter by provider
-    if (providerId) {
-      if (!mongoose.Types.ObjectId.isValid(providerId)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid provider ID format'
-        });
+      // Filter by status
+      if (status) {
+        query.status = status;
       }
-      query.providerId = providerId;
-    }
 
-    // Filter by user
-    if (userId) {
-      if (!mongoose.Types.ObjectId.isValid(userId)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid user ID format'
-        });
+      // Filter by provider
+      if (providerId) {
+        if (!mongoose.Types.ObjectId.isValid(providerId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid provider ID format",
+          });
+        }
+        query.providerId = providerId;
       }
-      query.userId = userId;
-    }
 
-    // Search by reference or booking ID
-    if (search) {
-      query.$or = [
-        { reference: { $regex: search, $options: 'i' } },
-        { bookingId: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    // Filter by date range
-    if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) {
-        query.createdAt.$gte = new Date(startDate);
+      // Filter by user
+      if (userId) {
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid user ID format",
+          });
+        }
+        query.userId = userId;
       }
-      if (endDate) {
-        query.createdAt.$lte = new Date(endDate);
+
+      // Search by reference or booking ID
+      if (search) {
+        query.$or = [
+          { reference: { $regex: search, $options: "i" } },
+          { bookingId: { $regex: search, $options: "i" } },
+        ];
       }
-    }
 
-    // Sort configuration
-    const sortConfig = {};
-    sortConfig[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
-    // Execute query with pagination
-    const bookings = await Booking.find(query)
-      .populate('userId', 'fullName email phoneNumber profilePicture')
-      .populate('providerId', 'fullName profilePicture phoneNumber email')
-      .sort(sortConfig)
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean();
-
-    // Get total count for pagination
-    const count = await Booking.countDocuments(query);
-
-    // Calculate stats (optional)
-    const stats = await Booking.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
+      // Filter by date range
+      if (startDate || endDate) {
+        query.createdAt = {};
+        if (startDate) {
+          query.createdAt.$gte = new Date(startDate);
+        }
+        if (endDate) {
+          query.createdAt.$lte = new Date(endDate);
         }
       }
-    ]);
+
+      // Sort configuration
+      const sortConfig = {};
+      sortConfig[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+      // Execute query with pagination
+      const bookings = await Booking.find(query)
+        .populate("userId", "fullName email phoneNumber profilePicture")
+        .populate("providerId", "fullName profilePicture phoneNumber email")
+        .sort(sortConfig)
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean();
+
+      // Get total count for pagination
+      const count = await Booking.countDocuments(query);
+
+      // Calculate stats (optional)
+      const stats = await Booking.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        data: bookings,
+        pagination: {
+          total: count,
+          totalPages: Math.ceil(count / limit),
+          currentPage: parseInt(page),
+          perPage: parseInt(limit),
+        },
+        stats: stats.reduce((acc, item) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {}),
+      });
+    } catch (error) {
+      console.error("Get all bookings error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching bookings",
+        error: error.message,
+      });
+    }
+  }
+
+  async getBookingById(req, res) {
+    try {
+      const bookingId = req.params.id;
+
+      const booking = await Booking.findById(bookingId)
+        .populate("userId", "fullName email phone avatar")
+        .populate("providerId", "userId fullName job rating completedJobs");
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: "Booking not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: { booking },
+      });
+    } catch (error) {
+      console.error("Get booking error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve booking",
+        error: error.message,
+      });
+    }
+  }
+
+  async getUserBookings(req, res) {
+    try {
+      const userId = req.user.id;
+      const { status, page = 1, limit = 10 } = req.query;
+
+      const query = { userId };
+      if (status) {
+        query.status = status;
+      }
+
+      const bookings = await Booking.find(query)
+        .populate("providerId", "fullName avatar phoneNumber email")
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit);
+
+      const count = await Booking.countDocuments(query);
+
+      return res.status(200).json({
+        success: true,
+        data: bookings,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page),
+        total: count,
+      });
+    } catch (error) {
+      console.error("Get bookings error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching bookings",
+        error: error.message,
+      });
+    }
+  }
+
+   async allowSystem(req, res) {
+  try {
+    const userId = req.user.id;
+    const { allowSystem } = req.body;
+
+    if (typeof allowSystem !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'allowSystem must be a boolean'
+      });
+    }
+
+    // const user = await Buyer.findByIdAndUpdate(
+    //   userId,
+    //   { allowSystem },
+    //   { new: true }
+    // );
+
+    const user = await Buyer.findById(userId);
+user.allowSystem = !user.allowSystem;
+await user.save();
+
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      data: bookings,
-      pagination: {
-        total: count,
-        totalPages: Math.ceil(count / limit),
-        currentPage: parseInt(page),
-        perPage: parseInt(limit)
-      },
-      stats: stats.reduce((acc, item) => {
-        acc[item._id] = item.count;
-        return acc;
-      }, {})
+      message: `Allow system set to ${user.allowSystem}`,
+      data: {
+        allowSystem: user.allowSystem
+      }
     });
 
   } catch (error) {
-    console.error('Get all bookings error:', error);
+    console.error('Allow system error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error fetching bookings',
+      message: 'Error switching allow system',
       error: error.message
     });
   }
 }
 
-  async getBookingById(req, res) {
-    try {
-      const bookingId = req.params.id;
-      
-      const booking = await Booking.findById(bookingId)
-        .populate('userId', 'fullName email phone avatar')
-        .populate('providerId', 'userId fullName job rating completedJobs');
-
-      if (!booking) {
-        return res.status(404).json({
-          success: false,
-          message: 'Booking not found'
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        data: { booking }
-      });
-
-    } catch (error) {
-      console.error('Get booking error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve booking',
-        error: error.message
-      });
-    }
-  }
-
-   async getUserBookings(req, res) {
-      try {
-        const userId = req.user.id;
-        const { status, page = 1, limit = 10 } = req.query;
-  
-        const query = { userId };
-        if (status) {
-          query.status = status;
-        }
-  
-        const bookings = await Booking.find(query)
-          .populate('providerId', 'fullName avatar phoneNumber email')
-          .sort({ createdAt: -1 })
-          .limit(limit * 1)
-          .skip((page - 1) * limit);
-  
-        const count = await Booking.countDocuments(query);
-  
-        return res.status(200).json({
-          success: true,
-          data: bookings,
-          totalPages: Math.ceil(count / limit),
-          currentPage: parseInt(page),
-          total: count
-        });
-      } catch (error) {
-        console.error('Get bookings error:', error);
-        return res.status(500).json({
-          success: false,
-          message: 'Error fetching bookings',
-          error: error.message
-        });
-      }
-    }
-
-
-  /* -----------------------------
-     Helper Methods
-  ------------------------------*/
-
-  // async findNearbyProviders(coordinates, serviceType, subCategory, radiusInKm = 10) {
-  //   return Provider.aggregate([
-  //     {
-  //       $geoNear: {
-  //         near: {
-  //           type: 'Point',
-  //           coordinates: [coordinates.longitude, coordinates.latitude]
-  //         },
-  //         distanceField: 'distance',
-  //         maxDistance: radiusInKm * 1000,
-  //         spherical: true,
-  //         query: {
-  //           serviceTypes: serviceType,
-  //           isAvailable: true,
-  //           isOnline: true,
-  //           rating: { $gte: 3.5 }
-  //         }
-  //       }
-  //     },
-  //     { $sort: { rating: -1, completedJobs: -1 } },
-  //     { $limit: 20 }
-  //   ]);
-  // }
-
-  // async findNearbyProviders(coordinates, serviceType, subCategory, radiusInKm = 50) {
-  //   try {
-  //     // Build query for your provider schema
-  //     const query = {
-  //       'availability.isAvailable': true,
-  //       isOnline: true,
-  //       'job': {
-  //         $elemMatch: {
-  //           service: serviceType
-  //         }
-  //       }
-  //     };
-
-  //     // Add subcategory filter if provided
-  //     if (subCategory) {
-  //       query['job'].$elemMatch.title = subCategory;
-  //     }
-
-  //     // If currentLocation exists and has coordinates, use $geoNear
-  //     // Otherwise, just find all matching providers
-  //     let providers;
-
-  //     try {
-  //       providers = await Provider.aggregate([
-  //         {
-  //           $geoNear: {
-  //             near: {
-  //               type: 'Point',
-  //               coordinates: [coordinates.longitude, coordinates.latitude]
-  //             },
-  //             distanceField: 'distance',
-  //             maxDistance: radiusInKm * 1000,
-  //             spherical: true,
-  //             query: query
-  //           }
-  //         },
-  //         {
-  //           $lookup: {
-  //             from: 'users',
-  //             localField: 'userId',
-  //             foreignField: '_id',
-  //             as: 'userInfo'
-  //           }
-  //         },
-  //         { $unwind: '$userInfo' },
-  //         {
-  //           $project: {
-  //             userId: 1,
-  //             job: 1,
-  //             rating: 1,
-  //             completedJobs: 1,
-  //             distance: 1,
-  //             name: { 
-  //               $concat: ['$userInfo.firstName', ' ', '$userInfo.lastName'] 
-  //             },
-  //             avatar: '$userInfo.avatar',
-  //             phoneNumber: '$userInfo.phoneNumber'
-  //           }
-  //         },
-  //         { $sort: { 'rating.average': -1, completedJobs: -1 } },
-  //         { $limit: 20 }
-  //       ]);
-  //     } catch (geoError) {
-  //       // If $geoNear fails (no geospatial index), fall back to regular find
-  //       console.log('GeoNear failed, using regular query:', geoError.message);
-        
-  //       providers = await Provider.find(query)
-  //         .populate('userId', 'firstName lastName avatar phoneNumber')
-  //         .sort({ 'rating.average': -1, completedJobs: -1 })
-  //         .limit(20)
-  //         .lean();
-
-  //       // Add mock distance and format
-  //       providers = providers.map(p => ({
-  //         _id: p._id,
-  //         userId: p.userId,
-  //         job: p.job,
-  //         rating: p.rating,
-  //         completedJobs: p.completedJobs,
-  //         distance: Math.random() * 10, // Mock distance 0-10km
-  //         name: `${p.userId?.firstName || ''} ${p.userId?.lastName || ''}`.trim(),
-  //         avatar: p.userId?.avatar,
-  //         phoneNumber: p.userId?.phoneNumber
-  //       }));
-  //     }
-
-  //     return providers;
-
-  //   } catch (error) {
-  //     console.error('Find nearby providers error:', error);
-  //     return [];
-  //   }
-  // }
-
-  // async findNearbyProviders(coordinates, serviceType, subCategory, radiusInKm = 50) {
-  //   try {
-  //     console.log('🔍 Finding providers with:', {
-  //       coordinates,
-  //       serviceType,
-  //       subCategory,
-  //       radiusInKm
-  //     });
-
-  //     // Build query - FIXED field names
-  //     const query = {
-  //       'availability.isAvailable': true,
-  //       isOnline: true,
-  //       'job': {
-  //         $elemMatch: {
-  //           service: serviceType  // This matches your schema
-  //         }
-  //       }
-  //     };
-
-  //     // Add subcategory filter if provided
-  //     if (subCategory) {
-  //       query['job'].$elemMatch.title = subCategory;  // This matches your schema
-  //     }
-
-  //     console.log('📝 Query built:', JSON.stringify(query, null, 2));
-
-  //     // Check if ANY providers exist
-  //     const totalProviders = await Provider.countDocuments({});
-  //     console.log('📊 Total providers in DB:', totalProviders);
-
-  //     // Check providers matching just the service
-  //     const matchingService = await Provider.countDocuments({
-  //       'job.service': serviceType
-  //     });
-  //     console.log('📊 Providers with service "' + serviceType + '":', matchingService);
-
-  //     // Check available providers
-  //     const availableProviders = await Provider.countDocuments({
-  //       'availability.isAvailable': true,
-  //       isOnline: true
-  //     });
-  //     console.log('📊 Available & online providers:', availableProviders);
-
-  //     let providers;
-
-  //     try {
-  //       providers = await Provider.aggregate([
-  //         {
-  //           $geoNear: {
-  //             near: {
-  //               type: 'Point',
-  //               coordinates: [coordinates.longitude, coordinates.latitude]
-  //             },
-  //             distanceField: 'distance',
-  //             maxDistance: radiusInKm * 1000,
-  //             spherical: true,
-  //             query: query
-  //           }
-  //         },
-  //         {
-  //           $lookup: {
-  //             from: 'users',
-  //             localField: 'userId',
-  //             foreignField: '_id',
-  //             as: 'userInfo'
-  //           }
-  //         },
-  //         { $unwind: '$userInfo' },
-  //         {
-  //           $project: {
-  //             userId: 1,
-  //             job: 1,
-  //             rating: 1,
-  //             completedJobs: 1,
-  //             distance: 1,
-  //             name: { 
-  //               $concat: ['$userInfo.firstName', ' ', '$userInfo.lastName'] 
-  //             },
-  //             avatar: '$userInfo.avatar',
-  //             phoneNumber: '$userInfo.phoneNumber'
-  //           }
-  //         },
-  //         { $sort: { 'rating.average': -1, completedJobs: -1 } },
-  //         { $limit: 20 }
-  //       ]);
-
-  //       console.log('✅ GeoNear succeeded, found:', providers.length);
-
-  //     } catch (geoError) {
-  //       console.log('⚠️ GeoNear failed:', geoError.message);
-        
-  //       providers = await Provider.find(query)
-  //         .populate('userId', 'firstName lastName avatar phoneNumber')
-  //         .sort({ 'rating.average': -1, completedJobs: -1 })
-  //         .limit(20)
-  //         .lean();
-
-  //       console.log('✅ Regular query found:', providers.length);
-
-  //       providers = providers.map(p => ({
-  //         _id: p._id,
-  //         userId: p._id,
-  //         job: p.job,
-  //         rating: p.rating,
-  //         completedJobs: p.completedJobs,
-  //         distance: Math.random() * 10,
-  //         name: `${p.userId?.firstName || ''} ${p.userId?.lastName || ''}`.trim(),
-  //         avatar: p.userId?.avatar,
-  //         phoneNumber: p._id?.phoneNumber
-  //       }));
-  //     }
-
-  //     console.log('🎯 Final providers returned:', providers.length);
-  //     return providers;
-
-  //   } catch (error) {
-  //     console.error('❌ Find nearby providers error:', error);
-  //     return [];
-  //   }
-  // }
-
-  async findNearbyProviders(coordinates, serviceType, subCategory, radiusInKm = 50) {
-    try {
-      console.log('🔍 Finding providers with:', {
-        coordinates,
-        serviceType,
-        subCategory,
-        radiusInKm
-      });
-
-      const query = {
-        'availability.isAvailable': true,
-        isOnline: true,
-        'job': {
-          $elemMatch: {
-            service: serviceType
-          }
-        }
-      };
-
-      if (subCategory) {
-        query['job'].$elemMatch.title = subCategory;
-      }
-
-      console.log('📝 Query built:', JSON.stringify(query, null, 2));
-
-      let providers;
-
-      // Check if providers have geospatial data
-      const hasGeoData = await Provider.countDocuments({
-        'currentLocation.coordinates.coordinates': { $exists: true, $ne: [] }
-      });
-      
-      console.log('📍 Providers with geo data:', hasGeoData);
-
-      if (hasGeoData > 0) {
-        // Try $geoNear only if providers have location data
-        try {
-          providers = await Provider.aggregate([
-            {
-              $geoNear: {
-                near: {
-                  type: 'Point',
-                  coordinates: [coordinates.longitude, coordinates.latitude]
-                },
-                distanceField: 'distance',
-                maxDistance: radiusInKm * 1000,
-                spherical: true,
-                query: query
-              }
-            },
-            {
-              $lookup: {
-                from: 'users',
-                localField: 'userId',
-                foreignField: '_id',
-                as: 'userInfo'
-              }
-            },
-            { $unwind: '$userInfo' },
-            {
-              $project: {
-                userId: 1,
-                job: 1,
-                rating: 1,
-                completedJobs: 1,
-                distance: 1,
-                name: { 
-                  $concat: ['$userInfo.fullName', ' ', '$userInfo.lastName'] 
-                },
-                avatar: '$userInfo.avatar',
-                phoneNumber: '$userInfo.phoneNumber'
-              }
-            },
-            { $sort: { 'rating.average': -1, completedJobs: -1 } },
-            { $limit: 20 }
-          ]);
-
-          console.log('✅ GeoNear succeeded, found:', providers.length);
-
-        } catch (geoError) {
-          console.log('⚠️ GeoNear failed:', geoError.message);
-          providers = null; // Force fallback
-        }
-      }
-
-      // Fallback to regular query if geoNear didn't work or no geo data
-      if (!providers || providers.length === 0) {
-        console.log('🔄 Using fallback query...');
-        
-        providers = await Provider.find(query)
-          .populate('userId', 'fullName  avatar phoneNumber')
-          .sort({ 'rating.average': -1, completedJobs: -1 })
-          .limit(20)
-          .lean();
-
-        console.log('✅ Regular query found:', providers.length);
-
-        // Transform and add mock distance
-        providers = providers.map(p => ({
-          _id: p._id,
-          userId: p.userId?._id,  // ✅ Fixed: Get the actual userId
-          job: p.job,
-          rating: p.rating,
-          completedJobs: p.completedJobs,
-          distance: Math.random() * 10,
-          fullName: `${p.fullName || ''}`.trim(),
-          profilePicture: p.profilePicture,
-          email: p.email,
-          phoneNumber: p.userId?.phoneNumber  // ✅ Fixed: from populated userId
-        }));
-      }
-
-      console.log('🎯 Final providers returned:', providers.length);
-      return providers;
-
-    } catch (error) {
-      console.error('❌ Find nearby providers error:', error);
-      return [];
-    }
-  }
-  isTransportLogistics(serviceType) {
-        if (!serviceType) return false;
-
-    const transportKeywords = [
-      'transport',
-      'logistics',
-      'delivery',
-      'courier',
-      'moving',
-      'taxi',
-      'ride'
-    ];
-
-    return transportKeywords.some(keyword =>
-      serviceType.toLowerCase().includes(keyword)
-    );
-  }
-
-  // Calculate distance using Haversine formula
-  calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // Radius of Earth in kilometers
-    const dLat = this.toRad(lat2 - lat1);
-    const dLon = this.toRad(lon2 - lon1);
-    
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRad(lat1)) * Math.cos(this.toRad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-    
-    return Math.round(distance * 100) / 100; // Round to 2 decimal places
-  }
-
-  toRad(degrees) {
-    return degrees * (Math.PI / 180);
-  }
-
-  /**
-   * MOCK Geocoding (returns Lagos-area coordinates)
-   * Replace with real Mapbox when you get API token
-   */
-  async mockGeocode(address) {
-    // Mock Lagos coordinates with slight randomization
-    const baseLat = 6.5244;
-    const baseLng = 3.3792;
-    
-    // Add random offset (±0.1 degrees ≈ ±11km)
-    const latOffset = (Math.random() - 0.5) * 0.2;
-    const lngOffset = (Math.random() - 0.5) * 0.2;
-    
-    return {
-      latitude: baseLat + latOffset,
-      longitude: baseLng + lngOffset,
-      formattedAddress: address
-    };
-  }
-
-  async notifyProvidersForFastestFinger(booking, providers) {
-    // Fire-and-forget (don't block request)
-    providers.forEach(provider => {
-      notificationService.notifyProvider(provider._id, {
-        type: 'new_booking_request',
-        title: '🔔 New Booking Request',
-        message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || 'N/A'} km away`,
-        bookingId: booking._id,
-        serviceType: booking.serviceType,
-        pickupAddress: booking.pickupLocation?.address,
-        dropoffAddress: booking.dropoffLocation?.address,
-        distance: booking.distance?.value,
-        calculatedPrice: booking.calculatedPrice,
-        urgency: 'high'
-      });
-    });
-  }
 }
 
 module.exports = new BookingController();
-

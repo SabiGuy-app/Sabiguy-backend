@@ -596,8 +596,59 @@ router.patch('/bookings/:id/cancel', authMiddleware, BookingController.cancelBoo
  *         description: Server error
  */
 
-
 router.patch('/:id/accept-completion', authMiddleware, onlyRole('buyer'), BookingController.acceptJobCompleted);
+
+/**
+ * @swagger
+ * /api/v1/bookings/allow-system:
+ *   put:
+ *     summary: Enable or disable system access for the logged-in user
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - allowSystem
+ *             properties:
+ *               allowSystem:
+ *                 type: boolean
+ *                 example: true
+ *     responses:
+ *       200:
+ *         description: Allow system updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Allow system set to true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     allowSystem:
+ *                       type: boolean
+ *                       example: true
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+
+router.put('/allow-system', authMiddleware, onlyRole('buyer'), BookingController.allowSystem);
 
 
 module.exports = router;

@@ -283,45 +283,107 @@ async setProfilePicture(req, res) {
   }
 }
 
+  // async updateLocation(req, res) {
+  //   try {
+  //     const providerId = req.user.id;
+  //     const { latitude, longitude, address } = req.body;
+
+  //     if (!latitude || !longitude) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: 'Latitude and longitude are required'
+  //       });
+  //     }
+
+  //     const provider = await Provider.findByIdAndUpdate(
+  //       providerId,
+  //       {
+  //         currentLocation: {
+  //           address,
+  //           type: 'Point',
+  //           coordinates: [longitude, latitude]
+  //         }
+  //       },
+  //       { new: true }
+  //     );
+
+  //     return res.status(200).json({
+  //       success: true,
+  //       message: 'Location updated successfully',
+  //       data: provider.currentLocation
+  //     });
+  //   } catch (error) {
+  //     console.error('Update location error:', error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: 'Error updating location',
+  //       error: error.message
+  //     });
+  //   }
+  // }
+
   async updateLocation(req, res) {
-    try {
-      const providerId = req.user.id;
-      const { latitude, longitude, address } = req.body;
+  try {
+    const providerId = req.user.id;
+    const { latitude, longitude, address } = req.body;
 
-      if (!latitude || !longitude) {
-        return res.status(400).json({
-          success: false,
-          message: 'Latitude and longitude are required'
-        });
-      }
-
-      const provider = await Provider.findByIdAndUpdate(
-        providerId,
-        {
-          currentLocation: {
-            address,
-            type: 'Point',
-            coordinates: [longitude, latitude]
-          }
-        },
-        { new: true }
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: 'Location updated successfully',
-        data: provider.currentLocation
-      });
-    } catch (error) {
-      console.error('Update location error:', error);
-      return res.status(500).json({
+    if (!latitude || !longitude) {
+      return res.status(400).json({
         success: false,
-        message: 'Error updating location',
-        error: error.message
+        message: 'Latitude and longitude are required'
       });
     }
-  }
 
+    // Validate coordinates
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid coordinates'
+      });
+    }
+
+    const provider = await Provider.findByIdAndUpdate(
+      providerId,
+      {
+        $set: {
+          'currentLocation.type': 'Point',
+          'currentLocation.coordinates': [longitude, latitude], // [lng, lat]
+          'currentLocation.address': address,
+          lastLocationUpdate: new Date()
+        }
+      },
+      { new: true }
+    );
+
+    if (!provider) {
+      return res.status(404).json({
+        success: false,
+        message: 'Provider not found'
+      });
+    }
+
+    console.log(`📍 Location updated for ${provider.fullName}:`, {
+      coordinates: [longitude, latitude],
+      address
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Location updated successfully',
+      data: {
+        currentLocation: provider.currentLocation,
+        lastLocationUpdate: provider.lastLocationUpdate
+      }
+    });
+  } catch (error) {
+    console.error('Update location error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error updating location',
+      error: error.message
+    });
+  }
+}
   /**
    * Toggle availability
    * PUT /api/provider/availability/toggle

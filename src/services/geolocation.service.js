@@ -198,10 +198,10 @@ class geolocationService {
         },
         'availability.isAvailable': true,
         'services.category': serviceType,
-        'isOnline': true // Only online providers
+        'isAvailable': true // Only online providers
       })
-      .select('userId services currentLocation rating startingPrice completedJobs isOnline')
-      .populate('userId', 'firstName lastName avatar phoneNumber')
+      .select('userId services currentLocation rating startingPrice completedJobs isAvailable')
+      .populate('userId', 'fullName avatar phoneNumber')
       .limit(20);
 
       // Calculate distance for each provider

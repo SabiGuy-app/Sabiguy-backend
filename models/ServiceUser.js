@@ -46,6 +46,10 @@ fcmToken: {
     gender: { type: String},
     city: { type: String },
     files: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }],
+    allowSystem: {
+      type: Boolean,
+      default: false
+    },
 
 
 });

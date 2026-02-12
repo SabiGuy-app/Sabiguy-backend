@@ -88,18 +88,19 @@ fcmToken: {
   //   required: true
   // },
    // Current location (always updated)
-  currentLocation: {
-      address: String,
-      type: {
-        type: String,
-        enum: ['Point'],
-        default: 'Point'
-      },
-      coordinates: {
-        type: [Number],  // [longitude, latitude]
-        index: '2dsphere'
-      }
-    },
+
+    currentLocation: {
+  type: {
+    type: String,
+    enum: ['Point'],
+    default: 'Point'
+  },
+  coordinates: {
+    type: [Number],  // [longitude, latitude]
+    index: '2dsphere'
+  },
+  address: String  // Optional
+},
   
   availability: {
     isAvailable: {
@@ -122,14 +123,6 @@ fcmToken: {
       default: 0
     }
   },
-  
-  // // Account details for payments
-  // bankAccount: {
-  //   accountName: String,
-  //   accountNumber: String,
-  //   bankCode: String,
-  //   bankName: String,
-  // },
 
     paystackRecipientCode: String, // Auto-generated
 
