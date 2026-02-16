@@ -36,13 +36,13 @@ const serviceProviderSchema = new mongoose.Schema({
     bankName: { type: String },
     bankCode: { type: String },
     accountName: { type: String },
-     verifyOnly: { type: String },
-
-
+    verifyOnly: { type: String },
     BusinessName: { type: String },
     regNumber: { type: String },
     BusinessAddress: { type: String },
     cacFile: { type: String},
+    driverLicenseNumber: { type: String},
+    vehicleProviderYear: { type: String },
     job:[
          {
          service: { type: String } ,
@@ -68,7 +68,7 @@ const serviceProviderSchema = new mongoose.Schema({
 ],
 fcmToken: {
     type: String,
-    select: false // Don't return in normal queries for security
+    select: false 
   },
   device: {
     type: {
@@ -82,12 +82,6 @@ fcmToken: {
   allowAnywhere: { type: Boolean, default: false },
 
     files: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }],
-  //    userId: {
-  //   type: mongoose.Schema.Types.ObjectId,
-  //   ref: 'User',
-  //   required: true
-  // },
-   // Current location (always updated)
 
     currentLocation: {
   type: {
@@ -124,7 +118,7 @@ fcmToken: {
     }
   },
 
-    paystackRecipientCode: String, // Auto-generated
+    paystackRecipientCode: String, 
 
   
   completedJobs: {
@@ -134,10 +128,6 @@ fcmToken: {
 }, {
   timestamps: true
 });
-
-// Index for geospatial queries
-// serviceProviderSchema.index({ 'currentLocation.coordinates': '2dsphere' });
-
 
 module.exports =  mongoose.model ("Provider", serviceProviderSchema);
 

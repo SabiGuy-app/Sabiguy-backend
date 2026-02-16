@@ -1,10 +1,10 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const authMiddleware = require ('../middleware/authMiddleware');
-const notificationController = require ('../controllers/notifications');
-/** 
+const authMiddleware = require("../middleware/authMiddleware");
+const notificationController = require("../controllers/notifications");
+/**
  * @swagger
- * /api/notifications:
+ * /api/v1/notifications:
  *   get:
  *     summary: Get user/provider notifications
  *     tags: [Notifications]
@@ -19,6 +19,7 @@ const notificationController = require ('../controllers/notifications');
  *         description: Page number
  *       - in: query
  *         name: limit
+ *         enum: [pending_providers, awaiting_provider_acceptance, provider_selected, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
  *         schema:
  *           type: integer
  *           default: 20
@@ -27,6 +28,20 @@ const notificationController = require ('../controllers/notifications');
  *         name: type
  *         schema:
  *           type: string
+ *           enum:
+ *             - new_booking_request
+ *             - provider_accepted
+ *             - booking_selected
+ *             - booking_taken
+ *             - booking_cancelled
+ *             - job_started
+ *             - payment_received
+ *             - booking_completed
+ *             - message_received
+ *             - test
+ *             - counter_offer
+ *             - job_completed_confirmed
+ *             - new_message
  *         description: Filter by notification type
  *     responses:
  *       200:
@@ -62,11 +77,15 @@ const notificationController = require ('../controllers/notifications');
  *       500:
  *         description: Server error
  */
-router.get('/notifications', authMiddleware, notificationController.getNotifications);
+router.get(
+  "/",
+  authMiddleware,
+  notificationController.getNotifications,
+);
 
 /**
  * @swagger
- * /api/notifications/{id}/read:
+ * /api/v1/notifications/{id}/read:
  *   patch:
  *     summary: Mark notification as read
  *     tags: [Notifications]
@@ -87,11 +106,11 @@ router.get('/notifications', authMiddleware, notificationController.getNotificat
  *       500:
  *         description: Server error
  */
-router.patch('/notifications/:id/read', authMiddleware, notificationController.markAsRead);
+router.patch("/:id/read", authMiddleware, notificationController.markAsRead);
 
 /**
  * @swagger
- * /api/notifications/read-all:
+ * /api/v1/notifications/read-all:
  *   patch:
  *     summary: Mark all notifications as read
  *     tags: [Notifications]
@@ -119,11 +138,11 @@ router.patch('/notifications/:id/read', authMiddleware, notificationController.m
  *       500:
  *         description: Server error
  */
-router.patch('/notifications/read-all', authMiddleware, notificationController.markAllAsRead);
+router.patch("/read-all", authMiddleware, notificationController.markAllAsRead);
 
 /**
  * @swagger
- * /api/notifications/{id}:
+ * /api/v1/notifications/{id}:
  *   delete:
  *     summary: Delete notification
  *     tags: [Notifications]
@@ -144,11 +163,15 @@ router.patch('/notifications/read-all', authMiddleware, notificationController.m
  *       500:
  *         description: Server error
  */
-router.delete('/notifications/:id', authMiddleware, notificationController.deleteNotification);
+router.delete(
+  "/:id",
+  authMiddleware,
+  notificationController.deleteNotification,
+);
 
 /**
  * @swagger
- * /api/notifications/unread-count:
+ * /api/v1/notifications/unread-count:
  *   get:
  *     summary: Get unread notification count
  *     tags: [Notifications]
@@ -174,6 +197,10 @@ router.delete('/notifications/:id', authMiddleware, notificationController.delet
  *       500:
  *         description: Server error
  */
-router.get('/notifications/unread-count', authMiddleware, notificationController.getUnreadCount);
+router.get(
+  "/unread-count",
+  authMiddleware,
+  notificationController.getUnreadCount,
+);
 
 module.exports = router;
