@@ -71,7 +71,15 @@ class ProviderController {
 
   async JobAndService(req, res) {
     try {
-      const { job, service, driverLicenseNumber, vehicleProductionYear } = req.body;
+      const {
+        job,
+        service,
+        driverLicenseNumber,
+        vehicleProductionYear,
+        vehicleColor,
+        vehicleRegNo,
+        vehicleName,
+      } = req.body;
       const providerId = req.user.id;
 
       if (!job && !service) {
@@ -110,13 +118,20 @@ class ProviderController {
         }));
       }
 
-      if (driverLicenseNumber) {
-        provider.driverLicenseNumber = driverLicenseNumber;
-      }
+      // Update vehicle-related fields
+      const vehicleFields = {
+        driverLicenseNumber,
+        vehicleProductionYear,
+        vehicleColor,
+        vehicleRegNo,
+        vehicleName,
+      };
 
-      if (vehicleProductionYear) {
-        provider.vehicleProductionYear = vehicleProductionYear;
-      }
+      Object.entries(vehicleFields).forEach(([key, value]) => {
+        if (value) {
+          provider[key] = value;
+        }
+      });
 
       await provider.save();
 

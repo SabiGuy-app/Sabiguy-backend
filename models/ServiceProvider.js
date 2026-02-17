@@ -66,6 +66,9 @@ const serviceProviderSchema = new mongoose.Schema({
     videos: [{ type: String }]
   }
 ],
+vehicleColor: { type: String },
+vehicleRegNo: { type: String },
+vehicleName: { type: String },
 fcmToken: {
     type: String,
     select: false 
