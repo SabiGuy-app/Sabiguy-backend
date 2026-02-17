@@ -56,6 +56,10 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *                 enum: [immediate, scheduled]
  *                 description: When the service should be performed
  *                 example: immediate
+ *               modeOfDelivery:
+ *                 type: string
+ *                 description: Mode of delivery or pickup
+ *                 example: Car delivery or Car pickup
  *               startDate:
  *                 type: string
  *                 format: date-time

@@ -144,7 +144,10 @@ dropoffLocation: {
       paidAt: Date,
       releasedAt: Date,
     },
-    
+    modeOfDelivery: {
+        type: String,
+      enum: ['Car', 'Bike']
+    },
     // Timestamps for tracking
     acceptedAt: Date,
     selectedAt: Date,

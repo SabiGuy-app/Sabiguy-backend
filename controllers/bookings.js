@@ -10,7 +10,8 @@ class BookingController {
     this.createBooking = this.createBooking.bind(this);
     this.findNearbyProviders = this.findNearbyProviders.bind(this);
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
-    this.notifyProvidersForFastestFinger = this.notifyProvidersForFastestFinger.bind(this);
+    this.notifyProvidersForFastestFinger =
+      this.notifyProvidersForFastestFinger.bind(this);
     this.calculateDistance = this.calculateDistance.bind(this);
     this.mockGeocode = this.mockGeocode.bind(this);
     this.geocodeWithFallback = this.geocodeWithFallback.bind(this);
@@ -33,6 +34,7 @@ class BookingController {
         endDate,
         budget,
         attachments,
+        modeOfDelivery,
       } = req.body;
 
       /* -----------------------------
@@ -47,11 +49,14 @@ class BookingController {
         });
       }
 
-      if (isTransport && (!pickupAddress || !dropoffAddress)) {
+      if (
+        isTransport &&
+        (!pickupAddress || !dropoffAddress || !modeOfDelivery)
+      ) {
         return res.status(400).json({
           success: false,
           message:
-            "pickupAddress and dropoffAddress are required for transport/logistics",
+            "pickupAddress, dropoffAddress and mode of delivery are required for transport/logistics",
         });
       }
 
@@ -180,6 +185,7 @@ class BookingController {
         serviceType,
         subCategory,
         10, // 10km radius
+        isTransport ? modeOfDelivery : null, // Pass modeOfDelivery for transport
       );
 
       if (!nearbyProviders.length) {
@@ -353,6 +359,7 @@ class BookingController {
     serviceType,
     subCategory,
     radiusInKm = 50,
+    modeOfDelivery = null,
   ) {
     try {
       console.log("🔍 Finding providers with:", {
@@ -360,16 +367,48 @@ class BookingController {
         serviceType,
         subCategory,
         radiusInKm,
+        modeOfDelivery,
       });
+
+      // Map modeOfDelivery to job title
+      const modeOfDeliveryMap = {
+        car: "Car driver",
+        bike: "Motorbike rider",
+        bicycle: "Bicycle courier",
+        walking: "Running errands",
+        truck: "Truck driver",
+      };
+
+      // Determine the job title to filter by
+      let jobTitleToFilter = null;
+      if (modeOfDelivery) {
+        jobTitleToFilter = modeOfDeliveryMap[modeOfDelivery.toLowerCase()];
+        if (jobTitleToFilter) {
+          console.log(
+            `📦 Transport mode "${modeOfDelivery}" mapped to job title: "${jobTitleToFilter}"`,
+          );
+        }
+      }
 
       const query = {
         "availability.isAvailable": true,
-        job: {
+      };
+
+      // If modeOfDelivery is provided (transport), filter by job title
+      if (jobTitleToFilter) {
+        query.job = {
+          $elemMatch: {
+            title: jobTitleToFilter,
+          },
+        };
+      } else {
+        // For regular services, filter by service type
+        query.job = {
           $elemMatch: {
             service: serviceType,
           },
-        },
-      };
+        };
+      }
 
       if (subCategory) {
         query["job"].$elemMatch.title = subCategory;
@@ -903,54 +942,51 @@ class BookingController {
     }
   }
 
-   async allowSystem(req, res) {
-  try {
-    const userId = req.user.id;
-    const { allowSystem } = req.body;
+  async allowSystem(req, res) {
+    try {
+      const userId = req.user.id;
+      const { allowSystem } = req.body;
 
-    if (typeof allowSystem !== 'boolean') {
-      return res.status(400).json({
-        success: false,
-        message: 'allowSystem must be a boolean'
-      });
-    }
-
-    // const user = await Buyer.findByIdAndUpdate(
-    //   userId,
-    //   { allowSystem },
-    //   { new: true }
-    // );
-
-    const user = await Buyer.findById(userId);
-user.allowSystem = !user.allowSystem;
-await user.save();
-
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: `Allow system set to ${user.allowSystem}`,
-      data: {
-        allowSystem: user.allowSystem
+      if (typeof allowSystem !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "allowSystem must be a boolean",
+        });
       }
-    });
 
-  } catch (error) {
-    console.error('Allow system error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error switching allow system',
-      error: error.message
-    });
+      // const user = await Buyer.findByIdAndUpdate(
+      //   userId,
+      //   { allowSystem },
+      //   { new: true }
+      // );
+
+      const user = await Buyer.findById(userId);
+      user.allowSystem = !user.allowSystem;
+      await user.save();
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Allow system set to ${user.allowSystem}`,
+        data: {
+          allowSystem: user.allowSystem,
+        },
+      });
+    } catch (error) {
+      console.error("Allow system error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error switching allow system",
+        error: error.message,
+      });
+    }
   }
-}
-
 }
 
 module.exports = new BookingController();

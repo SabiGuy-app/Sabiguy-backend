@@ -1,7 +1,7 @@
-const admin = require ('firebase-admin');
-const Buyer = require ('../../models/ServiceUser');
-const Provider = require ('../../models/ServiceProvider');
-const Notification = require ('../../models/Notification');
+const admin = require("firebase-admin");
+const Buyer = require("../../models/ServiceUser");
+const Provider = require("../../models/ServiceProvider");
+const Notification = require("../../models/Notification");
 
 class NotificationService {
   constructor() {
@@ -12,16 +12,14 @@ class NotificationService {
           credential: admin.credential.cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-          })
+            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+          }),
         });
-        console.log(
-  process.env.FIREBASE_PROJECT_ID
-);
+        console.log(process.env.FIREBASE_PROJECT_ID);
 
-        console.log('✅ Firebase Admin initialized');
+        console.log("✅ Firebase Admin initialized");
       } catch (error) {
-        console.error('❌ Firebase initialization error:', error.message);
+        console.error("❌ Firebase initialization error:", error.message);
       }
     }
 
@@ -42,28 +40,24 @@ class NotificationService {
    * @param {Object} data - { type, title, message, bookingId, ... }
    */
   async notifyUser(userId, data) {
-  try {
-    const notification = await this.createNotification(
-      userId,
-      'Buyer',
-      data
-    );
+    try {
+      const notification = await this.createNotification(userId, "Buyer", data);
 
-    const room = `buyer:${userId}`;
+      const room = `buyer:${userId}`;
 
-    // Real-time (Socket.IO)
-    if (this.io) {
-      this.io.to(room).emit('notification', notification);
+      // Real-time (Socket.IO)
+      if (this.io) {
+        this.io.to(room).emit("new_notification", notification);
+      }
+
+      // Push (FCM)
+      await this.sendPushNotification(userId, "Buyer", data);
+
+      return notification;
+    } catch (error) {
+      console.error("Notify user error:", error.message);
     }
-
-    // Push (FCM)
-    await this.sendPushNotification(userId, 'Buyer', data);
-
-    return notification;
-  } catch (error) {
-    console.error('Notify user error:', error.message);
   }
-}
 
   /**
    * Send notification to provider
@@ -71,40 +65,44 @@ class NotificationService {
    * @param {Object} data
    */
   async notifyProvider(providerId, data) {
-  try {
-    const notification = await this.createNotification(
-      providerId,
-      'Provider',
-      data
-    );
+    try {
+      const notification = await this.createNotification(
+        providerId,
+        "Provider",
+        data,
+      );
 
-    const room = `provider:${providerId}`;
+      const room = `provider:${providerId}`;
 
-    // Real-time (Socket.IO)
-    if (this.io) {
-      this.io.to(room).emit('notification', notification);
+      // Real-time (Socket.IO)
+      if (this.io) {
+        this.io.to(room).emit("new_notification", notification);
+      }
+
+      // Push (FCM)
+      await this.sendPushNotification(providerId, "Provider", data);
+
+      return notification;
+    } catch (error) {
+      console.error("Notify provider error:", error.message);
     }
-
-    // Push (FCM)
-    await this.sendPushNotification(providerId, 'Provider', data);
-
-    return notification;
-  } catch (error) {
-    console.error('Notify provider error:', error.message);
   }
-}
 
-async sendNotification(userId, userModel, data) {
+  async sendNotification(userId, userModel, data) {
     try {
       // Create notification in database
-      const notification = await this.createNotification(userId, userModel, data);
+      const notification = await this.createNotification(
+        userId,
+        userModel,
+        data,
+      );
 
       // Determine the correct room based on userModel
       const room = `${userModel.toLowerCase()}:${userId}`;
 
       // Real-time notification via Socket.IO
       if (this.io) {
-        this.io.to(room).emit('notification', notification);
+        this.io.to(room).emit("new_notification", notification);
         console.log(`📢 Real-time notification sent to room: ${room}`);
       }
 
@@ -113,7 +111,7 @@ async sendNotification(userId, userModel, data) {
 
       return notification;
     } catch (error) {
-      console.error('Send notification error:', error.message);
+      console.error("Send notification error:", error.message);
       throw error;
     }
   }
@@ -124,27 +122,27 @@ async sendNotification(userId, userModel, data) {
   async notifyBookingTaken(bookingId, acceptedProviderId) {
     try {
       // You'd get the list of notified providers from booking
-      const Booking = require ('../../models/Bookings')
+      const Booking = require("../../models/Bookings");
       const booking = await Booking.findById(bookingId);
 
       if (!booking || !booking.notifiedProviders) return;
 
       // Notify all other providers
       const otherProviders = booking.notifiedProviders.filter(
-        id => id.toString() !== acceptedProviderId.toString()
+        (id) => id.toString() !== acceptedProviderId.toString(),
       );
 
-      const notifications = otherProviders.map(providerId =>
+      const notifications = otherProviders.map((providerId) =>
         this.notifyProvider(providerId, {
-          type: 'booking_taken',
+          type: "booking_taken",
           bookingId,
-          message: 'This booking has been accepted by another provider'
-        })
+          message: "This booking has been accepted by another provider",
+        }),
       );
 
       await Promise.all(notifications);
     } catch (error) {
-      console.error('Notify booking taken error:', error.message);
+      console.error("Notify booking taken error:", error.message);
     }
   }
 
@@ -162,14 +160,14 @@ async sendNotification(userId, userModel, data) {
         message: data.message,
         data: {
           bookingId: data.bookingId,
-          ...data
+          ...data,
         },
-        isRead: false
+        isRead: false,
       });
 
       return notification;
     } catch (error) {
-      console.error('Create notification error:', error.message);
+      console.error("Create notification error:", error.message);
       return null;
     }
   }
@@ -182,12 +180,13 @@ async sendNotification(userId, userModel, data) {
     try {
       // Get user/provider FCM token from database
       let fcmToken;
-      
-      if (recipientModel === 'Buyer') {
-        const user = await Buyer.findById(recipientId).select('fcmToken');
+
+      if (recipientModel === "Buyer") {
+        const user = await Buyer.findById(recipientId).select("fcmToken");
         fcmToken = user?.fcmToken;
       } else {
-        const provider = await Provider.findById(recipientId).select('fcmToken');
+        const provider =
+          await Provider.findById(recipientId).select("fcmToken");
         fcmToken = provider?.fcmToken;
       }
 
@@ -200,38 +199,42 @@ async sendNotification(userId, userModel, data) {
         token: fcmToken,
         notification: {
           title: data.title || this.getDefaultTitle(data.type),
-          body: data.message
+          body: data.message,
         },
         data: {
           type: data.type,
-          bookingId: data.bookingId?.toString() || '',
-          click_action: 'FLUTTER_NOTIFICATION_CLICK'
+          bookingId: data.bookingId?.toString() || "",
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
         },
         android: {
-          priority: 'high',
+          priority: "high",
           notification: {
-            sound: 'default',
-            channelId: 'bookings'
-          }
+            sound: "default",
+            channelId: "bookings",
+          },
         },
         apns: {
           payload: {
             aps: {
-              sound: 'default',
-              badge: 1
-            }
-          }
-        }
+              sound: "default",
+              badge: 1,
+            },
+          },
+        },
       };
 
       await admin.messaging().send(message);
-      console.log(`✅ Push notification sent to ${recipientModel}:${recipientId}`);
+      console.log(
+        `✅ Push notification sent to ${recipientModel}:${recipientId}`,
+      );
     } catch (error) {
-      console.error('Push notification error:', error.message);
-      
+      console.error("Push notification error:", error.message);
+
       // If token is invalid, remove it from database
-      if (error.code === 'messaging/invalid-registration-token' ||
-          error.code === 'messaging/registration-token-not-registered') {
+      if (
+        error.code === "messaging/invalid-registration-token" ||
+        error.code === "messaging/registration-token-not-registered"
+      ) {
         await this.removeInvalidFCMToken(recipientId, recipientModel);
       }
     }
@@ -243,13 +246,15 @@ async sendNotification(userId, userModel, data) {
    */
   async removeInvalidFCMToken(recipientId, recipientModel) {
     try {
-      if (recipientModel === 'Buyer') {
+      if (recipientModel === "Buyer") {
         await Buyer.findByIdAndUpdate(recipientId, { $unset: { fcmToken: 1 } });
       } else {
-        await Provider.findByIdAndUpdate(recipientId, { $unset: { fcmToken: 1 } });
+        await Provider.findByIdAndUpdate(recipientId, {
+          $unset: { fcmToken: 1 },
+        });
       }
     } catch (error) {
-      console.error('Remove FCM token error:', error.message);
+      console.error("Remove FCM token error:", error.message);
     }
   }
 
@@ -259,16 +264,16 @@ async sendNotification(userId, userModel, data) {
    */
   getDefaultTitle(type) {
     const titles = {
-      new_booking_request: '🔔 New Booking Request',
-      provider_accepted: '✅ Provider Accepted',
-      booking_selected: '🎉 You\'ve Been Selected',
-      booking_taken: '⚠️ Booking Taken',
-      booking_cancelled: '❌ Booking Cancelled',
-      payment_received: '💰 Payment Received',
-      booking_completed: '✅ Booking Completed'
+      new_booking_request: "🔔 New Booking Request",
+      provider_accepted: "✅ Provider Accepted",
+      booking_selected: "🎉 You've Been Selected",
+      booking_taken: "⚠️ Booking Taken",
+      booking_cancelled: "❌ Booking Cancelled",
+      payment_received: "💰 Payment Received",
+      booking_completed: "✅ Booking Completed",
     };
 
-    return titles[type] || 'Notification';
+    return titles[type] || "Notification";
   }
 
   /**
@@ -278,13 +283,12 @@ async sendNotification(userId, userModel, data) {
     try {
       await Notification.findByIdAndUpdate(notificationId, {
         isRead: true,
-        readAt: new Date()
+        readAt: new Date(),
       });
     } catch (error) {
-      console.error('Mark as read error:', error.message);
+      console.error("Mark as read error:", error.message);
     }
   }
 }
 
 module.exports = new NotificationService();
-
