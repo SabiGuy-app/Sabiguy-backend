@@ -372,46 +372,42 @@ class BookingController {
 
       // Map modeOfDelivery to job title
       const modeOfDeliveryMap = {
-        car: "Car driver",
-        bike: "Motorbike rider",
+        car: "car_driver",
+        bike: "motorbike_rider",
         bicycle: "Bicycle courier",
         walking: "Running errands",
         truck: "Truck driver",
       };
 
-      // Determine the job title to filter by
-      let jobTitleToFilter = null;
-      if (modeOfDelivery) {
-        jobTitleToFilter = modeOfDeliveryMap[modeOfDelivery.toLowerCase()];
-        if (jobTitleToFilter) {
-          console.log(
-            `📦 Transport mode "${modeOfDelivery}" mapped to job title: "${jobTitleToFilter}"`,
-          );
-        }
-      }
-
       const query = {
         "availability.isAvailable": true,
       };
 
-      // If modeOfDelivery is provided (transport), filter by job title
-      if (jobTitleToFilter) {
-        query.job = {
-          $elemMatch: {
-            title: jobTitleToFilter,
-          },
-        };
+      // If modeOfDelivery is provided (transport), filter ONLY by job title
+      if (modeOfDelivery) {
+        const jobTitleToFilter =
+          modeOfDeliveryMap[modeOfDelivery.toLowerCase()];
+        if (jobTitleToFilter) {
+          query.job = {
+            $elemMatch: {
+              title: jobTitleToFilter,
+            },
+          };
+          console.log(
+            `📦 Transport mode "${modeOfDelivery}" mapped to job title: "${jobTitleToFilter}"`,
+          );
+        }
       } else {
-        // For regular services, filter by service type
+        // For regular services, filter by service type and optionally by subCategory
         query.job = {
           $elemMatch: {
             service: serviceType,
           },
         };
-      }
 
-      if (subCategory) {
-        query["job"].$elemMatch.title = subCategory;
+        if (subCategory) {
+          query["job"].$elemMatch.title = subCategory;
+        }
       }
 
       let providers;
