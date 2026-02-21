@@ -146,13 +146,20 @@ class WalletService {
       if (notificationService) {
         try {
           await notificationService.notifyProvider(providerId, {
-            type: "payment_in_escrow",
+            type: "payment_recieved",
             title: "💰 Payment Secured in Escrow",
             message: `₦${breakdown.agreedPrice} has been secured in escrow for booking #${bookingId}. Complete the service to receive payment.`,
             bookingId,
             amount: breakdown.agreedPrice,
             pendingBalance: providerBalanceAfter.pending,
-          });
+          })
+
+            await notificationService.notifyUser(userId._id, {
+                  type: "payment_received",
+                  title: "✅ Payment Successful",
+                  message: `Your payment is secured. Provider can now start the service.`,
+                  bookingId
+                });
         } catch (notifyError) {
           console.error(
             "Failed to send escrow notification to provider:",
@@ -219,7 +226,7 @@ class WalletService {
       if (notificationService) {
         try {
           await notificationService.notifyProvider(providerId, {
-            type: "payment_released",
+            type: "funds_released",
             title: "✅ Payment Released",
             message: `₦${amount} has been released from escrow for booking #${bookingId}. Check your available balance.`,
             bookingId,
@@ -442,95 +449,161 @@ class WalletService {
 
   // Pay from user wallet balance (instead of Paystack)
 
-  async payFromWallet(userId, amount, bookingId, notificationService = null) {
-    try {
-      const paymentAmount = parseFloat(amount);
+ async payFromWallet(userId, providerId, amount, bookingId, breakdown, notificationService = null) {
+  try {
+    const paymentAmount = parseFloat(amount);
 
-      if (isNaN(paymentAmount) || paymentAmount <= 0) {
-        throw new Error("Invalid payment amount");
-      }
+    if (isNaN(paymentAmount) || paymentAmount <= 0) {
+      throw new Error("Invalid payment amount");
+    }
 
-      const wallet = await this.getOrCreateWallet(userId, "Buyer");
+    // Get buyer's wallet
+    const buyerWallet = await this.getOrCreateWallet(userId, "Buyer");
 
-      console.log("💰 Wallet before payment:", {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      });
+    console.log("💰 Buyer Wallet before payment:", {
+      available: buyerWallet.balance.available,
+      pending: buyerWallet.balance.pending,
+      total: buyerWallet.balance.total,
+    });
 
-      // Check if sufficient balance
-      if (wallet.balance.available < paymentAmount) {
-        throw new Error(
-          `Insufficient wallet balance. ` +
-            `Required: ₦${amount}, Available: ₦${wallet.balance.available}`,
+    // Check if sufficient balance
+    if (buyerWallet.balance.available < paymentAmount) {
+      throw new Error(
+        `Insufficient wallet balance. ` +
+          `Required: ₦${amount}, Available: ₦${buyerWallet.balance.available}`,
+      );
+    }
+
+    const buyerBalanceBefore = {
+      available: buyerWallet.balance.available,
+      pending: buyerWallet.balance.pending,
+      total: buyerWallet.balance.total,
+    };
+
+    // Debit buyer's available balance
+    buyerWallet.balance.available -= paymentAmount;
+    buyerWallet.lastTransactionAt = new Date();
+    await buyerWallet.save();
+
+    const buyerBalanceAfter = {
+      available: buyerWallet.balance.available,
+      pending: buyerWallet.balance.pending,
+      total: buyerWallet.balance.total,
+    };
+
+    // Create transaction record
+    const transaction = await Transaction.create({
+      reference: this.generateReference("WPAY"),
+      type: "payment",
+      from: {
+        userId,
+        userModel: "Buyer",
+        walletId: buyerWallet._id,
+      },
+      to: {
+        userId: providerId,
+        userModel: "Provider",
+      },
+      amount: paymentAmount,
+      agreedPrice: paymentAmount,
+      bookingId,
+      breakdown: breakdown || {
+        serviceCharge: paymentAmount,
+        platformFee: 0,
+        total: paymentAmount,
+      },
+      balances: {
+        before: buyerBalanceBefore,
+        after: buyerBalanceAfter,
+      },
+      status: "completed",
+      description: `Payment from wallet for booking #${bookingId}`,
+      paidAt: new Date(),
+      completedAt: new Date(),
+    });
+
+    // Update booking - Move money to escrow (same as verifyPayment)
+    const booking = await Booking.findByIdAndUpdate(
+      bookingId,
+      {
+        status: "paid_escrow",
+        "payment.method": "wallet",
+        "payment.escrowStatus": "held",
+        "payment.paidAt": new Date(),
+        "payment.escrowAmount": paymentAmount,
+        "payment.transactionReference": transaction.reference,
+      },
+      { new: true },
+    )
+      .populate("userId", "fullName email")
+      .populate("providerId", "userId");
+
+    if (!booking) {
+      throw new Error("Booking not found");
+    }
+
+    // Record payment in wallet service (credits provider's pending balance)
+    await this.recordPayment(
+      userId,
+      providerId,
+      booking._id,
+      breakdown || {
+        serviceCharge: paymentAmount,
+        platformFee: 0,
+        total: paymentAmount,
+      },
+      notificationService,
+    );
+
+    console.log(`✅ Paid from wallet: ₦${amount} for booking ${bookingId}`);
+
+    // Send notifications if service is provided
+    if (notificationService) {
+      try {
+        // Notify provider that payment is secured
+        await notificationService.createNotification({
+          providerId,
+          type: "payment_received",
+          title: "💰 Payment Secured",
+          message: `Payment of ₦${paymentAmount.toLocaleString()} for your ${booking.serviceType} booking is now in escrow. Complete the service to receive payment.`,
+          data: {
+            bookingId: booking._id,
+            amount: paymentAmount,
+          },
+        });
+
+        // Notify user
+        await notificationService.createNotification({
+          userId,
+          type: "payment_sent",
+          title: "✅ Payment Successful",
+          message: `Your payment of ₦${paymentAmount.toLocaleString()} is secured. Provider can now start the service. New available balance: ₦${buyerBalanceAfter.available.toLocaleString()}`,
+          data: {
+            bookingId: booking._id,
+            amount: paymentAmount,
+            newBalance: buyerBalanceAfter.available,
+          },
+        });
+      } catch (notifyError) {
+        console.error(
+          "Failed to send wallet payment notifications:",
+          notifyError.message,
         );
       }
-
-      const balanceBefore = {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      };
-
-      // Debit wallet - update balance and save to database
-      wallet.balance.available -= paymentAmount;
-      wallet.balance.pending += paymentAmount;
-      wallet.lastTransactionAt = new Date();
-      await wallet.save();
-
-      const balanceAfter = {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      };
-
-      // Create transaction
-      const transaction = await Transaction.create({
-        reference: this.generateReference("WPAY"),
-        type: "debit",
-        from: {
-          userId,
-          userModel: "Buyer",
-          walletId: wallet._id,
-        },
-        amount: paymentAmount,
-        bookingId,
-        balances: {
-          before: balanceBefore,
-          after: balanceAfter,
-        },
-        status: "completed",
-        description: `Payment from wallet held in escrow for booking #${bookingId}`,
-        completedAt: new Date(),
-      });
-
-      console.log(`✅ Paid from wallet: ₦${amount} for booking ${bookingId}`);
-
-      // Send notification if service is provided
-      if (notificationService) {
-        try {
-          await notificationService.notifyUser(userId, {
-            type: "wallet_payment",
-            title: "Wallet Payment Successful",
-            message: `₦${paymentAmount} has been deducted from your wallet for booking #${bookingId}. New available balance: ₦${balanceAfter.available}`,
-            bookingId,
-            amount: paymentAmount,
-            newBalance: balanceAfter.available,
-          });
-        } catch (notifyError) {
-          console.error(
-            "Failed to send wallet payment notification:",
-            notifyError.message,
-          );
-        }
-      }
-
-      return { wallet, transaction };
-    } catch (error) {
-      console.error("Pay from wallet error:", error);
-      throw error;
     }
+
+    return {
+      success: true,
+      message: "Payment completed and funds secured in escrow",
+      booking,
+      transaction,
+      wallet: buyerWallet,
+    };
+  } catch (error) {
+    console.error("Pay from wallet error:", error);
+    throw error;
   }
+}
   /**
    * Get transaction history
    */

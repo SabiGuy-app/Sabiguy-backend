@@ -347,127 +347,128 @@
 //   //   }
 //   // }
 
-//   async updateLocation(req, res) {
-//     try {
-//       const providerId = req.user.id;
-//       const { latitude, longitude, address } = req.body;
+  // async updateLocation(req, res) {
+  //   try {
+  //     const providerId = req.user.id;
+  //     const { latitude, longitude, address } = req.body;
 
-//       if (!latitude || !longitude) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Latitude and longitude are required",
-//         });
-//       }
+  //     if (!latitude || !longitude) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Latitude and longitude are required",
+  //       });
+  //     }
 
-//       // Validate coordinates
-//       if (
-//         latitude < -90 ||
-//         latitude > 90 ||
-//         longitude < -180 ||
-//         longitude > 180
-//       ) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Invalid coordinates",
-//         });
-//       }
+  //     // Validate coordinates
+  //     if (
+  //       latitude < -90 ||
+  //       latitude > 90 ||
+  //       longitude < -180 ||
+  //       longitude > 180
+  //     ) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Invalid coordinates",
+  //       });
+  //     }
 
-//       // Get existing provider to check if geocoding is needed
-//       const existingProvider = await Provider.findById(providerId);
-//       if (!existingProvider) {
-//         return res.status(404).json({
-//           success: false,
-//           message: "Provider not found",
-//         });
-//       }
+  //     // Get existing provider to check if geocoding is needed
+  //     const existingProvider = await Provider.findById(providerId);
+  //     if (!existingProvider) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         message: "Provider not found",
+  //       });
+  //     }
 
-//       let finalAddress = address || existingProvider.currentLocation?.address;
-//       const shouldReverseGeocode = !finalAddress;
+  //     let finalAddress = address || existingProvider.currentLocation?.address;
+  //     const shouldReverseGeocode = !finalAddress;
 
-//       // Smart reverse geocoding: Only call if coordinates moved significantly
-//       if (shouldReverseGeocode) {
-//         try {
-//           const oldCoords = existingProvider.currentLocation?.coordinates || [
-//             0, 0,
-//           ];
-//           const [oldLng, oldLat] = oldCoords;
+  //     // Smart reverse geocoding: Only call if coordinates moved significantly
+  //     if (shouldReverseGeocode) {
+  //       try {
+  //         const oldCoords = existingProvider.currentLocation?.coordinates || [
+  //           0, 0,
+  //         ];
+  //         const [oldLng, oldLat] = oldCoords;
 
-//           // Calculate distance moved using Haversine formula
-//           const R = 6371; // Earth's radius in km
-//           const dLat = ((latitude - oldLat) * Math.PI) / 180;
-//           const dLon = ((longitude - oldLng) * Math.PI) / 180;
-//           const a =
-//             Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-//             Math.cos((oldLat * Math.PI) / 180) *
-//               Math.cos((latitude * Math.PI) / 180) *
-//               Math.sin(dLon / 2) *
-//               Math.sin(dLon / 2);
-//           const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-//           const distanceMoved = R * c;
+  //         // Calculate distance moved using Haversine formula
+  //         const R = 6371; // Earth's radius in km
+  //         const dLat = ((latitude - oldLat) * Math.PI) / 180;
+  //         const dLon = ((longitude - oldLng) * Math.PI) / 180;
+  //         const a =
+  //           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+  //           Math.cos((oldLat * Math.PI) / 180) *
+  //             Math.cos((latitude * Math.PI) / 180) *
+  //             Math.sin(dLon / 2) *
+  //             Math.sin(dLon / 2);
+  //         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  //         const distanceMoved = R * c;
 
-//           // Only reverse geocode if moved more than 500 meters or first time (no old coords)
-//           if (distanceMoved > 0.5 || (oldLat === 0 && oldLng === 0)) {
-//             console.log(
-//               `🔄 Reverse geocoding (moved ${distanceMoved.toFixed(2)}km)`,
-//             );
-//             const geoData = await geolocationService.reverseGeocode(
-//               longitude,
-//               latitude,
-//             );
-//             finalAddress = geoData.formattedAddress;
-//           } else {
-//             // Reuse cached address
-//             console.log(
-//               `📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`,
-//             );
-//             finalAddress = existingProvider.currentLocation?.address;
-//           }
-//         } catch (geoError) {
-//           console.warn(
-//             "Reverse geocoding failed, using fallback:",
-//             geoError.message,
-//           );
-//           finalAddress =
-//             existingProvider.currentLocation?.address ||
-//             `${latitude}, ${longitude}`;
-//         }
-//       }
+  //         // Only reverse geocode if moved more than 500 meters or first time (no old coords)
+  //         if (distanceMoved > 0.5 || (oldLat === 0 && oldLng === 0)) {
+  //           console.log(
+  //             `🔄 Reverse geocoding (moved ${distanceMoved.toFixed(2)}km)`,
+  //           );
+  //           const geoData = await geolocationService.reverseGeocode(
+  //             longitude,
+  //             latitude,
+  //           );
+  //           finalAddress = geoData.formattedAddress;
+  //         } else {
+  //           // Reuse cached address
+  //           console.log(
+  //             `📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`,
+  //           );
+  //           finalAddress = existingProvider.currentLocation?.address;
+  //         }
+  //       } catch (geoError) {
+  //         console.warn(
+  //           "Reverse geocoding failed, using fallback:",
+  //           geoError.message,
+  //         );
+  //         finalAddress =
+  //           existingProvider.currentLocation?.address ||
+  //           `${latitude}, ${longitude}`;
+  //       }
+  //     }
 
-//       const provider = await Provider.findByIdAndUpdate(
-//         providerId,
-//         {
-//           $set: {
-//             "currentLocation.type": "Point",
-//             "currentLocation.coordinates": [longitude, latitude], // [lng, lat]
-//             "currentLocation.address": finalAddress,
-//             lastLocationUpdate: new Date(),
-//           },
-//         },
-//         { new: true },
-//       );
+  //     const provider = await Provider.findByIdAndUpdate(
+  //       providerId,
+  //       {
+  //         $set: {
+  //           "currentLocation.type": "Point",
+  //           "currentLocation.coordinates": [longitude, latitude], // [lng, lat]
+  //           "currentLocation.address": finalAddress,
+  //           lastLocationUpdate: new Date(),
+  //         },
+  //       },
+  //       { new: true },
+  //     );
 
-//       console.log(`📍 Location updated for ${provider.fullName}:`, {
-//         coordinates: [longitude, latitude],
-//         address: finalAddress,
-//       });
+  //     console.log(`📍 Location updated for ${provider.fullName}:`, {
+  //       coordinates: [longitude, latitude],
+  //       address: finalAddress,
+  //     });
 
-//       return res.status(200).json({
-//         success: true,
-//         message: "Location updated successfully",
-//         data: {
-//           currentLocation: provider.currentLocation,
-//           lastLocationUpdate: provider.lastLocationUpdate,
-//         },
-//       });
-//     } catch (error) {
-//       console.error("Update location error:", error);
-//       return res.status(500).json({
-//         success: false,
-//         message: "Error updating location",
-//         error: error.message,
-//       });
-//     }
-//   }
+  //     return res.status(200).json({
+  //       success: true,
+  //       message: "Location updated successfully",
+  //       data: {
+  //         currentLocation: provider.currentLocation,
+  //         lastLocationUpdate: provider.lastLocationUpdate,
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("Update location error:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: "Error updating location",
+  //       error: error.message,
+  //     });
+  //   }
+  // }
+
 //   /**
 //    * Toggle availability
 //    * PUT /api/provider/availability/toggle
@@ -1400,29 +1401,83 @@ class ProviderController {
         });
       }
 
-      const provider = await Provider.findByIdAndUpdate(
-        providerId,
-        {
-          $set: {
-            "currentLocation.type": "Point",
-            "currentLocation.coordinates": [longitude, latitude], // [lng, lat]
-            "currentLocation.address": address,
-            lastLocationUpdate: new Date(),
-          },
-        },
-        { new: true },
-      );
-
-      if (!provider) {
+      // Get existing provider to check if geocoding is needed
+      const existingProvider = await Provider.findById(providerId);
+      if (!existingProvider) {
         return res.status(404).json({
           success: false,
           message: "Provider not found",
         });
       }
 
+      let finalAddress = address || existingProvider.currentLocation?.address;
+      const shouldReverseGeocode = !finalAddress;
+
+      // Smart reverse geocoding: Only call if coordinates moved significantly
+      if (shouldReverseGeocode) {
+        try {
+          const oldCoords = existingProvider.currentLocation?.coordinates || [
+            0, 0,
+          ];
+          const [oldLng, oldLat] = oldCoords;
+
+          // Calculate distance moved using Haversine formula
+          const R = 6371; // Earth's radius in km
+          const dLat = ((latitude - oldLat) * Math.PI) / 180;
+          const dLon = ((longitude - oldLng) * Math.PI) / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos((oldLat * Math.PI) / 180) *
+              Math.cos((latitude * Math.PI) / 180) *
+              Math.sin(dLon / 2) *
+              Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const distanceMoved = R * c;
+
+          // Only reverse geocode if moved more than 500 meters or first time (no old coords)
+          if (distanceMoved > 0.5 || (oldLat === 0 && oldLng === 0)) {
+            console.log(
+              `🔄 Reverse geocoding (moved ${distanceMoved.toFixed(2)}km)`,
+            );
+            const geoData = await geolocationService.reverseGeocode(
+              longitude,
+              latitude,
+            );
+            finalAddress = geoData.formattedAddress;
+          } else {
+            // Reuse cached address
+            console.log(
+              `📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`,
+            );
+            finalAddress = existingProvider.currentLocation?.address;
+          }
+        } catch (geoError) {
+          console.warn(
+            "Reverse geocoding failed, using fallback:",
+            geoError.message,
+          );
+          finalAddress =
+            existingProvider.currentLocation?.address ||
+            `${latitude}, ${longitude}`;
+        }
+      }
+
+      const provider = await Provider.findByIdAndUpdate(
+        providerId,
+        {
+          $set: {
+            "currentLocation.type": "Point",
+            "currentLocation.coordinates": [longitude, latitude], // [lng, lat]
+            "currentLocation.address": finalAddress,
+            lastLocationUpdate: new Date(),
+          },
+        },
+        { new: true },
+      );
+
       console.log(`📍 Location updated for ${provider.fullName}:`, {
         coordinates: [longitude, latitude],
-        address,
+        address: finalAddress,
       });
 
       return res.status(200).json({
@@ -1442,6 +1497,74 @@ class ProviderController {
       });
     }
   }
+
+  // async updateLocation(req, res) {
+  //   try {
+  //     const providerId = req.user.id;
+  //     const { latitude, longitude, address } = req.body;
+
+  //     if (!latitude || !longitude) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Latitude and longitude are required",
+  //       });
+  //     }
+
+  //     // Validate coordinates
+  //     if (
+  //       latitude < -90 ||
+  //       latitude > 90 ||
+  //       longitude < -180 ||
+  //       longitude > 180
+  //     ) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Invalid coordinates",
+  //       });
+  //     }
+
+  //     const provider = await Provider.findByIdAndUpdate(
+  //       providerId,
+  //       {
+  //         $set: {
+  //           "currentLocation.type": "Point",
+  //           "currentLocation.coordinates": [longitude, latitude], // [lng, lat]
+  //           "currentLocation.address": address,
+  //           lastLocationUpdate: new Date(),
+  //         },
+  //       },
+  //       { new: true },
+  //     );
+
+  //     if (!provider) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         message: "Provider not found",
+  //       });
+  //     }
+
+  //     console.log(`📍 Location updated for ${provider.fullName}:`, {
+  //       coordinates: [longitude, latitude],
+  //       address,
+  //     });
+
+  //     return res.status(200).json({
+  //       success: true,
+  //       message: "Location updated successfully",
+  //       data: {
+  //         currentLocation: provider.currentLocation,
+  //         lastLocationUpdate: provider.lastLocationUpdate,
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("Update location error:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: "Error updating location",
+  //       error: error.message,
+  //     });
+  //   }
+  // }
   /**
    * Toggle availability
    * PUT /api/provider/availability/toggle

@@ -457,6 +457,7 @@ class BookingController {
         }
       }
 
+      /* ========== FALLBACK QUERY DISABLED FOR TESTING ==========
       // Fallback to regular query if geoNear didn't work
       if (!providers || providers.length === 0) {
         console.log("🔄 Using fallback query without geolocation...");
@@ -475,6 +476,7 @@ class BookingController {
           distance: Math.random() * radiusInKm, // Random distance within radius
         }));
       }
+      ========== END FALLBACK QUERY DISABLED ========== */
 
       console.log("🎯 Final providers returned:", providers.length);
       return providers;
