@@ -86,6 +86,10 @@ const options = {
               type: 'string',
               enum: ['immediate', 'scheduled']
             },
+            modeOfDelivery: {
+              type: 'string',
+              enum: ['Car', 'Bike']
+            },
             startDate: { type: 'string', format: 'date-time' },
             endDate: { type: 'string', format: 'date-time' },
             budget: { type: 'number' },

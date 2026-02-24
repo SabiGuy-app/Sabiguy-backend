@@ -31,6 +31,10 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *                 type: string
  *                 description: Sub-category of the service
  *                 example: Ride Sharing
+ *               modeOfDelivery:
+ *                 type: string
+ *                 description: Mode of delivery or pickup
+ *                 example: Car delivery or Car pickup
  *               title:
  *                 type: string
  *                 description: Booking title
@@ -56,10 +60,6 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *                 enum: [immediate, scheduled]
  *                 description: When the service should be performed
  *                 example: immediate
- *               modeOfDelivery:
- *                 type: string
- *                 description: Mode of delivery or pickup
- *                 example: Car delivery or Car pickup
  *               startDate:
  *                 type: string
  *                 format: date-time
@@ -152,6 +152,24 @@ router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBook
  *           type: string
  *         description: Filter by user ID
  *         example: 507f1f77bcf86cd799439012
+ *       - in: query
+ *         name: serviceType
+ *         schema:
+ *           type: string
+ *         description: Filter by service type
+ *         example: Transport
+ *       - in: query
+ *         name: subCategory
+ *         schema:
+ *           type: string
+ *         description: Filter by sub-category
+ *         example: Ride Sharing
+ *       - in: query
+ *         name: modeOfDelivery
+ *         schema:
+ *           type: string
+ *         description: Filter by mode of delivery or pickup
+ *         example: Car delivery or Car pickup
  *       - in: query
  *         name: search
  *         schema:

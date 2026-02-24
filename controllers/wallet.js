@@ -152,96 +152,95 @@ class WalletController {
     }
   }
 
-  async payFromWallet(req, res) {
-    try {
-      const userId = req.user.id;
-      const { bookingId } = req.body;
+ async payFromWallet(req, res) {
+  try {
+    const userId = req.user.id;
+    const { bookingId } = req.body;
 
-      if (!bookingId) {
-        return res.status(400).json({
-          success: false,
-          message: "Booking ID is required",
-        });
-      }
-
-      const booking = await Booking.findById(bookingId);
-
-      if (!booking) {
-        return res.status(404).json({
-          success: false,
-          message: "Booking not found",
-        });
-      }
-
-      if (booking.userId.toString() !== userId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized",
-        });
-      }
-
-      // ✅ Ensure we're getting a valid number
-      const totalAmount = parseFloat(
-        booking.totalAmount || booking.agreedPrice || booking.budget,
-      );
-
-      if (isNaN(totalAmount) || totalAmount <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid booking amount",
-        });
-      }
-
-      console.log("💳 Processing wallet payment:", {
-        bookingId,
-        amount: totalAmount,
-        userId,
-      });
-
-      // Pay from wallet (moves to escrow) with notification service
-      const result = await WalletService.payFromWallet(
-        userId,
-        totalAmount,
-        bookingId,
-        NotificationService,
-      );
-
-      // Update booking
-      booking.status = "paid_escrow";
-      booking.payment = {
-        method: "wallet",
-        paystackRef: result.transaction.reference,
-        escrowStatus: "held",
-        escrowAmount: totalAmount,
-        paidAt: new Date(),
-      };
-      await booking.save();
-
-      // ✅ Don't call recordPayment here - it's already handled in payFromWallet
-      // The escrow is already recorded in the buyer's wallet as pending
-
-      return res.status(200).json({
-        success: true,
-        message: "Payment successful from wallet",
-        data: {
-          booking,
-          transaction: result.transaction,
-          walletBalance: {
-            available: result.wallet.balance.available,
-            pending: result.wallet.balance.pending,
-            total: result.wallet.balance.total,
-          },
-        },
-      });
-    } catch (error) {
-      console.error("Pay from wallet controller error:", error);
-      return res.status(500).json({
+    if (!bookingId) {
+      return res.status(400).json({
         success: false,
-        message: error.message || "Error processing wallet payment",
-        error: error.message,
+        message: "Booking ID is required",
       });
     }
+
+    const booking = await Booking.findById(bookingId);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (booking.userId.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ✅ Check if provider is assigned
+    if (!booking.providerId) {
+      return res.status(400).json({
+        success: false,
+        message: "No provider assigned to this booking yet",
+      });
+    }
+
+    const totalAmount = parseFloat(
+      booking.totalAmount || booking.agreedPrice || booking.budget,
+    );
+
+    if (isNaN(totalAmount) || totalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking amount",
+      });
+    }
+
+    console.log("💳 Processing wallet payment:", {
+      bookingId,
+      amount: totalAmount,
+      userId,
+      providerId: booking.providerId, 
+    });
+
+    const result = await WalletService.payFromWallet(
+      userId,              
+      booking.providerId,  
+      totalAmount,         
+      bookingId,          
+      {                   
+        serviceCharge: totalAmount,
+        platformFee: 0,
+        total: totalAmount,
+      },
+      NotificationService  
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment successful from wallet",
+      data: {
+        booking: result.booking,
+        transaction: result.transaction,
+        walletBalance: {
+          available: result.wallet.balance.available,
+          pending: result.wallet.balance.pending,
+          total: result.wallet.balance.total,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Pay from wallet controller error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Error processing wallet payment",
+      error: error.message,
+    });
   }
+}
 
   async getTransactions(req, res) {
     try {

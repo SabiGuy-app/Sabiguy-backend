@@ -34,8 +34,19 @@ class BookingController {
         endDate,
         budget,
         attachments,
-        modeOfDelivery,
+        modeOfDelivery: modeOfDeliveryRaw,
+        modeOfDelivey,
       } = req.body;
+
+      const rawModeOfDelivery = modeOfDeliveryRaw ?? modeOfDelivey;
+      const normalizeModeOfDelivery = (value) => {
+        if (!value) return value;
+        const normalized = String(value).trim().toLowerCase();
+        if (normalized.includes("car")) return "Car";
+        if (normalized.includes("bike")) return "Bike";
+        return String(value).trim();
+      };
+      const modeOfDelivery = normalizeModeOfDelivery(rawModeOfDelivery);
 
       /* -----------------------------
          1️⃣ Validation
@@ -60,6 +71,18 @@ class BookingController {
         });
       }
 
+      if (
+        isTransport &&
+        modeOfDelivery &&
+        !["Car", "Bike"].includes(modeOfDelivery)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "modeOfDelivery must be one of: Car or Bike for transport/logistics",
+        });
+      }
+
       // Validate that pickup and dropoff are different for transport
       if (isTransport && pickupAddress === dropoffAddress) {
         return res.status(400).json({
@@ -81,6 +104,7 @@ class BookingController {
         startDate,
         endDate,
         budget,
+        modeOfDelivery,
         attachments: attachments || [],
       };
 
@@ -767,7 +791,10 @@ class BookingController {
         status,
         providerId,
         userId,
+        serviceType,
+        subCategory,
         search,
+        modeOfDelivery,
         startDate,
         endDate,
         page = 1,
@@ -783,6 +810,10 @@ class BookingController {
       if (status) {
         query.status = status;
       }
+
+      if (serviceType) query.serviceType = serviceType;
+      if (subCategory) query.subCategory = subCategory;
+      if (modeOfDelivery) query.modeOfDelivery = modeOfDelivery;
 
       // Filter by provider
       if (providerId) {

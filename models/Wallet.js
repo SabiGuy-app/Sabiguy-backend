@@ -99,6 +99,9 @@ walletSchema.methods.debit = async function(amount) {
 };
 
 walletSchema.methods.addPending = async function(amount) {
+  if (typeof amount !== 'number' || isNaN(amount)) {
+    throw new Error('Invalid amount for pending credit');
+  }
   this.balance.pending += amount;
   this.balance.total += amount;
   this.lastTransactionAt = new Date();
@@ -107,6 +110,9 @@ walletSchema.methods.addPending = async function(amount) {
 };
 
 walletSchema.methods.movePendingToAvailable = async function(amount) {
+  if (typeof amount !== 'number' || isNaN(amount)) {
+    throw new Error('Invalid amount for escrow release');
+  }
   // if (this.balance.pending < amount) {
   //   throw new Error('Insufficient pending balance');
   // }

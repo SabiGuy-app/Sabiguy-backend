@@ -1,11 +1,36 @@
 const Wallet = require("../../models/Wallet");
 const Transaction = require("../../models/Transaction");
+const Booking = require("../../models/Bookings");
 const mongoose = require("mongoose");
 
 class WalletService {
   constructor() {
     // Platform "account" for bookkeeping only
     this.PLATFORM_WALLET_ID = "000000000000000000000001";
+  }
+
+  normalizePaymentBreakdown(breakdown = {}, fallbackAmount = 0) {
+    const safeFallback = Number(fallbackAmount) || 0;
+    const agreedPrice = Number(
+      breakdown.agreedPrice ?? breakdown.serviceCharge ?? safeFallback,
+    );
+    const serviceFee = Number(breakdown.serviceFee ?? breakdown.platformFee ?? 0);
+    const totalAmount = Number(
+      breakdown.totalAmount ?? breakdown.total ?? agreedPrice + serviceFee,
+    );
+
+    if (
+      !Number.isFinite(agreedPrice) ||
+      !Number.isFinite(serviceFee) ||
+      !Number.isFinite(totalAmount) ||
+      agreedPrice < 0 ||
+      serviceFee < 0 ||
+      totalAmount <= 0
+    ) {
+      throw new Error("Invalid payment breakdown");
+    }
+
+    return { agreedPrice, serviceFee, totalAmount };
   }
 
   async getPlatformWallet() {
@@ -91,6 +116,7 @@ class WalletService {
     notificationService = null,
   ) {
     try {
+      const normalizedBreakdown = this.normalizePaymentBreakdown(breakdown);
       const providerWallet = await this.getOrCreateWallet(
         providerId,
         "Provider",
@@ -104,7 +130,7 @@ class WalletService {
       };
 
       // Add to provider's pending balance (escrow)
-      await providerWallet.addPending(breakdown.agreedPrice);
+      await providerWallet.addPending(normalizedBreakdown.agreedPrice);
 
       const providerBalanceAfter = {
         available: providerWallet.balance.available,
@@ -125,8 +151,8 @@ class WalletService {
           userModel: "Provider",
           walletId: providerWallet._id,
         },
-        amount: breakdown.totalAmount,
-        breakdown,
+        amount: normalizedBreakdown.totalAmount,
+        breakdown: normalizedBreakdown,
         bookingId,
         gateway: {
           name: "paystack",
@@ -140,17 +166,19 @@ class WalletService {
         completedAt: new Date(),
       });
 
-      await this.recordPlatformFee(breakdown.serviceFee, bookingId);
+      if (normalizedBreakdown.serviceFee > 0) {
+        await this.recordPlatformFee(normalizedBreakdown.serviceFee, bookingId);
+      }
 
       // Send notification to provider
       if (notificationService) {
         try {
           await notificationService.notifyProvider(providerId, {
-            type: "payment_recieved",
+            type: "payment_received",
             title: "💰 Payment Secured in Escrow",
-            message: `₦${breakdown.agreedPrice} has been secured in escrow for booking #${bookingId}. Complete the service to receive payment.`,
+            message: `₦${normalizedBreakdown.agreedPrice} has been secured in escrow for booking #${bookingId}. Complete the service to receive payment.`,
             bookingId,
-            amount: breakdown.agreedPrice,
+            amount: normalizedBreakdown.agreedPrice,
             pendingBalance: providerBalanceAfter.pending,
           })
 
@@ -452,6 +480,10 @@ class WalletService {
  async payFromWallet(userId, providerId, amount, bookingId, breakdown, notificationService = null) {
   try {
     const paymentAmount = parseFloat(amount);
+    const normalizedBreakdown = this.normalizePaymentBreakdown(
+      breakdown,
+      paymentAmount,
+    );
 
     if (isNaN(paymentAmount) || paymentAmount <= 0) {
       throw new Error("Invalid payment amount");
@@ -482,6 +514,7 @@ class WalletService {
 
     // Debit buyer's available balance
     buyerWallet.balance.available -= paymentAmount;
+    buyerWallet.balance.total -= paymentAmount;
     buyerWallet.lastTransactionAt = new Date();
     await buyerWallet.save();
 
@@ -504,14 +537,10 @@ class WalletService {
         userId: providerId,
         userModel: "Provider",
       },
-      amount: paymentAmount,
+      amount: normalizedBreakdown.totalAmount,
       agreedPrice: paymentAmount,
       bookingId,
-      breakdown: breakdown || {
-        serviceCharge: paymentAmount,
-        platformFee: 0,
-        total: paymentAmount,
-      },
+      breakdown: normalizedBreakdown,
       balances: {
         before: buyerBalanceBefore,
         after: buyerBalanceAfter,
@@ -530,7 +559,7 @@ class WalletService {
         "payment.method": "wallet",
         "payment.escrowStatus": "held",
         "payment.paidAt": new Date(),
-        "payment.escrowAmount": paymentAmount,
+        "payment.escrowAmount": normalizedBreakdown.totalAmount,
         "payment.transactionReference": transaction.reference,
       },
       { new: true },
@@ -547,11 +576,7 @@ class WalletService {
       userId,
       providerId,
       booking._id,
-      breakdown || {
-        serviceCharge: paymentAmount,
-        platformFee: 0,
-        total: paymentAmount,
-      },
+      normalizedBreakdown,
       notificationService,
     );
 
@@ -777,3 +802,4 @@ class WalletService {
 }
 
 module.exports = new WalletService();
+
