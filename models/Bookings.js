@@ -86,6 +86,7 @@ dropoffLocation: {
       enum: ['immediate', 'scheduled'],
       required: true
     },
+    scheduleDate: Date,
     startDate: Date,
     endDate: Date,
     
@@ -126,6 +127,9 @@ dropoffLocation: {
         'payment_pending',              // Awaiting payment
         'paid_escrow',                  // Payment in escrow
         'in_progress',                  // Service ongoing
+        'arrived_at_pickup',              
+        'enroute_to_dropoff',             
+        'arrived_at_dropoff',              
         'completed',                    // Service completed
         'cancelled',                    // Cancelled
         'user_accepted_completion',

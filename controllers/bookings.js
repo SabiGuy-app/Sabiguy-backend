@@ -1,6 +1,7 @@
 const Booking = require("../models/Bookings");
 const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
+const mongoose = require("mongoose");
 const geolocationService = require("../src/services/geolocation.service");
 const notificationService = require("../src/services/notification.service");
 const pricingService = require("../src/services/pricing.service");
@@ -30,6 +31,7 @@ class BookingController {
         pickupAddress,
         dropoffAddress,
         scheduleType,
+        scheduleDate,
         startDate,
         endDate,
         budget,
@@ -101,6 +103,7 @@ class BookingController {
         title,
         description,
         scheduleType,
+        scheduleDate,
         startDate,
         endDate,
         budget,
@@ -250,7 +253,7 @@ class BookingController {
             },
           });
         } else {
-          // 👤 User Selection Method: Suggest providers for user to choose
+          // User Selection Method: Suggest providers for user to choose
           booking.suggestedProviders = nearbyProviders.map((p) => p._id);
           booking.status = "pending_providers"; // Same status as regular services
           await booking.save();
@@ -585,6 +588,7 @@ class BookingController {
         title: "🔔 New Booking Request",
         message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || "N/A"} km away`,
         bookingId: booking._id,
+        scheduleDate: booking.scheduleDate,
         serviceType: booking.serviceType,
         pickupAddress: booking.pickupLocation?.address,
         dropoffAddress: booking.dropoffLocation?.address,

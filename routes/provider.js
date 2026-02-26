@@ -595,6 +595,39 @@ router.patch('/bookings/:bookingId/start', authMiddleware, ProviderController.st
 
 /**
  * @swagger
+ * /api/v1/provider/bookings/{bookingId}/status:
+ *   patch:
+ *     summary: Update transport booking status
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: status
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [arrived_at_pickup, enroute_to_dropoff, arrived_at_dropoff]
+ *         description: New booking status
+ *     responses:
+ *       200:
+ *         description: Booking status updated successfully
+ *       400:
+ *         description: Invalid status or invalid current booking state
+ *       404:
+ *         description: Booking not found
+ *       500:
+ *         description: Server error
+ */
+router.patch('/bookings/:bookingId/status', authMiddleware, ProviderController.updateBookingStatus);
+
+/**
+ * @swagger
  * /api/v1/provider/bookings/{bookingId}/complete:
  *   patch:
  *     summary: Mark job as complete

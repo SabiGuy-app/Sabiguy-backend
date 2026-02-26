@@ -1885,7 +1885,6 @@ class ProviderController {
       booking.status = "in_progress";
       await booking.save();
 
-      // TODO: Send notification to user
       await notificationService.notifyUser(booking.userId._id, {
         type: "job_started",
         title: " Provider Starts Job",
@@ -1909,6 +1908,78 @@ class ProviderController {
     }
   }
 
+  async updateBookingStatus(req, res) {
+    try {
+      const providerId = req.user.id;
+      const { bookingId } = req.params;
+      const { status } = req.query;
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        providerId,
+      });
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: "Booking not found",
+        });
+      }
+
+      const allowedStatuses = [
+        "arrived_at_pickup",
+        "enroute_to_dropoff",
+        "arrived_at_dropoff",
+      ];
+
+      if (!allowedStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid status. Allowed values: arrived_at_pickup, enroute_to_dropoff, arrived_at_dropoff",
+        });
+      }
+
+      const updatableCurrentStatuses = [
+        "paid_escrow",
+        "in_progress",
+        "arrived_at_pickup",
+        "enroute_to_dropoff",
+      ];
+
+      if (!updatableCurrentStatuses.includes(booking.status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot update status from ${booking.status}`,
+        });
+      }
+
+      booking.status = status;
+      await booking.save();
+
+      await notificationService.notifyUser(booking.userId, {
+        type: "booking_status_updated",
+        title: "Booking Status Updated",
+        message: `Your booking status is now ${status.replace(/_/g, " ")}`,
+        bookingId: booking._id,
+        providerId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Booking status updated successfully",
+        data: booking,
+      });
+    } catch (error) {
+      console.error("Update booking status error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error updating booking status",
+        error: error.message,
+      });
+    }
+  }
+
   async markJobComplete(req, res) {
     try {
       const providerId = req.user.id;
@@ -1917,7 +1988,7 @@ class ProviderController {
       const booking = await Booking.findOne({
         _id: bookingId,
         providerId,
-        status: "in_progress",
+        status: "arrived_at_dropoff",
       });
 
       if (!booking) {
