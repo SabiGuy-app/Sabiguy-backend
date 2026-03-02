@@ -8,10 +8,13 @@ const { registerBuyer,
      googleSignUp, 
      googleSignUpBuyer, 
      googleLogIn,
-    resendOTP} = require ('../controllers/auth');
+    resendOTP,
+changePassword} = require ('../controllers/auth');
+const authMiddleware = require ('../middleware/authMiddleware');
+const { changePasswordLimiter } = require ('../middleware/rateLimiter.js')
 const router = express.Router();
 
-// const authMiddleware = require ('../middleware/authMiddleware');
+
 
 /**
  * @swagger
@@ -276,7 +279,71 @@ router.post("/password", forgotPassword);
  */
 router.post("/reset", resetPassword);
 
+/**
+ * @swagger
+ * /api/v1/auth/resend-otp:
+ *   post:
+ *     summary: Resend email verification OTP
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "user@example.com"
+ *     responses:
+ *       200:
+ *         description: OTP resent successfully
+ *       404:
+ *         description: User not found
+ *       429:
+ *         description: Please wait before requesting another OTP
+ */
 router.post("/resend-otp", resendOTP);
+
+/**
+ * @swagger
+ * /api/v1/auth/change-password:
+ *   put:
+ *     summary: Change password for authenticated user
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [oldPassword, newPassword]
+ *             properties:
+ *               oldPassword:
+ *                 type: string
+ *                 example: "OldPassword@123"
+ *               newPassword:
+ *                 type: string
+ *                 example: "NewPassword@123"
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Old password/new password missing or weak new password
+ *       401:
+ *         description: Old password is incorrect
+ *       404:
+ *         description: User not found
+ */
+router.put(
+  "/change-password",
+  authMiddleware,
+  changePasswordLimiter,
+  changePassword);
 
 
 

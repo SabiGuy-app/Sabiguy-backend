@@ -5,7 +5,7 @@ const jwt = require ('jsonwebtoken');
 const dotenv = require ('dotenv');
 dotenv.config();
 const { OAuth2Client } = require ('google-auth-library');
-const {sendEmailOtp, forgotPasswordOtp} = require ('../src/config/emailVerification')
+const {sendEmailOtp, forgotPasswordOtp, passwordChangedEmail} = require ('../src/config/emailVerification')
 
 const roleModelMap = {
   buyer: Buyer,
@@ -682,4 +682,80 @@ if ( user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
     res.status(500).json({ message: "Server error:", err});
       
   }
+};
+
+
+exports.changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id; // From auth middleware
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Old password and new password are required",
+      });
+    }
+  const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
+if (!strongPassword.test(newPassword)) {
+  return res.status(400).json({
+    success: false,
+    message: "Password must contain uppercase, lowercase, number, and special character",
+  });
 }
+    // Minimum password strength check
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters long",
+      });
+    }
+
+    // Find user
+    let user = await Buyer.findById(userId).select("+password");
+
+    if (!user) {
+      user = await Provider.findById(userId).select("+password");
+
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Compare old password
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Old password is incorrect",
+      });
+    }
+
+    // Hash new password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update password
+    user.password = hashedPassword;
+    await user.save();
+
+    await passwordChangedEmail(user.email);
+
+
+    return res.status(200).json({
+      success: true,
+      message: "Password changed successfully",
+    });
+
+  } catch (error) {
+    console.error("Change password error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error changing password",
+    });
+  }
+};

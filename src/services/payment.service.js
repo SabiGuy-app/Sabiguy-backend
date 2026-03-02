@@ -29,9 +29,14 @@ class paymentService {
         throw new Error("Unauthorized: This is not your booking");
       }
 
+       if (booking.status === "paid_escrow") {
+        throw new Error("Booking already paid for");
+      }
+
       if (booking.status !== "provider_selected") {
         throw new Error("Booking must have a selected provider before payment");
       }
+
 
       const agreedPrice = booking.agreedPrice || booking.budget;
       const serviceFee = Math.round(
