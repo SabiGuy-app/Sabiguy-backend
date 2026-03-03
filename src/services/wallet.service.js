@@ -138,38 +138,48 @@ class WalletService {
         total: providerWallet.balance.total,
       };
 
-      // Create transaction record
-      const transaction = await Transaction.create({
-        reference: this.generateReference("PAY"),
-        type: "payment",
-        from: {
-          userId,
-          userModel: "Buyer",
-        },
-        to: {
-          userId: providerId,
-          userModel: "Provider",
-          walletId: providerWallet._id,
-        },
-        amount: normalizedBreakdown.totalAmount,
-        breakdown: normalizedBreakdown,
-        bookingId,
-        gateway: {
-          name: "paystack",
-        },
-        balances: {
-          before: providerBalanceBefore,
-          after: providerBalanceAfter,
-        },
-        status: "completed",
-        description: `Payment for booking #${bookingId}`,
-        completedAt: new Date(),
-      });
+      // // Create transaction record
+      // const transaction = await Transaction.create({
+      //   reference: this.generateReference("PAY"),
+      //   type: "payment",
+      //   from: {
+      //     userId,
+      //     userModel: "Buyer",
+      //   },
+      //   to: {
+      //     userId: providerId,
+      //     userModel: "Provider",
+      //     walletId: providerWallet._id,
+      //   },
+      //   amount: normalizedBreakdown.totalAmount,
+      //   breakdown: normalizedBreakdown,
+      //   bookingId,
+      //   gateway: {
+      //     name: "paystack",
+      //   },
+      //   balances: {
+      //     before: providerBalanceBefore,
+      //     after: providerBalanceAfter,
+      //   },
+      //   status: "completed",
+      //   description: `Payment for booking #${bookingId}`,
+      //   completedAt: new Date(),
+      // });
 
       if (normalizedBreakdown.serviceFee > 0) {
         await this.recordPlatformFee(normalizedBreakdown.serviceFee, bookingId);
       }
 
+      await Transaction.findOneAndUpdate(
+      { bookingId, type: "payment", status: "completed" },
+      {
+        $set: {
+          "to.walletId": providerWallet._id,
+          "balances.providerBefore": providerBalanceBefore,
+          "balances.providerAfter": providerBalanceAfter,
+        },
+      }
+    );
       // Send notification to provider
       if (notificationService) {
         try {
@@ -196,16 +206,19 @@ class WalletService {
         }
       }
 
-      return transaction;
-    } catch (error) {
+  return {
+      success: true,
+      providerWallet,
+      providerBalanceAfter,
+      amount: normalizedBreakdown.agreedPrice,
+    };
+      } catch (error) {
       console.error("Record payment error:", error);
       throw error;
     }
   }
 
-  /**
-   * alletService escrow (service completed)
-   */
+ 
   async releaseEscrow(
     providerId,
     amount,

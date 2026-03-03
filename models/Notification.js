@@ -30,7 +30,8 @@ const notificationSchema = new mongoose.Schema({
       'test',
       'counter_offer',
       'job_completed_confirmed',
-      'new_message'
+      'new_message',
+      'booking_status_updated'
     ]
   },
   title: {
