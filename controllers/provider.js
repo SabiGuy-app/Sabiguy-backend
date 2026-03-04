@@ -1611,7 +1611,9 @@ class ProviderController {
       }
 
       const bookings = await Booking.find(query)
-        .populate("userId", "firstName lastName avatar phoneNumber email")
+        .populate("userId", "fullName profilePicture phoneNumber email")
+        .populate("providerId", "fullName profilePicture phoneNumber email")
+
         .sort({ createdAt: -1 })
         .limit(limit * 1)
         .skip((page - 1) * limit);
