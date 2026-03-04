@@ -316,7 +316,11 @@ exports.googleLogIn = async (req, res) => {
     }
 
     // Check if user exists
-    const user = await Provider.findOne({ email });
+    let user = await Provider.findOne({ email });
+
+    if (!user) {
+      user = await Buyer.findOne({ email });
+    }
     if (!user) {
       return res.status(400).json({ message: "Account not found. Please sign up" });
     }

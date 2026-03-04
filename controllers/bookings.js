@@ -987,12 +987,6 @@ class BookingController {
         });
       }
 
-      // const user = await Buyer.findByIdAndUpdate(
-      //   userId,
-      //   { allowSystem },
-      //   { new: true }
-      // );
-
       const user = await Buyer.findById(userId);
       user.allowSystem = !user.allowSystem;
       await user.save();

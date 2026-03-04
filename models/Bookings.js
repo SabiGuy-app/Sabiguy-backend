@@ -125,8 +125,8 @@ dropoffLocation: {
         'awaiting_provider_acceptance', // Transport: waiting for fastest finger
         'provider_selected',            // Provider selected/accepted
         'payment_pending',              // Awaiting payment
-        'paid_escrow',                  // Payment in escrow
-        'in_progress',                  // Service ongoing
+        'paid_escrow',                 
+        'in_progress',                  
         'arrived_at_pickup',              
         'enroute_to_dropoff',             
         'arrived_at_dropoff',              

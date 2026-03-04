@@ -22,7 +22,10 @@ class ChatService {
         'completed',
         'awaiting_provider_acceptance',
         'pending_payment',
-        'paid_escrow'
+        'paid_escrow',
+        'arrived_at_pickup',              
+        'enroute_to_dropoff',             
+        'arrived_at_dropoff',
       ];
 
       if (!chatAllowedStatuses.includes(booking.status)) {
