@@ -192,8 +192,7 @@ class PaymentController {
         });
       }
 
-      const accountDetails = await paymentService.verifyBankAccount(accountNumber, bankCode);
-
+     const accountDetails = await paymentService.verifyBankAccount({ accountNumber, bankCode });
       return res.status(200).json({
         success: true,
         data: accountDetails
