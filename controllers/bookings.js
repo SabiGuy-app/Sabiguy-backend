@@ -112,6 +112,7 @@ class BookingController {
       };
 
       let searchCoordinates;
+      let transportEstimates = null;
 
       if (isTransport) {
         // Geocode both pickup and dropoff with fallback
@@ -146,6 +147,29 @@ class BookingController {
           value: parseFloat(directions.distance.value),
           unit: "km",
         };
+
+        const durationMinutes =
+          Number(directions?.duration?.value) ||
+          Math.ceil(parseFloat(directions.distance.value) * 2);
+        const etaBaseTime = scheduleDate
+          ? new Date(scheduleDate)
+          : startDate
+            ? new Date(startDate)
+            : new Date();
+        const hasValidEtaBaseTime = !Number.isNaN(etaBaseTime.getTime());
+
+        transportEstimates = {
+          estimatedDuration: {
+            value: durationMinutes,
+            unit: directions?.duration?.unit || "minutes",
+            isEstimate: Boolean(directions?.isEstimate),
+          },
+          estimatedArrivalAt: hasValidEtaBaseTime
+            ? new Date(etaBaseTime.getTime() + durationMinutes * 60 * 1000)
+            : null,
+        };
+        bookingData.estimatedDuration = transportEstimates.estimatedDuration;
+        bookingData.estimatedArrivalAt = transportEstimates.estimatedArrivalAt;
 
         console.log("📦 Transport Booking Distance:", bookingData.distance);
 
@@ -222,6 +246,13 @@ class BookingController {
           data: {
             booking,
             providers: [],
+            ...(isTransport && transportEstimates
+              ? {
+                  distance: booking.distance,
+                  estimatedDuration: transportEstimates.estimatedDuration,
+                  estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
+                }
+              : {}),
             note: "No providers found matching this service type",
           },
         });
@@ -249,6 +280,8 @@ class BookingController {
               notifiedProvidersCount: nearbyProviders.length,
               calculatedPrice: booking.calculatedPrice,
               distance: booking.distance,
+              estimatedDuration: transportEstimates?.estimatedDuration,
+              estimatedArrivalAt: transportEstimates?.estimatedArrivalAt,
               flowType: "fastest_finger",
             },
           });
@@ -274,6 +307,9 @@ class BookingController {
                 startingPrice: p.startingPrice,
                 services: p.job,
               })),
+              distance: booking.distance,
+              estimatedDuration: transportEstimates?.estimatedDuration,
+              estimatedArrivalAt: transportEstimates?.estimatedArrivalAt,
               flowType: "user_selection",
             },
           });

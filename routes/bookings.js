@@ -559,7 +559,7 @@ router.put('/:id/select-provider', authMiddleware, onlyRole('buyer'), BookingCon
  *       500:
  *         description: Server error
  */
-router.patch('/bookings/:id/cancel', authMiddleware, BookingController.cancelBooking);
+router.patch('/:id/cancel', authMiddleware, BookingController.cancelBooking);
 
 
 /**

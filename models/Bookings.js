@@ -79,6 +79,18 @@ dropoffLocation: {
         default: 'km'
       }
     },
+    estimatedDuration: {
+      value: Number,
+      unit: {
+        type: String,
+        default: "minutes",
+      },
+      isEstimate: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    estimatedArrivalAt: Date,
     
     // Schedule
     scheduleType: {
@@ -155,6 +167,8 @@ dropoffLocation: {
     // Timestamps for tracking
     acceptedAt: Date,
     selectedAt: Date,
+    startedAt: Date,
+    completedAt: Date,
     
     // Attachments
     attachments: [String],

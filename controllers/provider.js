@@ -2000,7 +2000,8 @@ class ProviderController {
         });
       }
 
-      booking.status = "completed";
+      booking.status = "completed",
+      booking.completedAt = new Date();
       await booking.save();
 
       // Update provider's completed jobs count
