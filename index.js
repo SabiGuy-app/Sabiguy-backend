@@ -41,6 +41,7 @@ const routes = [
    { path: '/file', file: './routes/uploadFile'},
    { path: '/provider', file: './routes/provider'},
    { path: '/users', file: './routes/users'},
+   { path: '/contact', file: './routes/contact'},
    { path: '/bookings', file: './routes/bookings'},
    { path: '/fcm', file: './routes/fcm.routes'},
    { path: '/notifications', file: './routes/notifications'},

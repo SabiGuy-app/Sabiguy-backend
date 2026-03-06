@@ -1612,7 +1612,7 @@ class ProviderController {
 
       const bookings = await Booking.find(query)
         .populate("userId", "fullName profilePicture phoneNumber email")
-        .populate("providerId", "fullName profilePicture phoneNumber email")
+        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures")
 
         .sort({ createdAt: -1 })
         .limit(limit * 1)

@@ -903,7 +903,7 @@ class BookingController {
       // Execute query with pagination
       const bookings = await Booking.find(query)
         .populate("userId", "fullName email phoneNumber profilePicture")
-        .populate("providerId", "fullName profilePicture phoneNumber email")
+        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures")
         .sort(sortConfig)
         .limit(limit * 1)
         .skip((page - 1) * limit)
@@ -987,7 +987,7 @@ class BookingController {
       }
 
       const bookings = await Booking.find(query)
-        .populate("providerId", "fullName avatar phoneNumber email")
+        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures")
         .sort({ createdAt: -1 })
         .limit(limit * 1)
         .skip((page - 1) * limit);
