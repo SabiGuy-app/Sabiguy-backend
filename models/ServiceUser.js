@@ -20,6 +20,8 @@ lastVerificationOtpSentAt: {
 },   
     isGoogleUser: { type: Boolean, default: false },
     googleId: String,
+    refreshToken: { type: String },
+    refreshTokenExpiresAt: { type: Date },
     role: {
   type: String,
   enum: ["buyer"],

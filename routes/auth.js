@@ -9,7 +9,8 @@ const { registerBuyer,
      googleSignUpBuyer, 
      googleLogIn,
     resendOTP,
-changePassword} = require ('../controllers/auth');
+changePassword,
+refreshAuthToken} = require ('../controllers/auth');
 const authMiddleware = require ('../middleware/authMiddleware');
 const { changePasswordLimiter } = require ('../middleware/rateLimiter.js')
 const router = express.Router();
@@ -222,6 +223,31 @@ router.post("/google", googleSignUpBuyer);
  *         description: Invalid Google credentials
  */
 router.post("/google-login", googleLogIn);
+
+/**
+ * @swagger
+ * /api/v1/auth/refresh:
+ *   post:
+ *     summary: Refresh access token
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+ *     responses:
+ *       200:
+ *         description: Access token refreshed successfully
+ *       401:
+ *         description: Invalid or expired refresh token
+ */
+router.post("/refresh", refreshAuthToken);
 
 /**
  * @swagger

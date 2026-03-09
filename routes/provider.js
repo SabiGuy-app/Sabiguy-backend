@@ -88,6 +88,9 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  * /api/v1/provider/job-service:
  *   post:
  *     summary: Add or update provider jobs and services
+ *     description: |
+ *       Updates the provider's `job` and/or `service` arrays. You can send either field or both.
+ *       Optionally updates transport profile fields (license/vehicle details) in the same request.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -100,8 +103,12 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *             properties:
  *               job:
  *                 type: array
+ *                 description: List of jobs the provider offers
  *                 items:
  *                   type: object
+ *                   required:
+ *                     - service
+ *                     - title
  *                   properties:
  *                     service:
  *                       type: string
@@ -114,11 +121,16 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *                       example: "Flawless beauty for your special day"
  *                     startingPrice:
  *                       type: string
- *                       example: "20,000"
+ *                       example: "20000"
  *               service:
  *                 type: array
+ *                 description: Additional service packages
  *                 items:
  *                   type: object
+ *                   required:
+ *                     - serviceName
+ *                     - pricingModel
+ *                     - price
  *                   properties:
  *                     serviceName:
  *                       type: string
@@ -127,13 +139,32 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *                       type: string
  *                       example: "fixed"
  *                     price:
- *                       type: number
- *                       example: 25000
+ *                       type: string
+ *                       example: "25000"
+ *               driverLicenseNumber:
+ *                 type: string
+ *                 example: "LAG-DRV-123456"
+ *               vehicleProductionYear:
+ *                 type: string
+ *                 example: "2022"
+ *               vehicleColor:
+ *                 type: string
+ *                 example: "Blue"
+ *               vehicleRegNo:
+ *                 type: string
+ *                 example: "LND-482XY"
+ *               vehicleName:
+ *                 type: string
+ *                 example: "Toyota Corolla"
  *     responses:
  *       200:
  *         description: Job/service info updated successfully
+ *       400:
+ *         description: Invalid payload (e.g., missing both job and service, or wrong array types)
  *       404:
  *         description: Provider not found
+ *       500:
+ *         description: Server error
  */
 router.post("/job-service", authMiddleware, ProviderController.JobAndService);
 

@@ -10,6 +10,8 @@ const serviceProviderSchema = new mongoose.Schema({
     resetOtp: { type: String },
     isGoogleUser: { type: Boolean, default: false },
     googleId: String,
+    refreshToken: { type: String },
+    refreshTokenExpiresAt: { type: Date },
     resetOtpExpires: { type: Date },
     emailVerificationExpires: { type: Date },
     fullName: { type: String},

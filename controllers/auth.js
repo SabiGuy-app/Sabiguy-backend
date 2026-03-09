@@ -15,6 +15,30 @@ const roleModelMap = {
 const axios = require('axios');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
+const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || "7d";
+const REFRESH_TOKEN_SECRET =
+  process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET;
+
+const generateAccessToken = (user) =>
+  jwt.sign(
+    { id: user._id, role: user.role, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
+  );
+
+const generateRefreshToken = (user) =>
+  jwt.sign(
+    { id: user._id, role: user.role, email: user.email },
+    REFRESH_TOKEN_SECRET,
+    { expiresIn: REFRESH_TOKEN_EXPIRES_IN },
+  );
+
+const getRefreshTokenExpiryDate = (token) => {
+  const decoded = jwt.decode(token);
+  if (!decoded?.exp) return null;
+  return new Date(decoded.exp * 1000);
+};
 
 exports.googleSignUp = async (req, res) => {
   const { token } = req.body;
@@ -345,16 +369,18 @@ exports.googleLogIn = async (req, res) => {
       });
     }
 
-    // Generate your app's JWT
-    const jwtToken = jwt.sign(
-      { id: user._id, role: user.role, email: user.email }, 
-      process.env.JWT_SECRET, 
-      { expiresIn: '1h' }
-    );
+    // Generate access + refresh tokens
+    const jwtToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    user.refreshToken = refreshToken;
+    user.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+    await user.save();
 
     res.status(200).json({
       message: "Login successful",
       token: jwtToken,
+      // accessToken: jwtToken,
+      refreshToken,
       user: {
         email: user.email,
         _id: user._id,
@@ -614,9 +640,21 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: user._id, role: user.role, email: user.email }, process.env.JWT_SECRET, { expiresIn: "20h" });
+    const token = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    user.refreshToken = refreshToken;
+    user.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+    await user.save();
 
-    res.json({ message: "Login successful", role, email: user.email, token, id: user._id });
+    res.json({
+      message: "Login successful",
+      role,
+      email: user.email,
+      token,
+      // accessToken: token,
+      refreshToken,
+      id: user._id,
+    });
 
   } catch (error) {
     console.error("Login error:", error);
@@ -625,6 +663,57 @@ exports.login = async (req, res) => {
     }
 
 }
+
+exports.refreshAuthToken = async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({
+      success: false,
+      message: "refreshToken is required",
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
+
+    let user = await Buyer.findById(decoded.id);
+    if (!user) {
+      user = await Provider.findById(decoded.id);
+    }
+
+    if (!user || user.refreshToken !== refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid refresh token",
+      });
+    }
+
+    if (
+      user.refreshTokenExpiresAt &&
+      new Date(user.refreshTokenExpiresAt).getTime() < Date.now()
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Refresh token expired",
+      });
+    }
+
+    const token = generateAccessToken(user);
+
+    return res.status(200).json({
+      success: true,
+      // accessToken: token,
+      token
+    });
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: "Refresh token expired or invalid",
+      error: error.message,
+    });
+  }
+};
 
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body
