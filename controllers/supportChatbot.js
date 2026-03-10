@@ -45,93 +45,127 @@ class SupportChatbotController {
     return CATEGORY_MAP[intent] || "other";
   }
 
-  async chat(req, res) {
-    try {
-      const userId = req.user?.id || null;
-      const userRole = req.user?.role || "buyer";
-      const { message, conversationHistory = [], bookingId = null } = req.body;
+  // controllers/supportChatbotController.js
 
-      if (!message) {
-        return res.status(400).json({
-          success: false,
-          message: "Message is required",
-        });
-      }
+async chat(req, res) {
+  try {
+    const userId = req.user?.id || null;
+    const userRole = req.user?.role || "buyer";
+    const { message, conversationHistory = [], bookingId = null } = req.body;
 
-      if (!userId) {
-        return res.status(401).json({
-          success: false,
-          message: "Authentication required",
-        });
-      }
-
-      const user =
-        (await Buyer.findById(userId)) || (await Provider.findById(userId));
-
-      if (!user) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
-      }
-
-      const bookingQuery =
-        userRole === "provider" ? { providerId: userId } : { userId };
-      const bookings = await Booking.find(bookingQuery).select("status");
-
-      const userContext = {
-        userId,
-        userName: this.resolveUserName(user),
-        totalBookings: bookings.length,
-        activeBookings: bookings.filter((b) =>
-          ACTIVE_STATUSES.includes(b.status),
-        ).length,
-        accountType: user?.role || userRole,
-      };
-
-      if (bookingId) {
-        const bookingContext = await groqService.getBookingContext(
-          bookingId,
-          userId,
-        );
-        userContext.currentBooking = bookingContext;
-      }
-
-      const result = await groqService.supportChat(
-        message,
-        conversationHistory,
-        userContext,
-      );
-
-      if (result.intent?.escalationNeeded) {
-        await this.createSupportTicket(
-          userId,
-          userRole,
-          message,
-          result.intent,
-        );
-      }
-
-      const faqSuggestions = await geminiService.suggestFAQs(message);
-
-      return res.status(200).json({
-        success: true,
-        data: {
-          response: result.response,
-          intent: result.intent,
-          faqSuggestions,
-          escalated: Boolean(result.intent?.escalationNeeded),
-        },
-      });
-    } catch (error) {
-      console.error("Support chatbot error:", error);
-      return res.status(500).json({
+    if (!message) {
+      return res.status(400).json({
         success: false,
-        message:
-          "Sorry, I encountered an error. Please try again or contact human support.",
-        error: error.message,
+        message: "Message is required",
       });
     }
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const user =
+      (await Buyer.findById(userId)) || (await Provider.findById(userId));
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    const bookingQuery =
+      userRole === "provider" ? { providerId: userId } : { userId };
+    const bookings = await Booking.find(bookingQuery).select("status");
+
+    const userContext = {
+      userId,
+      userName: this.resolveUserName(user),
+      totalBookings: bookings.length,
+      activeBookings: bookings.filter((b) =>
+        ACTIVE_STATUSES.includes(b.status),
+      ).length,
+      accountType: user?.role || userRole,
+    };
+
+    // Extract booking ID from message if not provided separately
+    let finalBookingId = bookingId;
+    if (!finalBookingId) {
+      const bookingIdMatch = message.match(/\b[0-9a-f]{24}\b/i);
+      if (bookingIdMatch) {
+        finalBookingId = bookingIdMatch[0];
+        console.log(`📌 Extracted booking ID from message: ${finalBookingId}`);
+      }
+    }
+
+    // Fetch booking context if booking ID is available
+    if (finalBookingId) {
+      console.log(`🔍 Fetching booking context for: ${finalBookingId}`);
+      
+      const bookingContext = await groqService.getBookingContext(
+        finalBookingId,
+        userId,
+      );
+
+      if (!bookingContext) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Booking not found or you do not have access to it. Please double-check the booking ID.",
+        });
+      }
+
+      console.log(`✅ Booking context loaded:`, bookingContext);
+      userContext.currentBooking = bookingContext;
+    }
+
+    // Call AI with enhanced context
+    const result = await groqService.supportChat(
+      message,
+      conversationHistory,
+      userContext,
+    );
+
+    // Log for debugging
+    console.log(`🤖 AI Response:`, result.response);
+    if (userContext.currentBooking) {
+      console.log(`📊 Booking Status Used: ${userContext.currentBooking.status}`);
+    }
+
+    if (result.intent?.escalationNeeded) {
+      await this.createSupportTicket(
+        userId,
+        userRole,
+        message,
+        result.intent,
+      );
+    }
+
+    const faqSuggestions = await groqService.suggestFAQs(message);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        response: result.response,
+        intent: result.intent,
+        faqSuggestions,
+        escalated: Boolean(result.intent?.escalationNeeded),
+        // Include booking data in response for debugging
+        bookingContext: userContext.currentBooking || null,
+      },
+    });
+  } catch (error) {
+    console.error("Support chatbot error:", error);
+    return res.status(500).json({
+      success: false,
+      message:
+        "Sorry, I encountered an error. Please try again or contact human support.",
+      error: error.message,
+    });
   }
+}
 
   async createSupportTicket(userId, userRole, message, intent) {
     try {
