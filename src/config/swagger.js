@@ -118,6 +118,20 @@ const options = {
             createdAt: { type: 'string', format: 'date-time' }
           }
         },
+        File: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            filename: { type: 'string' },
+            url: { type: 'string' },
+            resource_type: { type: 'string' },
+            email: { type: 'string' },
+            provider: { type: 'string' },
+            buyer: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' }
+          }
+        },
         Error: {
           type: 'object',
           properties: {

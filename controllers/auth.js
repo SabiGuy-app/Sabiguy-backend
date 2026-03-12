@@ -5,7 +5,7 @@ const jwt = require ('jsonwebtoken');
 const dotenv = require ('dotenv');
 dotenv.config();
 const { OAuth2Client } = require ('google-auth-library');
-const {sendEmailOtp, forgotPasswordOtp, passwordChangedEmail} = require ('../src/config/emailVerification')
+const {sendEmailOtp, forgotPasswordOtp, passwordChangedEmail, sendWelcomeEmail} = require ('../src/config/emailVerification')
 
 const roleModelMap = {
   buyer: Buyer,
@@ -542,10 +542,29 @@ try {
      if (Date.now() > user.otpExpiresAt) {
       return res.status(400).json({ message: 'OTP has expired.' });
     }
-     user.emailVerified = true;
-     user.otp = null;
+    user.emailVerified = true;
+    user.otp = null;
     user.otpExpiresAt = null;
     await user.save();
+
+    try {
+      const firstName = user.fullName
+        ? user.fullName.trim().split(/\s+/)[0]
+        : "there";
+      const baseUrl = process.env.FRONTEND_URL || "";
+      await sendWelcomeEmail(user.email, {
+        firstName,
+        year: new Date().getFullYear(),
+        ctaUrl: baseUrl,
+        ctaText: "Open SabiGuy",
+        // unsubscribeUrl: baseUrl ? `${baseUrl.replace(/\\/$/, "")}/unsubscribe` : "",
+      });
+    } catch (welcomeError) {
+      console.error("Welcome email error:", welcomeError);
+      return res.status(500).json({
+        message: "Email verified, but welcome email failed to send",
+      });
+    }
 
     res.status(200).json({
       message: `Email verified successfully as ${userType}.`,
@@ -735,13 +754,13 @@ const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetOtp = otp;
     user.resetOtpExpires = Date.now() + 10 * 60 * 1000; // 10 min
     await user.save();
-    await forgotPasswordOtp(email, otp)
+    await forgotPasswordOtp(email, otp);
 
-    res.status(201).json ({ message: "Forgot password otp sent to email" })
+    res.status(201).json({ message: "Forgot password otp sent to email" });
 
   } catch (error) {
     console.error(error);
-    return res.status(500).json ({ message: "Failed to send otp:", error})   
+    return res.status(500).json({ message: "Failed to send OTP email" });
   }
 };
 
@@ -768,6 +787,15 @@ if ( user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
     user.resetOtp = undefined;
     user.resetOtpExpires = undefined;
     await user.save();
+    try {
+      await passwordChangedEmail(user.email);
+    } catch (emailError) {
+      console.error("Password reset email error:", emailError);
+      return res.status(500).json({
+        message: "Password reset, but confirmation email failed to send",
+      });
+    }
+
    
  res.json({ message: "Password reset successful" });
   } catch (err) {
@@ -835,8 +863,15 @@ if (!strongPassword.test(newPassword)) {
     // Update password
     user.password = hashedPassword;
     await user.save();
-
-    await passwordChangedEmail(user.email);
+    try {
+      await passwordChangedEmail(user.email);
+    } catch (emailError) {
+      console.error("Password change email error:", emailError);
+      return res.status(500).json({
+        success: false,
+        message: "Password changed, but confirmation email failed to send",
+      });
+    }
 
 
     return res.status(200).json({

@@ -5,6 +5,7 @@ const mongoose = require("mongoose");
 const geolocationService = require("../src/services/geolocation.service");
 const notificationService = require("../src/services/notification.service");
 const pricingService = require("../src/services/pricing.service");
+const paymentService = require("../src/services/payment.service");
 
 class BookingController {
   constructor() {
@@ -772,26 +773,18 @@ class BookingController {
       const userId = req.user.id;
       const { reason } = req.body;
 
-      const booking = await Booking.findOneAndUpdate(
-        {
-          _id: bookingId,
-          userId,
-          status: {
-            $in: [
-              "pending_providers",
-              "awaiting_provider_acceptance",
-              "provider_selected",
-            ],
-          },
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        userId,
+        status: {
+          $in: [
+            "pending_providers",
+            "awaiting_provider_acceptance",
+            "provider_selected",
+            "paid_escrow",
+          ],
         },
-        {
-          status: "cancelled",
-          cancellationReason: reason,
-          cancelledBy: userId,
-          cancelledByModel: "User",
-        },
-        { new: true },
-      );
+      });
 
       if (!booking) {
         return res.status(404).json({
@@ -799,6 +792,16 @@ class BookingController {
           message: "Booking not found or cannot be cancelled",
         });
       }
+
+      if (booking.status === "paid_escrow") {
+        await paymentService.refundPayment(bookingId, reason);
+      }
+
+      booking.status = "cancelled";
+      booking.cancellationReason = reason;
+      booking.cancelledBy = userId;
+      booking.cancelledByModel = "User";
+      await booking.save();
 
       // 🔔 Notify provider if one was assigned
       if (booking.providerId) {
@@ -953,7 +956,7 @@ class BookingController {
 
       const booking = await Booking.findById(bookingId)
         .populate("userId", "fullName email phone avatar")
-        .populate("providerId", "userId fullName job rating completedJobs");
+        .populate("providerId", "userId fullName job rating completedJobs workVisuals.pictures profilePicture");
 
       if (!booking) {
         return res.status(404).json({

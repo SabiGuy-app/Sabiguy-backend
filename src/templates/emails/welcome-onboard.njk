@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome to Sabiguy 🎉</title>
+</head>
+<body style="margin:0; padding:0; background:#f4f7f4; font-family:Arial,Helvetica,sans-serif; color:#1a1a1a;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;">
+
+          <!-- HERO HEADER -->
+          <tr>
+            <td style="background:linear-gradient(150deg, #1a6b35 0%, #1d7a3c 55%, #155f2d 100%); border-radius:16px 16px 0 0; padding:36px 36px 30px; text-align:center;">
+
+              <!-- Logo -->
+              {% if logoUrl %}
+              <img src="{{ logoUrl }}" alt="{{ brandName }}" style="max-height:52px; width:auto; display:block; margin:0 auto 20px;" />
+              {% else %}
+              <div style="font-weight:700; font-size:26px; letter-spacing:1px; color:#ffffff; margin-bottom:20px;">{{ brandName }}</div>
+              {% endif %}
+
+              <!-- Verified badge -->
+              <div style="display:inline-block; background:rgba(244,121,32,0.2); border:1px solid rgba(244,121,32,0.45); border-radius:20px; padding:5px 16px; font-size:12px; letter-spacing:2px; text-transform:uppercase; color:#f9c48a; margin-bottom:20px;">
+                Account Verified ✓
+              </div>
+
+              <h1 style="margin:0 0 10px; font-size:27px; line-height:1.3; color:#ffffff; font-weight:700;">
+                Welcome aboard, {{ firstName }}! 🎉
+              </h1>
+              <p style="margin:0; font-size:15px; color:#c8e6c9; line-height:1.65;">
+                You're all set. Let's get you connected to the services you need.
+              </p>
+            </td>
+          </tr>
+
+          <!-- ORANGE ACCENT STRIPE -->
+          <tr>
+            <td style="background:#f47920; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- MAIN BODY -->
+          <tr>
+            <td style="background:#ffffff; padding:36px 36px 28px;">
+
+              <p style="margin:0 0 16px; font-size:15.5px; line-height:1.8; color:#374151;">
+                Hi <strong style="color:#1a6b35;">{{ firstName }}</strong>, we're excited to have you join <strong>Sabiguy</strong> — the platform that connects people who need services with trusted professionals ready to deliver.
+              </p>
+
+              <p style="margin:0 0 26px; font-size:15.5px; line-height:1.8; color:#374151;">
+                Your email is verified and your account is live. Here's what you can start doing right now:
+              </p>
+
+              <!-- Divider -->
+              <div style="border-top:2px solid #f0f0f0; margin-bottom:26px;"></div>
+
+              <!-- Feature 1: Package Delivery -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+                <tr>
+                  <td width="52" valign="top">
+                    <div style="width:42px; height:42px; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:10px; text-align:center; line-height:42px; font-size:20px;">📦</div>
+                  </td>
+                  <td style="padding-left:14px; vertical-align:middle;">
+                    <strong style="display:block; font-size:15px; color:#1a1a1a; margin-bottom:3px;">Package Delivery</strong>
+                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">Send and receive packages fast using our network of verified delivery providers near you.</span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Feature 2: Book a Ride -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                <tr>
+                  <td width="52" valign="top">
+                    <div style="width:42px; height:42px; background:#f0faf3; border:1.5px solid #bbf7d0; border-radius:10px; text-align:center; line-height:42px; font-size:20px;">🚗</div>
+                  </td>
+                  <td style="padding-left:14px; vertical-align:middle;">
+                    <strong style="display:block; font-size:15px; color:#1a1a1a; margin-bottom:3px;">Book a Ride</strong>
+                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">Get to your destination safely and comfortably with trusted, rated ride providers.</span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- CTA Button -->
+              <div style="text-align:center; margin:10px 0 4px;">
+                <a href="{{ appUrl }}"
+                   style="display:inline-block; background:#f47920; color:#ffffff; text-decoration:none; font-size:15.5px; font-weight:700; letter-spacing:0.4px; padding:15px 44px; border-radius:8px;">
+                  Explore Sabiguy &rarr;
+                </a>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- TIPS BLOCK -->
+          <tr>
+            <td style="background:#f7fdf8; border-top:1px solid #d1fae5; border-bottom:1px solid #d1fae5; border-left:4px solid #1a6b35; border-right:1px solid #d1fae5; padding:20px 28px;">
+              <p style="margin:0 0 8px; font-size:12px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1a6b35;">
+                Quick Tips
+              </p>
+              <ul style="margin:0; padding-left:18px; font-size:13.5px; color:#374151; line-height:2.1;">
+                <li>Complete your profile to build trust with providers.</li>
+                <li>Browse services and book in under 2 minutes.</li>
+                <li>Rate your experience to help the community grow.</li>
+              </ul>
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background:#1a6b35; border-radius:0 0 16px 16px; padding:24px 36px; text-align:center;">
+
+              {% if logoUrl %}
+              <img src="{{ logoUrl }}" alt="{{ brandName }}" style="max-height:32px; width:auto; display:block; margin:0 auto 12px; opacity:0.85;" />
+              {% else %}
+              <div style="font-weight:700; font-size:16px; color:#ffffff; margin-bottom:10px; letter-spacing:1px;">{{ brandName }}</div>
+              {% endif %}
+
+              <p style="margin:0 0 6px; font-size:13px; color:#bbf7d0; line-height:1.8;">
+                Have questions? Reach us at
+                <a href="mailto:support@sabiguy.com" style="color:#f9c48a; text-decoration:none; font-weight:600;">support@sabiguy.com</a>
+              </p>
+              <p style="margin:10px 0 0; font-size:11px; color:#6ee7a0; letter-spacing:0.3px;">
+                &copy; {{ year }} Sabiguy. All rights reserved. &nbsp;&middot;&nbsp;
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

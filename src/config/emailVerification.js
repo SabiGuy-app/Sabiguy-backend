@@ -34,11 +34,14 @@ const renderEmailTemplate = (templateName, data = {}) => {
 const sendEmailOtp = async (email, otp) => {
     const sendSmtpEmail = new brevo.SendSmtpEmail();
 
-    sendSmtpEmail.subject = "Your SabiGuy Verification Code";
+    sendSmtpEmail.subject = "Welcome to SabiGuy - Verify Your Email";
     sendSmtpEmail.to = [{ email }];
     sendSmtpEmail.htmlContent = renderEmailTemplate("verification-otp.njk", {
         otp,
         expiryMinutes: 10,
+        year: new Date().getFullYear(),
+         supportMessage:
+           "If you did not request this OTP, please ignore this email or contact support if you have concerns about your account security.",
     });
     sendSmtpEmail.sender = sender;
 
@@ -48,7 +51,7 @@ const sendEmailOtp = async (email, otp) => {
         return { success: true, messageId: data.body.messageId };
     } catch (error) {
         console.error("Brevo error:", error);
-        return { success: false, error: error.message };
+        throw new Error(error.message || "Email send failed");
     }
 };
 
@@ -60,6 +63,7 @@ const forgotPasswordOtp = async (email, otp) => {
     sendSmtpEmail.htmlContent = renderEmailTemplate("forgot-password-otp.njk", {
         otp,
         expiryMinutes: 10,
+        year: new Date().getFullYear(),
     });
     sendSmtpEmail.sender = sender;
 
@@ -69,7 +73,7 @@ const forgotPasswordOtp = async (email, otp) => {
         return { success: true, messageId: data.body.messageId };
     } catch (error) {
         console.error("Brevo error:", error);
-        return { success: false, error: error.message };
+        throw new Error(error.message || "Password reset email failed");
     }
 };
 
@@ -78,7 +82,10 @@ const passwordChangedEmail = async (email) => {
 
     sendSmtpEmail.subject = "Your SabiGuy Password Was Changed";
     sendSmtpEmail.to = [{ email }];
-    sendSmtpEmail.htmlContent = renderEmailTemplate("password-changed.njk");
+    sendSmtpEmail.htmlContent = renderEmailTemplate("password-changed.njk", {
+      year: new Date().getFullYear(),
+
+    });
     sendSmtpEmail.sender = sender;
 
     try {
@@ -87,8 +94,26 @@ const passwordChangedEmail = async (email) => {
         return { success: true, messageId: data.body.messageId };
     } catch (error) {
         console.error("Password change email error:", error);
-        return { success: false, error: error.message };
+        throw new Error(error.message || "Password change email failed");
     }
 };
 
-module.exports = { sendEmailOtp, forgotPasswordOtp, passwordChangedEmail };
+const sendWelcomeEmail = async (email, data = {}) => {
+    const sendSmtpEmail = new brevo.SendSmtpEmail();
+
+    sendSmtpEmail.subject = "Welcome to SabiGuy";
+    sendSmtpEmail.to = [{ email }];
+    sendSmtpEmail.htmlContent = renderEmailTemplate("welcome-onboard.njk", data);
+    sendSmtpEmail.sender = sender;
+
+    try {
+        const dataResp = await apiInstance.sendTransacEmail(sendSmtpEmail);
+        console.log("Welcome email sent. Message ID:", dataResp.body.messageId);
+        return { success: true, messageId: dataResp.body.messageId };
+    } catch (error) {
+        console.error("Welcome email error:", error);
+        throw new Error(error.message || "Welcome email failed");
+    }
+};
+
+module.exports = { sendEmailOtp, forgotPasswordOtp, passwordChangedEmail, sendWelcomeEmail };
