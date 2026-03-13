@@ -2,6 +2,7 @@ const Wallet = require("../../models/Wallet");
 const Transaction = require("../../models/Transaction");
 const Booking = require("../../models/Bookings");
 const mongoose = require("mongoose");
+const pricingService = require("../services/pricing.service.js");
 
 class WalletService {
   constructor() {
@@ -56,7 +57,7 @@ class WalletService {
     return wallet;
   }
 
-  async recordPlatformFee(amount, bookingId) {
+  async recordPlatformFee(amount, bookingId, feeType = "platform_fee") {
     const platformWallet = await this.getPlatformWallet();
 
     // Record balance before
@@ -74,9 +75,15 @@ class WalletService {
       total: platformWallet.balance.total,
     };
 
+    const transactionType = feeType === "commission" ? "commission" : "platform_fee";
+    const description =
+      feeType === "commission"
+        ? `Provider commission collected for booking #${bookingId}`
+        : `Platform fee collected for booking #${bookingId}`;
+
     await Transaction.create({
       reference: this.generateReference("FEE"),
-      type: "platform_fee",
+      type: transactionType,
       to: {
         userId: new mongoose.Types.ObjectId(this.PLATFORM_WALLET_ID),
         userModel: "Platform",
@@ -88,7 +95,7 @@ class WalletService {
         before: balanceBefore,
         after: balanceAfter,
       },
-      description: `Platform fee (10%) collected for booking #${bookingId}`,
+      description,
       status: "completed",
       completedAt: new Date(),
     });
@@ -104,6 +111,150 @@ class WalletService {
       availableRevenue: platformWallet.balance.available,
       wallet: platformWallet,
     };
+  }
+
+  async getPlatformSummary({ page = 1, limit = 20, type } = {}) {
+    const platformWallet = await this.getPlatformWallet();
+    const platformId = new mongoose.Types.ObjectId(this.PLATFORM_WALLET_ID);
+
+    const query = {
+      $or: [{ "from.userId": platformId }, { "to.userId": platformId }],
+    };
+    if (type) query.type = type;
+
+    const transactions = await Transaction.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip((page - 1) * limit)
+      .populate("bookingId", "serviceType status")
+      .lean();
+
+    const total = await Transaction.countDocuments(query);
+
+    return {
+      wallet: platformWallet,
+      balance: platformWallet.balance,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      transactions,
+    };
+  }
+
+  async tipProviderFromWallet(
+    userId,
+    providerId,
+    amount,
+    bookingId,
+    notificationService = null,
+  ) {
+    try {
+      const tipAmount = Number(amount);
+      if (!Number.isFinite(tipAmount) || tipAmount <= 0) {
+        throw new Error("Invalid tip amount");
+      }
+
+      const buyerWallet = await this.getOrCreateWallet(userId, "Buyer");
+      if (buyerWallet.balance.available < tipAmount) {
+        throw new Error(
+          `Insufficient wallet balance. Required: ₦${tipAmount}, Available: ₦${buyerWallet.balance.available}`,
+        );
+      }
+
+      const buyerBalanceBefore = {
+        available: buyerWallet.balance.available,
+        pending: buyerWallet.balance.pending,
+        total: buyerWallet.balance.total,
+      };
+
+      buyerWallet.balance.available -= tipAmount;
+      buyerWallet.balance.total -= tipAmount;
+      buyerWallet.lastTransactionAt = new Date();
+      await buyerWallet.save();
+
+      const buyerBalanceAfter = {
+        available: buyerWallet.balance.available,
+        pending: buyerWallet.balance.pending,
+        total: buyerWallet.balance.total,
+      };
+
+      const providerWallet = await this.getOrCreateWallet(
+        providerId,
+        "Provider",
+      );
+      const providerBalanceBefore = {
+        available: providerWallet.balance.available,
+        pending: providerWallet.balance.pending,
+        total: providerWallet.balance.total,
+      };
+
+      await providerWallet.credit(tipAmount, "earning");
+
+      const providerBalanceAfter = {
+        available: providerWallet.balance.available,
+        pending: providerWallet.balance.pending,
+        total: providerWallet.balance.total,
+      };
+
+      const transaction = await Transaction.create({
+        reference: this.generateReference("TIP"),
+        type: "tip",
+        from: {
+          userId,
+          userModel: "Buyer",
+          walletId: buyerWallet._id,
+        },
+        to: {
+          userId: providerId,
+          userModel: "Provider",
+          walletId: providerWallet._id,
+        },
+        amount: tipAmount,
+        bookingId,
+        balances: {
+          before: buyerBalanceBefore,
+          after: buyerBalanceAfter,
+        },
+        status: "completed",
+        description: `Tip for booking #${bookingId}`,
+        completedAt: new Date(),
+      });
+
+      if (notificationService) {
+        try {
+          await notificationService.notifyProvider(providerId, {
+            type: "tip_received",
+            title: "💰 New Tip Received",
+            message: `You received a ₦${tipAmount.toLocaleString()} tip for booking #${bookingId}.`,
+            bookingId,
+            amount: tipAmount,
+          });
+
+          await notificationService.notifyUser(userId, {
+            type: "tip_sent",
+            title: "✅ Tip Sent",
+            message: `Your ₦${tipAmount.toLocaleString()} tip was sent successfully.`,
+            bookingId,
+            amount: tipAmount,
+          });
+        } catch (notifyError) {
+          console.error("Tip notification error:", notifyError.message);
+        }
+      }
+
+      return {
+        success: true,
+        transaction,
+        buyerBalance: buyerBalanceAfter,
+        providerBalance: providerBalanceAfter,
+      };
+    } catch (error) {
+      console.error("Tip from wallet error:", error);
+      throw error;
+    }
   }
   /**
    * Record a payment transaction (user pays)
@@ -167,7 +318,11 @@ class WalletService {
       // });
 
       if (normalizedBreakdown.serviceFee > 0) {
-        await this.recordPlatformFee(normalizedBreakdown.serviceFee, bookingId);
+        await this.recordPlatformFee(
+          normalizedBreakdown.serviceFee,
+          bookingId,
+          "platform_fee",
+        );
       }
 
       await Transaction.findOneAndUpdate(
@@ -498,6 +653,13 @@ class WalletService {
       paymentAmount,
     );
 
+    const pricingBreakdown = pricingService.calculatePricingBreakdown(
+      normalizedBreakdown.agreedPrice,
+    );
+    normalizedBreakdown.serviceFee =
+      pricingBreakdown.userPays - normalizedBreakdown.agreedPrice;
+    normalizedBreakdown.totalAmount = pricingBreakdown.userPays;
+
     if (isNaN(paymentAmount) || paymentAmount <= 0) {
       throw new Error("Invalid payment amount");
     }
@@ -572,8 +734,13 @@ class WalletService {
         "payment.method": "wallet",
         "payment.escrowStatus": "held",
         "payment.paidAt": new Date(),
-        "payment.escrowAmount": normalizedBreakdown.totalAmount,
+        "payment.escrowAmount": normalizedBreakdown.agreedPrice,
         "payment.transactionReference": transaction.reference,
+        serviceFee: normalizedBreakdown.serviceFee,
+        providerCommission:
+          pricingBreakdown.platformEarns - normalizedBreakdown.serviceFee,
+        platformEarns: pricingBreakdown.platformEarns,
+        totalAmount: normalizedBreakdown.totalAmount,
       },
       { new: true },
     )

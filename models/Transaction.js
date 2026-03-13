@@ -28,7 +28,8 @@ const transactionSchema = new mongoose.Schema({
       // Platform related
       'platform_fee',        // Platform fee collection
       'bonus',               // Promotional bonus
-      'commission'           // Any other commissions
+      'commission',          // Any other commissions
+      'tip'                  // Tips to providers
     ],
     required: true
   },

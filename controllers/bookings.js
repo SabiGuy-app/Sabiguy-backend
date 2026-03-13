@@ -6,6 +6,7 @@ const geolocationService = require("../src/services/geolocation.service");
 const notificationService = require("../src/services/notification.service");
 const pricingService = require("../src/services/pricing.service");
 const paymentService = require("../src/services/payment.service");
+const WalletService = require("../src/services/wallet.service");
 
 class BookingController {
   constructor() {
@@ -13,7 +14,7 @@ class BookingController {
     this.findNearbyProviders = this.findNearbyProviders.bind(this);
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
     this.notifyProvidersForFastestFinger =
-      this.notifyProvidersForFastestFinger.bind(this);
+    this.notifyProvidersForFastestFinger.bind(this);
     this.calculateDistance = this.calculateDistance.bind(this);
     this.mockGeocode = this.mockGeocode.bind(this);
     this.geocodeWithFallback = this.geocodeWithFallback.bind(this);
@@ -33,6 +34,7 @@ class BookingController {
         dropoffAddress,
         scheduleType,
         scheduleDate,
+        scheduledTime,
         startDate,
         endDate,
         budget,
@@ -54,7 +56,7 @@ class BookingController {
       /* -----------------------------
          1️⃣ Validation
       ------------------------------*/
-      const isTransport = this.isTransportLogistics(serviceType);
+      const isTransport = this.isTransportLogistics(serviceType, subCategory);
 
       if (!serviceType || !scheduleType) {
         return res.status(400).json({
@@ -105,6 +107,7 @@ class BookingController {
         description,
         scheduleType,
         scheduleDate,
+        scheduledTime,
         startDate,
         endDate,
         budget,
@@ -177,6 +180,7 @@ class BookingController {
         // Calculate price based on distance
         const calculatedPrice = pricingService.calculateTransportPrice(
           parseFloat(directions.distance.value),
+          subCategory,
           serviceType,
         );
 
@@ -553,9 +557,7 @@ class BookingController {
   /* -----------------------------
      Helper Methods
   ------------------------------*/
-  isTransportLogistics(serviceType) {
-    if (!serviceType) return false;
-
+  isTransportLogistics(serviceType, subCategory = null) {
     const transportKeywords = [
       "transport",
       "logistics",
@@ -566,8 +568,19 @@ class BookingController {
       "ride",
     ];
 
-    return transportKeywords.some((keyword) =>
-      serviceType.toLowerCase().includes(keyword),
+    const normalizedServiceType = serviceType
+      ? String(serviceType).toLowerCase()
+      : "";
+    const normalizedSubCategory = subCategory
+      ? String(subCategory).toLowerCase()
+      : "";
+
+    if (!normalizedServiceType && !normalizedSubCategory) return false;
+
+    return transportKeywords.some(
+      (keyword) =>
+        normalizedServiceType.includes(keyword) ||
+        normalizedSubCategory.includes(keyword),
     );
   }
 
@@ -639,13 +652,23 @@ class BookingController {
     try {
       const bookingId = req.params.id;
       const userId = req.user.id;
-      const { score, review } = req.body;
+      const { score, review, tipAmount } = req.body;
 
       if (score && (score < 1 || score > 5)) {
         return res.status(400).json({
           success: false,
           message: "Rating score must be between 1 and 5",
         });
+      }
+
+      if (tipAmount !== undefined) {
+        const normalizedTip = Number(tipAmount);
+        if (!Number.isFinite(normalizedTip) || normalizedTip <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: "tipAmount must be a positive number",
+          });
+        }
       }
 
       const booking = await Booking.findOne({
@@ -673,6 +696,17 @@ class BookingController {
 
       await booking.save();
 
+      let tipResult = null;
+      if (tipAmount !== undefined) {
+        tipResult = await WalletService.tipProviderFromWallet(
+          userId,
+          booking.providerId._id,
+          tipAmount,
+          booking._id,
+          notificationService,
+        );
+      }
+
       await notificationService.notifyUser(booking.providerId._id, {
         type: "job_completed_confirmed",
         title: "✅ Job Completion Confirmed",
@@ -684,7 +718,10 @@ class BookingController {
       return res.status(200).json({
         success: true,
         message: "Job completed accepted successfully",
-        data: booking,
+        data: {
+          booking,
+          tip: tipResult ? tipResult.transaction : null,
+        },
       });
     } catch (error) {
       console.error("Accept job completion error:", error);

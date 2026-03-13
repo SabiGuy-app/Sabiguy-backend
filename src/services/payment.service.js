@@ -6,6 +6,7 @@ const Buyer = require("../../models/ServiceUser.js");
 const notificationService = require("../services/notification.service.js");
 const Transaction = require("../../models/Transaction.js");
 const WalletService = require("../services/wallet.service.js");
+const pricingService = require("../services/pricing.service.js");
 
 class paymentService {
   constructor() {
@@ -39,14 +40,15 @@ class paymentService {
 
 
       const agreedPrice = booking.agreedPrice || booking.budget;
-      const serviceFee = Math.round(
-        (agreedPrice * this.platformFeePercentage) / 100,
-      );
-      const totalAmount = agreedPrice + serviceFee;
+      const breakdown = pricingService.calculatePricingBreakdown(agreedPrice);
+      const serviceFee = breakdown.userPays - agreedPrice;
+      const totalAmount = breakdown.userPays;
 
       // Update booking with payment details
       booking.agreedPrice = agreedPrice;
       booking.serviceFee = serviceFee;
+      booking.providerCommission = breakdown.platformEarns - serviceFee;
+      booking.platformEarns = breakdown.platformEarns;
       booking.totalAmount = totalAmount;
 
       const paystackResponse = await axios.post(
@@ -65,6 +67,8 @@ class paymentService {
             agreedPrice,
             serviceFee,
             totalAmount,
+            providerCommission: breakdown.platformEarns - serviceFee,
+            platformEarns: breakdown.platformEarns,
             custom_fields: [
               {
                 display_name: "Booking ID",
@@ -116,6 +120,10 @@ class paymentService {
           agreedPrice,
           serviceFee,
           totalAmount,
+        },
+        metadata: {
+          platformEarns: breakdown.platformEarns,
+          providerCommission: breakdown.platformEarns - serviceFee,
         },
         bookingId: booking._id,
         gateway: {
@@ -205,7 +213,8 @@ class paymentService {
           status: "paid_escrow",
           "payment.escrowStatus": "held",
           "payment.paidAt": new Date(),
-          "payment.escrowAmount": transaction.agreedPrice,
+          "payment.escrowAmount":
+            transaction.breakdown?.agreedPrice ?? booking.agreedPrice,
         },
         { new: true },
       )
@@ -281,9 +290,25 @@ class paymentService {
         throw new Error("Provider record missing");
       }
 
+      const commission = pricingService.calculateProviderCommission(
+        booking.payment.escrowAmount,
+      );
+      const providerPayout = Math.max(
+        0,
+        booking.payment.escrowAmount - commission,
+      );
+
+      if (commission > 0) {
+        await WalletService.recordPlatformFee(
+          commission,
+          booking._id,
+          "commission",
+        );
+      }
+
       const escrowTransaction = await WalletService.releaseEscrow(
         booking.providerId._id,
-        booking.payment.escrowAmount,
+        providerPayout,
         booking._id,
         notificationService,
       );
@@ -300,14 +325,14 @@ class paymentService {
       await notificationService.notifyProvider(booking.providerId._id, {
         type: "funds_released",
         title: "💰 Payment Released",
-        message: `₦${booking.payment.escrowAmount.toLocaleString()} has been added to your wallet for booking #${booking._id}`,
+        message: `₦${providerPayout.toLocaleString()} has been added to your wallet for booking #${booking._id}`,
         bookingId: booking._id,
       });
 
       return {
         success: true,
         message: "Payment released to provider wallet",
-        amount: booking.payment.escrowAmount,
+        amount: providerPayout,
         transaction: escrowTransaction,
       };
     } catch (error) {

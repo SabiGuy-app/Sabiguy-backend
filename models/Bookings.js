@@ -99,6 +99,7 @@ dropoffLocation: {
       required: true
     },
     scheduleDate: Date,
+    scheduledTime: String,
     startDate: Date,
     endDate: Date,
     
@@ -110,6 +111,8 @@ dropoffLocation: {
     agreedPrice: Number,
     calculatedPrice: Number, // Auto-calculated for transport/logistics
     serviceFee: Number, // Platform fee (10%)
+    providerCommission: Number, // Platform commission from provider (15%)
+    platformEarns: Number, // Total platform earnings (user fee + provider commission)
     totalAmount: Number,
     
     // Provider management

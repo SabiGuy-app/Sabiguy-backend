@@ -286,5 +286,34 @@ class WalletController {
       });
     }
   }
+
+  async getPlatformSummary(req, res) {
+    try {
+      const { page, limit, type } = req.query;
+
+      const result = await WalletService.getPlatformSummary({
+        page: parseInt(page) || 1,
+        limit: parseInt(limit) || 10,
+        type,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          balance: result.balance,
+          wallet: result.wallet,
+          transactions: result.transactions,
+          pagination: result.pagination,
+        },
+      });
+    } catch (error) {
+      console.error("Get platform wallet error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch platform wallet",
+        error: error.message,
+      });
+    }
+  }
 }
 module.exports = new WalletController();

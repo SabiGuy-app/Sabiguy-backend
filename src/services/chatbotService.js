@@ -126,8 +126,7 @@ KNOWLEDGE BASE:
 
 **Service Areas:**
 - Lagos (All LGAs)
-- Abuja (FCT)
-- Port Harcourt
+- Ibadan
 - Expanding to more cities soon
 
 **Booking Process:**

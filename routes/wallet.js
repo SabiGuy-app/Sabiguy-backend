@@ -240,5 +240,42 @@ router.post('/pay', authMiddleware, WalletController.payFromWallet);
 
 router.get('/transactions', authMiddleware, WalletController.getTransactions);
 
+/**
+ * @swagger
+ * /api/v1/wallet/platform:
+ *   get:
+ *     summary: Get platform wallet summary (balance + transactions)
+ *     tags: [Wallet]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           example: 10
+ *         description: Number of records per page
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [platform_fee, commission]
+ *         description: Filter by transaction type
+ *     responses:
+ *       200:
+ *         description: Platform wallet summary retrieved successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.get('/platform', authMiddleware, WalletController.getPlatformSummary);
+
 
 module.exports = router;
