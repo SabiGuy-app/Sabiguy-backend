@@ -114,6 +114,18 @@ exports.googleSignUp = async (req, res) => {
     // Check if email exists
     const existingEmail = await Provider.findOne({ email });
     if (existingEmail) {
+      if (!existingEmail.emailVerified) {
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        existingEmail.otp = otp;
+        existingEmail.otpExpiresAt = otpExpiresAt;
+        await existingEmail.save();
+
+        await sendEmailOtp(email, otp);
+        return res.status(200).json({
+          message: "Email not verified. OTP sent to email.",
+        });
+      }
       return res.status(400).json({ message: "Email already in use" });
     }
 
@@ -128,6 +140,7 @@ exports.googleSignUp = async (req, res) => {
       otpExpiresAt,
       isGoogleUser: true,
       googleId,
+      profilePicture: picture,
       role: "provider",
     });
 
@@ -225,12 +238,22 @@ exports.googleSignUpBuyer = async (req, res) => {
       }
     }
 
-    // Check if email already exists
     const existingEmail = await Buyer.findOne({ email });
     if (existingEmail) {
+      if (!existingEmail.emailVerified) {
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        existingEmail.otp = otp;
+        existingEmail.otpExpiresAt = otpExpiresAt;
+        await existingEmail.save();
+
+        await sendEmailOtp(email, otp);
+        return res.status(200).json({
+          message: "Email not verified. OTP sent to email.",
+        });
+      }
       return res.status(400).json({ message: "Email already in use" });
     }
-
     // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -406,7 +429,19 @@ exports.registerBuyer = async (req, res) => {
 
     const existingEmail = await Buyer.findOne ({ email });
     if (existingEmail) {
-        return res.status(400).json({ message: "Email already in use" });
+      if (!existingEmail.emailVerified) {
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        existingEmail.otp = otp;
+        existingEmail.otpExpiresAt = otpExpiresAt;
+        await existingEmail.save();
+
+        await sendEmailOtp(email, otp);
+        return res.status(200).json({
+          message: "Email not verified. OTP sent to email.",
+        });
+      }
+      return res.status(400).json({ message: "Email already in use" });
     }
 
     let hashedPassword = null;
@@ -473,7 +508,19 @@ exports.registerProvider = async (req, res) => {
 
     const existingEmail = await Provider.findOne ({ email });
     if (existingEmail) {
-        return res.status(400).json({ message: "Email already in use" });
+      if (!existingEmail.emailVerified) {
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        existingEmail.otp = otp;
+        existingEmail.otpExpiresAt = otpExpiresAt;
+        await existingEmail.save();
+
+        await sendEmailOtp(email, otp);
+        return res.status(200).json({
+          message: "Email not verified. OTP sent to email.",
+        });
+      }
+      return res.status(400).json({ message: "Email already in use" });
     }
 
     let hashedPassword = null;
@@ -555,7 +602,7 @@ try {
       await sendWelcomeEmail(user.email, {
         firstName,
         year: new Date().getFullYear(),
-        ctaUrl: baseUrl,
+        appUrl: baseUrl,
         ctaText: "Open SabiGuy",
         // unsubscribeUrl: baseUrl ? `${baseUrl.replace(/\\/$/, "")}/unsubscribe` : "",
       });
