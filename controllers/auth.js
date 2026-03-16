@@ -811,6 +811,30 @@ const otp = Math.floor(100000 + Math.random() * 900000).toString();
   }
 };
 
+exports.verifyResetOtp = async (req, res) => {
+  const { email, otp } = req.body;
+
+  try {
+    let user = await Buyer.findOne({ email });
+    if (!user) {
+      user = await Provider.findOne({ email });
+    }
+
+    if (!user) {
+      return res.status(400).json({ message: "User not found, please check the email" });
+    }
+
+    if (!otp || user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    return res.status(200).json({ message: "OTP verified successfully" });
+  } catch (error) {
+    console.error("Verify reset OTP error:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 exports.resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
 

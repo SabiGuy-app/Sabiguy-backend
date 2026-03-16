@@ -4,6 +4,7 @@ const { registerBuyer,
      login, 
      verifyEmail,
      forgotPassword,
+     verifyResetOtp,
      resetPassword, 
      googleSignUp, 
      googleSignUpBuyer, 
@@ -273,6 +274,34 @@ router.post("/refresh", refreshAuthToken);
  *         description: User not found
  */
 router.post("/password", forgotPassword);
+
+/**
+ * @swagger
+ * /api/v1/auth/verify-reset-otp:
+ *   post:
+ *     summary: Validate password reset OTP
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, otp]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "user@example.com"
+ *               otp:
+ *                 type: string
+ *                 example: "44576"
+ *     responses:
+ *       200:
+ *         description: OTP verified successfully
+ *       400:
+ *         description: Invalid or expired OTP
+ */
+router.post("/verify-reset-otp", verifyResetOtp);
 
 /**
  * @swagger
