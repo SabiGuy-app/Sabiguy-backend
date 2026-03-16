@@ -1074,15 +1074,15 @@ class BookingController {
       }
 
       const user = await Buyer.findById(userId);
-      user.allowSystem = !user.allowSystem;
-      await user.save();
-
       if (!user) {
         return res.status(404).json({
           success: false,
           message: "User not found",
         });
       }
+
+      user.allowSystem = allowSystem;
+      await user.save();
 
       return res.status(200).json({
         success: true,

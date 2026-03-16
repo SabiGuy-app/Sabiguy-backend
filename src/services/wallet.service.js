@@ -664,6 +664,38 @@ class WalletService {
       throw new Error("Invalid payment amount");
     }
 
+    const existingBooking = await Booking.findById(bookingId)
+      .select("status payment userId providerId")
+      .lean();
+
+    if (!existingBooking) {
+      throw new Error("Booking not found");
+    }
+
+    const paymentAlreadyCaptured =
+      existingBooking.payment?.paidAt ||
+      ["held", "released"].includes(existingBooking.payment?.escrowStatus) ||
+      [
+        "paid_escrow",
+        "in_progress",
+        "completed",
+        "funds_released",
+      ].includes(existingBooking.status);
+
+    if (paymentAlreadyCaptured) {
+      throw new Error("This booking has already been paid for");
+    }
+
+    const existingPaymentTx = await Transaction.findOne({
+      bookingId,
+      type: "payment",
+      status: "completed",
+    }).select("_id");
+
+    if (existingPaymentTx) {
+      throw new Error("Payment already recorded for this booking");
+    }
+
     // Get buyer's wallet
     const buyerWallet = await this.getOrCreateWallet(userId, "Buyer");
 

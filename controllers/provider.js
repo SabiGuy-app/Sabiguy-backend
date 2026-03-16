@@ -199,7 +199,12 @@ class ProviderController {
       res.status(200).json({
         success: true,
         message: "Account info updated successfully",
-        data: provider,
+        data: {
+          accountName: provider.accountName,
+          accountNumber: provider.accountNumber,
+          bankName: provider.bankName,
+          bankCode: provider.bankCode,
+        },
       });
     } catch (err) {
       console.error("Account update error:", err);
@@ -270,19 +275,141 @@ class ProviderController {
         "Provider",
       );
 
-      // Get booking statistics
-      const [totalBookings, activeBookings, completedBookings] =
-        await Promise.all([
-          Booking.countDocuments({ providerId }),
-          Booking.countDocuments({
-            providerId,
-            status: { $in: ["in_progress", "paid_escrow"] },
-          }),
-          Booking.countDocuments({
-            providerId,
-            status: { $in: ["completed", "funds_released"] },
-          }),
-        ]);
+      const now = new Date();
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      // Get booking statistics + analytics
+      const [
+        totalBookings,
+        activeBookings,
+        completedBookings,
+        revenueOverview,
+        averageResponse,
+        bookingsByDay,
+        peakHourBuckets,
+      ] = await Promise.all([
+        Booking.countDocuments({ providerId }),
+        Booking.countDocuments({
+          providerId,
+          status: { $in: ["in_progress", "paid_escrow"] },
+        }),
+        Booking.countDocuments({
+          providerId,
+          status: { $in: ["completed", "funds_released"] },
+        }),
+        Booking.aggregate([
+          {
+            $match: {
+              providerId,
+              status: { $in: ["completed", "funds_released"] },
+            },
+          },
+          {
+            $project: {
+              createdAt: 1,
+              providerNet: {
+                $subtract: [
+                  "$agreedPrice",
+                  { $ifNull: ["$providerCommission", 0] },
+                ],
+              },
+            },
+          },
+          {
+            $facet: {
+              total: [
+                { $group: { _id: null, amount: { $sum: "$providerNet" } } },
+              ],
+              last7Days: [
+                { $match: { createdAt: { $gte: sevenDaysAgo } } },
+                { $group: { _id: null, amount: { $sum: "$providerNet" } } },
+              ],
+              last30Days: [
+                { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+                { $group: { _id: null, amount: { $sum: "$providerNet" } } },
+              ],
+            },
+          },
+        ]),
+        Booking.aggregate([
+          {
+            $match: {
+              providerId,
+              acceptedAt: { $exists: true, $ne: null },
+            },
+          },
+          {
+            $project: {
+              responseMinutes: {
+                $divide: [
+                  { $subtract: ["$acceptedAt", "$createdAt"] },
+                  1000 * 60,
+                ],
+              },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              averageResponseMinutes: { $avg: "$responseMinutes" },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        Booking.aggregate([
+          { $match: { providerId } },
+          {
+            $group: {
+              _id: { $dayOfWeek: "$createdAt" },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ]),
+        Booking.aggregate([
+          { $match: { providerId } },
+          {
+            $group: {
+              _id: { $hour: "$createdAt" },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ]),
+      ]);
+
+      const revenueFacet = revenueOverview?.[0] || {};
+      const totalRevenue = revenueFacet.total?.[0]?.amount || 0;
+      const last7DaysRevenue = revenueFacet.last7Days?.[0]?.amount || 0;
+      const last30DaysRevenue = revenueFacet.last30Days?.[0]?.amount || 0;
+
+      const averageResponseMinutes =
+        averageResponse?.[0]?.averageResponseMinutes || 0;
+
+      const dayNames = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+      ];
+      const bookingsByDayOfWeek = bookingsByDay.map((item) => ({
+        day: dayNames[(item._id || 1) - 1],
+        dayIndex: item._id,
+        count: item.count,
+      }));
+
+      let peakHour = null;
+      let peakHourCount = 0;
+      peakHourBuckets.forEach((bucket) => {
+        if (bucket.count > peakHourCount) {
+          peakHourCount = bucket.count;
+          peakHour = bucket._id;
+        }
+      });
 
       return res.status(200).json({
         success: true,
@@ -295,6 +422,21 @@ class ProviderController {
           pendingEarnings: walletBalance.pending, // In escrow
           totalEarnings: walletBalance.totalEarnings, // All time
           totalWithdrawals: walletBalance.totalWithdrawals,
+          revenueOverview: {
+            total: totalRevenue,
+            last7Days: last7DaysRevenue,
+            last30Days: last30DaysRevenue,
+          },
+          averageResponseTimeMinutes: Math.round(averageResponseMinutes * 100) / 100,
+          bookingsByDayOfWeek,
+          peakHourAnalysis: {
+            peakHour,
+            peakHourCount,
+            buckets: peakHourBuckets.map((bucket) => ({
+              hour: bucket._id,
+              count: bucket.count,
+            })),
+          },
         },
       });
     } catch (error) {

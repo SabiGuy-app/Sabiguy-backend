@@ -781,6 +781,7 @@ class paymentService {
       return {
         accountName: response.data.data.account_name,
         accountNumber: response.data.data.account_number,
+        bankCode,
       };
     } catch (error) {
       console.error("Verify bank account error:", error);
