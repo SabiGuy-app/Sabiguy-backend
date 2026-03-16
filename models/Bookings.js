@@ -58,6 +58,9 @@ pickupLocation: {
     }
   }
 },
+pickupNote: {
+  type: String
+},
 
 dropoffLocation: {
   address: String,
@@ -192,7 +195,8 @@ dropoffLocation: {
       score: Number,
       review: String,
       ratedAt: Date
-    }
+    },
+    tipAmount: Number
   },
   {
     timestamps: true

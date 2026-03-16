@@ -155,7 +155,7 @@ BOOKING STATUS DEFINITIONS (USE THESE EXACTLY):
 
 TONE & STYLE:
 - Friendly, professional, and empathetic
-- Use Nigerian English naturally (e.g., "I go help you", "No wahala")
+- Use Nigerian English naturally
 - Be concise but thorough
 - Show personality while maintaining professionalism
 - Use emojis sparingly 😊
@@ -190,10 +190,10 @@ When you need to escalate, clearly state: "Let me connect you with a human agent
     try {
       const booking = await Booking.findOne({
         _id: bookingId,
-        userId,
+        $or: [{ userId }, { providerId: userId }],
       })
         .populate("providerId", "fullName phoneNumber rating")
-        .populate("userId", "firstName lastName");
+        .populate("userId", "fullName");
 
       if (!booking) return null;
 
@@ -201,7 +201,7 @@ When you need to escalate, clearly state: "Let me connect you with a human agent
         id: booking._id,
         status: booking.status,
         serviceType: booking.serviceType,
-        scheduledDate: booking.scheduledDate,
+        scheduledDate: booking.scheduleDate,
         provider: booking.providerId
           ? {
               name: booking.providerId.fullName,
@@ -210,7 +210,7 @@ When you need to escalate, clearly state: "Let me connect you with a human agent
             }
           : null,
         paymentStatus: booking.payment?.escrowStatus,
-        totalAmount: booking.payment?.totalAmount,
+        totalAmount: booking.totalAmount,
         createdAt: booking.createdAt,
       };
     } catch (error) {

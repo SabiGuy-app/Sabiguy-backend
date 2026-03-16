@@ -15,7 +15,7 @@ class paymentService {
     this.platformFeePercentage = 10;
   }
 
-  async initializePayment(bookingId, userId) {
+  async initializePayment(bookingId, userId, pickupNote = null) {
     try {
       const booking = await Booking.findById(bookingId)
         .populate("userId", "email fullName")
@@ -44,6 +44,10 @@ class paymentService {
       const serviceFee = breakdown.userPays - agreedPrice;
       const totalAmount = breakdown.userPays;
 
+      if (pickupNote) {
+        booking.pickupNote = String(pickupNote).trim();
+      }
+
       // Update booking with payment details
       booking.agreedPrice = agreedPrice;
       booking.serviceFee = serviceFee;
@@ -64,6 +68,7 @@ class paymentService {
             buyerId: userId,
             providerId: booking.providerId?._id.toString(),
             serviceType: booking.serviceType,
+            pickupNote: booking.pickupNote || null,
             agreedPrice,
             serviceFee,
             totalAmount,
@@ -79,6 +84,11 @@ class paymentService {
                 display_name: "Service Type",
                 variable_name: "service_type",
                 value: booking.serviceType,
+              },
+              {
+                display_name: "Pickup Note",
+                variable_name: "pickup_note",
+                value: booking.pickupNote || "N/A",
               },
             ],
           },

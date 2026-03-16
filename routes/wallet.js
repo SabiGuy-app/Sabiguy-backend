@@ -146,6 +146,10 @@ router.get('/fund/verify/:reference', authMiddleware, WalletController.verifyWal
  *                 type: string
  *                 description: Booking ID to pay for
  *                 example: 6970e9663c21790077bd6464
+ *               pickupNote:
+ *                 type: string
+ *                 description: Optional pickup instructions for the provider
+ *                 example: "Please call when you arrive"
  *     responses:
  *       200:
  *         description: Wallet payment successful

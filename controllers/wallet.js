@@ -155,7 +155,7 @@ class WalletController {
  async payFromWallet(req, res) {
   try {
     const userId = req.user.id;
-    const { bookingId } = req.body;
+    const { bookingId, pickupNote } = req.body;
 
     if (!bookingId) {
       return res.status(400).json({
@@ -186,6 +186,11 @@ class WalletController {
         success: false,
         message: "No provider assigned to this booking yet",
       });
+    }
+
+    if (pickupNote) {
+      booking.pickupNote = String(pickupNote).trim();
+      await booking.save();
     }
 
     const totalAmount = parseFloat(

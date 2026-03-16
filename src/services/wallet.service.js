@@ -160,7 +160,7 @@ class WalletService {
       const buyerWallet = await this.getOrCreateWallet(userId, "Buyer");
       if (buyerWallet.balance.available < tipAmount) {
         throw new Error(
-          `Insufficient wallet balance. Required: ₦${tipAmount}, Available: ₦${buyerWallet.balance.available}`,
+          `Insufficient wallet balance. Required: ${totalCharge}, Available: ₦${buyerWallet.balance.available}`,
         );
       }
 
@@ -302,7 +302,7 @@ class WalletService {
       //     userModel: "Provider",
       //     walletId: providerWallet._id,
       //   },
-      //   amount: normalizedBreakdown.totalAmount,
+      //   amount: totalCharge,
       //   breakdown: normalizedBreakdown,
       //   bookingId,
       //   gateway: {
@@ -350,7 +350,7 @@ class WalletService {
             await notificationService.notifyUser(userId._id, {
                   type: "payment_received",
                   title: "✅ Payment Successful",
-                  message: `Your payment is secured. Provider can now start the service.`,
+          message: `Your payment is secured. Agreed price: NGN${normalizedBreakdown.agreedPrice.toLocaleString()}. Service fee: NGN${normalizedBreakdown.serviceFee.toLocaleString()}. New available balance: NGN${buyerBalanceAfter.available.toLocaleString()}`,
                   bookingId
                 });
         } catch (notifyError) {
@@ -659,7 +659,7 @@ class WalletService {
     normalizedBreakdown.serviceFee =
       pricingBreakdown.userPays - normalizedBreakdown.agreedPrice;
     normalizedBreakdown.totalAmount = pricingBreakdown.userPays;
-
+    const totalCharge = normalizedBreakdown.totalAmount;
     if (isNaN(paymentAmount) || paymentAmount <= 0) {
       throw new Error("Invalid payment amount");
     }
@@ -674,10 +674,10 @@ class WalletService {
     });
 
     // Check if sufficient balance
-    if (buyerWallet.balance.available < paymentAmount) {
+    if (buyerWallet.balance.available < totalCharge) {
       throw new Error(
         `Insufficient wallet balance. ` +
-          `Required: ₦${amount}, Available: ₦${buyerWallet.balance.available}`,
+          `Required: ${totalCharge}, Available: ₦${buyerWallet.balance.available}`,
       );
     }
 
@@ -688,8 +688,8 @@ class WalletService {
     };
 
     // Debit buyer's available balance
-    buyerWallet.balance.available -= paymentAmount;
-    buyerWallet.balance.total -= paymentAmount;
+    buyerWallet.balance.available -= totalCharge;
+    buyerWallet.balance.total -= totalCharge;
     buyerWallet.lastTransactionAt = new Date();
     await buyerWallet.save();
 
@@ -712,8 +712,8 @@ class WalletService {
         userId: providerId,
         userModel: "Provider",
       },
-      amount: normalizedBreakdown.totalAmount,
-      agreedPrice: paymentAmount,
+      amount: totalCharge,
+      agreedPrice: normalizedBreakdown.agreedPrice,
       bookingId,
       breakdown: normalizedBreakdown,
       balances: {
@@ -740,7 +740,7 @@ class WalletService {
         providerCommission:
           pricingBreakdown.platformEarns - normalizedBreakdown.serviceFee,
         platformEarns: pricingBreakdown.platformEarns,
-        totalAmount: normalizedBreakdown.totalAmount,
+        totalamount: totalCharge,
       },
       { new: true },
     )
@@ -770,7 +770,7 @@ class WalletService {
           providerId,
           type: "payment_received",
           title: "💰 Payment Secured",
-          message: `Payment of ₦${paymentAmount.toLocaleString()} for your ${booking.serviceType} booking is now in escrow. Complete the service to receive payment.`,
+          message: `Payment secured for your ${booking.serviceType} booking. Agreed price: NGN${normalizedBreakdown.agreedPrice.toLocaleString()}. Service fee: NGN${normalizedBreakdown.serviceFee.toLocaleString()}. Complete the service to receive payment.`,
           data: {
             bookingId: booking._id,
             amount: paymentAmount,
@@ -782,7 +782,7 @@ class WalletService {
           userId,
           type: "payment_sent",
           title: "✅ Payment Successful",
-          message: `Your payment of ₦${paymentAmount.toLocaleString()} is secured. Provider can now start the service. New available balance: ₦${buyerBalanceAfter.available.toLocaleString()}`,
+          message: `Your payment is secured. Agreed price: NGN${normalizedBreakdown.agreedPrice.toLocaleString()}. Service fee: NGN${normalizedBreakdown.serviceFee.toLocaleString()}. New available balance: NGN${buyerBalanceAfter.available.toLocaleString()}`,
           data: {
             bookingId: booking._id,
             amount: paymentAmount,
@@ -982,4 +982,8 @@ class WalletService {
 }
 
 module.exports = new WalletService();
+
+
+
+
 

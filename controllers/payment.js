@@ -5,7 +5,7 @@ class PaymentController {
 
     async initializePayment(req, res) {
     try {
-      const { bookingId } = req.body;
+      const { bookingId, pickupNote } = req.body;
       const userId = req.user.id;
 
       if (!bookingId) {
@@ -15,7 +15,11 @@ class PaymentController {
         });
       }
 
-      const paymentData = await paymentService.initializePayment(bookingId, userId);
+      const paymentData = await paymentService.initializePayment(
+        bookingId,
+        userId,
+        pickupNote,
+      );
 
       return res.status(200).json({
         success: true,

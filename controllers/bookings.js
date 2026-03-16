@@ -684,6 +684,13 @@ class BookingController {
         });
       }
 
+      if (tipAmount !== undefined && booking.tipAmount) {
+        return res.status(409).json({
+          success: false,
+          message: "Tip already added for this booking",
+        });
+      }
+
       booking.status = "user_accepted_completion";
 
       if (score || review) {
@@ -705,7 +712,10 @@ class BookingController {
           booking._id,
           notificationService,
         );
+        booking.tipAmount = Number(tipAmount);
       }
+
+      await booking.save();
 
       await notificationService.notifyUser(booking.providerId._id, {
         type: "job_completed_confirmed",

@@ -594,9 +594,13 @@ router.patch('/:id/cancel', authMiddleware, BookingController.cancelBooking);
  *                 type: string
  *                 description: Review for provider
  *                 example: Very professional and punctual
+ *               tipAmount:
+ *                 type: number
+ *                 description: Optional tip amount (wallet balance required)
+ *                 example: 1000
  *     responses:
  *       200:
- *         description: Booking completion accepted successfully
+ *         description: Job completion accepted successfully
  *         content:
  *           application/json:
  *             schema:
@@ -607,9 +611,16 @@ router.patch('/:id/cancel', authMiddleware, BookingController.cancelBooking);
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: Booking accepted successfully
+ *                   example: Job completed accepted successfully
  *                 data:
- *                   $ref: '#/components/schemas/Booking'
+ *                   type: object
+ *                   properties:
+ *                     booking:
+ *                       $ref: '#/components/schemas/Booking'
+ *                     tip:
+ *                       type: object
+ *       400:
+ *         description: Invalid rating score or tipAmount
  *       401:
  *         description: Unauthorized
  *       409:

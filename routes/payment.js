@@ -27,6 +27,10 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *                 type: string
  *                 example: 507f1f77bcf86cd799439011
  *                 description: ID of the booking to pay for
+ *               pickupNote:
+ *                 type: string
+ *                 description: Optional pickup instructions for the provider
+ *                 example: "Call me on arrival, gate is locked"
  *     responses:
  *       200:
  *         description: Payment initialized successfully

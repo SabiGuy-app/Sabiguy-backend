@@ -50,7 +50,6 @@ class SupportChatbotController {
 async chat(req, res) {
   try {
     const userId = req.user?.id || null;
-    const userRole = req.user?.role || "buyer";
     const { message, conversationHistory = [], bookingId = null } = req.body;
 
     if (!message) {
@@ -67,8 +66,12 @@ async chat(req, res) {
       });
     }
 
-    const user =
-      (await Buyer.findById(userId)) || (await Provider.findById(userId));
+    let user = await Buyer.findById(userId);
+    let userRole = "buyer";
+    if (!user) {
+      user = await Provider.findById(userId);
+      userRole = "provider";
+    }
 
     if (!user) {
       return res
@@ -102,7 +105,7 @@ async chat(req, res) {
 
     // Fetch booking context if booking ID is available
     if (finalBookingId) {
-      console.log(`🔍 Fetching booking context for: ${finalBookingId}`);
+      console.log(`🔍 Fetching booking context for: ${finalBookingId} and ${userId}`);
       
       const bookingContext = await groqService.getBookingContext(
         finalBookingId,
