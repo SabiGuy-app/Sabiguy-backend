@@ -203,4 +203,131 @@ router.get(
   notificationController.getUnreadCount,
 );
 
+/**
+ * @swagger
+ * /api/v1/notifications/preferences:
+ *   get:
+ *     summary: Get notification preferences
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Preferences retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     notificationPreferences:
+ *                       type: object
+ *                       example:
+ *                         bookings:
+ *                           push: true
+ *                           email: true
+ *                           types:
+ *                             - new_booking_request
+ *                             - provider_accepted
+ *                             - booking_selected
+ *                             - booking_cancelled
+ *                             - booking_status_updated
+ *                             - booking_taken
+ *                             - counter_offer
+ *                         jobCompleted:
+ *                           push: true
+ *                           email: true
+ *                           types:
+ *                             - job_started
+ *                             - booking_completed
+ *                             - job_completed_confirmed
+ *                         chatMessages:
+ *                           push: true
+ *                           email: false
+ *                           types:
+ *                             - new_message
+ *                             - message_received
+ *                         walletPayments:
+ *                           push: true
+ *                           email: true
+ *                           types:
+ *                             - wallet_funded
+ *                             - wallet_payment
+ *                             - payment_received
+ *                             - payment_sent
+ *                         promotions:
+ *                           push: false
+ *                           email: false
+ *                           types:
+ *                             - test
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/preferences",
+  authMiddleware,
+  notificationController.getNotificationPreferences,
+);
+
+/**
+ * @swagger
+ * /api/v1/notifications/preferences:
+ *   patch:
+ *     summary: Update notification preferences
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               notificationPreferences:
+ *                 type: object
+ *                 example:
+ *                   bookings:
+ *                     push: true
+ *                     email: true
+ *                     types:
+ *                       - new_booking_request
+ *                       - provider_accepted
+ *                   promotions:
+ *                     push: false
+ *                     email: false
+ *                     types:
+ *                       - test
+ *     responses:
+ *       200:
+ *         description: Preferences updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     notificationPreferences:
+ *                       type: object
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.patch(
+  "/preferences",
+  authMiddleware,
+  notificationController.updateNotificationPreferences,
+);
+
 module.exports = router;

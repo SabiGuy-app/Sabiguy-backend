@@ -108,6 +108,56 @@ fcmToken: {
     },
     lastUpdated: Date
   },
+
+  notificationPreferences: {
+    bookings: {
+      push: { type: Boolean, default: true },
+      email: { type: Boolean, default: true },
+      types: {
+        type: [String],
+        default: [
+          "new_booking_request",
+          "provider_accepted",
+          "booking_selected",
+          "booking_cancelled",
+          "booking_status_updated",
+          "booking_taken",
+          "counter_offer",
+        ],
+      },
+    },
+    jobCompleted: {
+      push: { type: Boolean, default: true },
+      email: { type: Boolean, default: true },
+      types: {
+        type: [String],
+        default: ["job_started", "booking_completed", "job_completed_confirmed"],
+      },
+    },
+    chatMessages: {
+      push: { type: Boolean, default: true },
+      email: { type: Boolean, default: false },
+      types: { type: [String], default: ["new_message", "message_received"] },
+    },
+    walletPayments: {
+      push: { type: Boolean, default: true },
+      email: { type: Boolean, default: true },
+      types: {
+        type: [String],
+        default: [
+          "wallet_funded",
+          "wallet_payment",
+          "payment_received",
+          "payment_sent",
+        ],
+      },
+    },
+    promotions: {
+      push: { type: Boolean, default: false },
+      email: { type: Boolean, default: false },
+      types: { type: [String], default: ["test"] },
+    },
+  },
   
   // Pricing
   

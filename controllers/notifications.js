@@ -1,5 +1,43 @@
-const Notification = require ('../models/Notification');
-const notificationService = require ('../src/services/notification.service.js');
+const Notification = require("../models/Notification");
+const notificationService = require("../src/services/notification.service.js");
+const Buyer = require("../models/ServiceUser");
+const Provider = require("../models/ServiceProvider");
+
+const DEFAULT_PREFERENCES = {
+  bookings: {
+    push: true,
+    email: true,
+    types: [
+      "new_booking_request",
+      "provider_accepted",
+      "booking_selected",
+      "booking_cancelled",
+      "booking_status_updated",
+      "booking_taken",
+      "counter_offer",
+    ],
+  },
+  jobCompleted: {
+    push: true,
+    email: true,
+    types: ["job_started", "booking_completed", "job_completed_confirmed"],
+  },
+  chatMessages: {
+    push: true,
+    email: false,
+    types: ["new_message", "message_received"],
+  },
+  walletPayments: {
+    push: true,
+    email: true,
+    types: ["wallet_funded", "wallet_payment", "payment_received", "payment_sent"],
+  },
+  promotions: {
+    push: false,
+    email: false,
+    types: ["test"],
+  },
+};
 
 class notificationController {
   /**
@@ -177,6 +215,98 @@ class notificationController {
         success: false,
         message: 'Failed to get unread count',
         error: error.message
+      });
+    }
+  }
+
+  async getNotificationPreferences(req, res) {
+    try {
+      const userId = req.user.id;
+      const role = req.user.role;
+      const Model = role === "provider" ? Provider : Buyer;
+
+      const user = await Model.findById(userId).select(
+        "notificationPreferences",
+      );
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          notificationPreferences:
+            user.notificationPreferences || DEFAULT_PREFERENCES,
+        },
+      });
+    } catch (error) {
+      console.error("Get notification preferences error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch notification preferences",
+        error: error.message,
+      });
+    }
+  }
+
+  async updateNotificationPreferences(req, res) {
+    try {
+      const userId = req.user.id;
+      const role = req.user.role;
+      const Model = role === "provider" ? Provider : Buyer;
+      const { notificationPreferences } = req.body;
+
+      if (!notificationPreferences || typeof notificationPreferences !== "object") {
+        return res.status(400).json({
+          success: false,
+          message: "notificationPreferences is required",
+        });
+      }
+
+      const user = await Model.findById(userId).select(
+        "notificationPreferences",
+      );
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      const current = user.notificationPreferences || DEFAULT_PREFERENCES;
+      const merged = { ...current };
+
+      Object.keys(DEFAULT_PREFERENCES).forEach((key) => {
+        if (!notificationPreferences[key]) return;
+        const incoming = notificationPreferences[key];
+        const base = current[key] || DEFAULT_PREFERENCES[key];
+
+        merged[key] = {
+          push:
+            typeof incoming.push === "boolean" ? incoming.push : base.push,
+          email:
+            typeof incoming.email === "boolean" ? incoming.email : base.email,
+          types: Array.isArray(incoming.types) ? incoming.types : base.types,
+        };
+      });
+
+      user.notificationPreferences = merged;
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Notification preferences updated",
+        data: { notificationPreferences: merged },
+      });
+    } catch (error) {
+      console.error("Update notification preferences error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update notification preferences",
+        error: error.message,
       });
     }
   }

@@ -27,6 +27,97 @@ class NotificationService {
     this.io = null;
   }
 
+  getDefaultPreferences() {
+    return {
+      bookings: {
+        push: true,
+        email: true,
+        types: [
+          "new_booking_request",
+          "provider_accepted",
+          "booking_selected",
+          "booking_cancelled",
+          "booking_status_updated",
+          "booking_taken",
+          "counter_offer",
+        ],
+      },
+      jobCompleted: {
+        push: true,
+        email: true,
+        types: ["job_started", "booking_completed", "job_completed_confirmed"],
+      },
+      chatMessages: {
+        push: true,
+        email: false,
+        types: ["new_message", "message_received"],
+      },
+      walletPayments: {
+        push: true,
+        email: true,
+        types: [
+          "wallet_funded",
+          "wallet_payment",
+          "payment_received",
+          "payment_sent",
+        ],
+      },
+      promotions: {
+        push: false,
+        email: false,
+        types: ["test"],
+      },
+    };
+  }
+
+  getTypeCategory(type) {
+    const map = {
+      new_booking_request: "bookings",
+      provider_accepted: "bookings",
+      booking_selected: "bookings",
+      booking_cancelled: "bookings",
+      booking_status_updated: "bookings",
+      booking_taken: "bookings",
+      counter_offer: "bookings",
+      job_started: "jobCompleted",
+      booking_completed: "jobCompleted",
+      job_completed_confirmed: "jobCompleted",
+      new_message: "chatMessages",
+      message_received: "chatMessages",
+      wallet_funded: "walletPayments",
+      wallet_payment: "walletPayments",
+      payment_received: "walletPayments",
+      payment_sent: "walletPayments",
+      test: "promotions",
+    };
+    return map[type] || "bookings";
+  }
+
+  async getPreferences(recipientId, recipientModel) {
+    const defaults = this.getDefaultPreferences();
+    if (recipientModel === "Buyer") {
+      const user = await Buyer.findById(recipientId).select(
+        "notificationPreferences",
+      );
+      return user?.notificationPreferences || defaults;
+    }
+    const provider = await Provider.findById(recipientId).select(
+      "notificationPreferences",
+    );
+    return provider?.notificationPreferences || defaults;
+  }
+
+  shouldNotify(preferences, type) {
+    const category = this.getTypeCategory(type);
+    const categoryPrefs = preferences?.[category] || {};
+    const types = Array.isArray(categoryPrefs.types) ? categoryPrefs.types : [];
+    const enabledByType = types.length === 0 || types.includes(type);
+    const pushEnabled = Boolean(categoryPrefs.push) && enabledByType;
+    const emailEnabled = Boolean(categoryPrefs.email) && enabledByType;
+    const allowInApp = pushEnabled || emailEnabled;
+    return { allowInApp, allowPush: pushEnabled, allowEmail: emailEnabled };
+  }
+
   /**
    * Set Socket.IO instance
    */
@@ -41,17 +132,25 @@ class NotificationService {
    */
   async notifyUser(userId, data) {
     try {
-      const notification = await this.createNotification(userId, "Buyer", data);
+      const preferences = await this.getPreferences(userId, "Buyer");
+      const decision = this.shouldNotify(preferences, data.type);
+      if (!decision.allowInApp && !decision.allowPush) return null;
+
+      const notification = decision.allowInApp
+        ? await this.createNotification(userId, "Buyer", data)
+        : null;
 
       const room = `buyer:${userId}`;
 
       // Real-time (Socket.IO)
-      if (this.io) {
+      if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
       }
 
       // Push (FCM)
-      await this.sendPushNotification(userId, "Buyer", data);
+      if (decision.allowPush) {
+        await this.sendPushNotification(userId, "Buyer", data);
+      }
 
       return notification;
     } catch (error) {
@@ -66,21 +165,25 @@ class NotificationService {
    */
   async notifyProvider(providerId, data) {
     try {
-      const notification = await this.createNotification(
-        providerId,
-        "Provider",
-        data,
-      );
+      const preferences = await this.getPreferences(providerId, "Provider");
+      const decision = this.shouldNotify(preferences, data.type);
+      if (!decision.allowInApp && !decision.allowPush) return null;
+
+      const notification = decision.allowInApp
+        ? await this.createNotification(providerId, "Provider", data)
+        : null;
 
       const room = `provider:${providerId}`;
 
       // Real-time (Socket.IO)
-      if (this.io) {
+      if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
       }
 
       // Push (FCM)
-      await this.sendPushNotification(providerId, "Provider", data);
+      if (decision.allowPush) {
+        await this.sendPushNotification(providerId, "Provider", data);
+      }
 
       return notification;
     } catch (error) {
@@ -90,24 +193,28 @@ class NotificationService {
 
   async sendNotification(userId, userModel, data) {
     try {
+      const preferences = await this.getPreferences(userId, userModel);
+      const decision = this.shouldNotify(preferences, data.type);
+      if (!decision.allowInApp && !decision.allowPush) return null;
+
       // Create notification in database
-      const notification = await this.createNotification(
-        userId,
-        userModel,
-        data,
-      );
+      const notification = decision.allowInApp
+        ? await this.createNotification(userId, userModel, data)
+        : null;
 
       // Determine the correct room based on userModel
       const room = `${userModel.toLowerCase()}:${userId}`;
 
       // Real-time notification via Socket.IO
-      if (this.io) {
+      if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
         console.log(`📢 Real-time notification sent to room: ${room}`);
       }
 
       // Push notification via FCM
-      await this.sendPushNotification(userId, userModel, data);
+      if (decision.allowPush) {
+        await this.sendPushNotification(userId, userModel, data);
+      }
 
       return notification;
     } catch (error) {
