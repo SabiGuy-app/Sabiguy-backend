@@ -115,29 +115,43 @@ exports.googleSignUp = async (req, res) => {
     const existingEmail = await Provider.findOne({ email });
     if (existingEmail) {
       if (!existingEmail.emailVerified) {
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-        existingEmail.otp = otp;
-        existingEmail.otpExpiresAt = otpExpiresAt;
+        existingEmail.emailVerified = true;
+        existingEmail.otp = null;
+        existingEmail.otpExpiresAt = null;
         await existingEmail.save();
 
-        await sendEmailOtp(email, otp);
+        try {
+          const firstName = existingEmail.fullName
+            ? existingEmail.fullName.trim().split(/\s+/)[0]
+            : "there";
+          const baseUrl = process.env.FRONTEND_URL || "";
+          await sendWelcomeEmail(existingEmail.email, {
+            firstName,
+            year: new Date().getFullYear(),
+            ctaUrl: baseUrl,
+            ctaText: "Open SabiGuy",
+          });
+        } catch (welcomeError) {
+          console.error("Welcome email error:", welcomeError);
+          return res.status(500).json({
+            message: "Account verified, but welcome email failed to send",
+          });
+        }
+
         return res.status(200).json({
-          message: "Email not verified. OTP sent to email.",
+          message: "Email verified. Welcome email sent.",
         });
       }
       return res.status(400).json({ message: "Email already in use" });
     }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
     
     const newUser = new Provider({
       email,
       fullName: name,
       password: null,
-      otp,
-      otpExpiresAt,
+      otp: null,
+      otpExpiresAt: null,
+      emailVerified: true,
       isGoogleUser: true,
       googleId,
       profilePicture: picture,
@@ -147,10 +161,21 @@ exports.googleSignUp = async (req, res) => {
     await newUser.save();
 
     try {
-      await sendEmailOtp(email, otp);
-    } catch (OtpError) {
-      await Provider.findByIdAndDelete(newUser._id);
-      return res.status(500).json({ message: 'Failed to send otp, please try again' });
+      const firstName = newUser.fullName
+        ? newUser.fullName.trim().split(/\s+/)[0]
+        : "there";
+      const baseUrl = process.env.FRONTEND_URL || "";
+      await sendWelcomeEmail(newUser.email, {
+        firstName,
+        year: new Date().getFullYear(),
+        ctaUrl: baseUrl,
+        ctaText: "Open SabiGuy",
+      });
+    } catch (welcomeError) {
+      console.error("Welcome email error:", welcomeError);
+      return res.status(500).json({
+        message: "Signup successful, but welcome email failed to send",
+      });
     }
 
     const jwtToken = jwt.sign(
@@ -160,7 +185,7 @@ exports.googleSignUp = async (req, res) => {
     );
 
     res.status(200).json({
-      message: "Signup successful! OTP sent to email. Please verify to complete registration.",
+      message: "Signup successful! Welcome email sent.",
       token: jwtToken,
       newUser: {
         email: newUser.email,
@@ -241,31 +266,45 @@ exports.googleSignUpBuyer = async (req, res) => {
     const existingEmail = await Buyer.findOne({ email });
     if (existingEmail) {
       if (!existingEmail.emailVerified) {
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-        existingEmail.otp = otp;
-        existingEmail.otpExpiresAt = otpExpiresAt;
+        existingEmail.emailVerified = true;
+        existingEmail.otp = null;
+        existingEmail.otpExpiresAt = null;
         await existingEmail.save();
 
-        await sendEmailOtp(email, otp);
+        try {
+          const firstName = existingEmail.fullName
+            ? existingEmail.fullName.trim().split(/\s+/)[0]
+            : "there";
+          const baseUrl = process.env.FRONTEND_URL || "";
+          await sendWelcomeEmail(existingEmail.email, {
+            firstName,
+            year: new Date().getFullYear(),
+            ctaUrl: baseUrl,
+            ctaText: "Open SabiGuy",
+          });
+        } catch (welcomeError) {
+          console.error("Welcome email error:", welcomeError);
+          return res.status(500).json({
+            message: "Account verified, but welcome email failed to send",
+          });
+        }
+
         return res.status(200).json({
-          message: "Email not verified. OTP sent to email.",
+          message: "Email verified. Welcome email sent.",
         });
       }
       return res.status(400).json({ message: "Email already in use" });
     }
-    // Generate OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     // Create new user
     const newUser = new Buyer({
       email,
       fullName: name,
       password: null,
-      otp,
       profilePicture: picture,
-      otpExpiresAt,
+      otp: null,
+      otpExpiresAt: null,
+      emailVerified: true,
       isGoogleUser: true,
       googleId,
       role: "buyer",
@@ -273,19 +312,29 @@ exports.googleSignUpBuyer = async (req, res) => {
 
     await newUser.save();
 
-    // Send OTP
     try {
-      await sendEmailOtp(email, otp);
-    } catch (OtpError) {
-      await Buyer.findByIdAndDelete(newUser._id);
-      return res.status(500).json({ message: "Failed to send OTP, please try again" });
+      const firstName = newUser.fullName
+        ? newUser.fullName.trim().split(/\s+/)[0]
+        : "there";
+      const baseUrl = process.env.FRONTEND_URL || "";
+      await sendWelcomeEmail(newUser.email, {
+        firstName,
+        year: new Date().getFullYear(),
+        ctaUrl: baseUrl,
+        ctaText: "Open SabiGuy",
+      });
+    } catch (welcomeError) {
+      console.error("Welcome email error:", welcomeError);
+      return res.status(500).json({
+        message: "Signup successful, but welcome email failed to send",
+      });
     }
 
     // Generate JWT
     const jwtToken = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
     res.status(200).json({
-      message: "Signup successful! OTP sent to email. Please verify to complete registration.",
+      message: "Signup successful! Welcome email sent.",
       token: jwtToken,
       newUser: {
         email: newUser.email,
@@ -838,6 +887,14 @@ exports.verifyResetOtp = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
 
+   const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
+  if (!isValidPassword) {
+    return res.status(400).json({
+      message:
+        'Password must be at least 8 characters long and include a letter, number, and special character',
+    });
+  }
+
   try {
      let user = await Buyer.findOne ({ email });
     let role = 'buyer';
@@ -859,7 +916,11 @@ if ( user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
     user.resetOtpExpires = undefined;
     await user.save();
     try {
-      await passwordChangedEmail(user.email);
+      const changedAt = new Date().toLocaleString("en-NG", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      await passwordChangedEmail(user.email, { changedAt });
     } catch (emailError) {
       console.error("Password reset email error:", emailError);
       return res.status(500).json({
@@ -935,7 +996,11 @@ if (!strongPassword.test(newPassword)) {
     user.password = hashedPassword;
     await user.save();
     try {
-      await passwordChangedEmail(user.email);
+      const changedAt = new Date().toLocaleString("en-NG", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+      await passwordChangedEmail(user.email, { changedAt });
     } catch (emailError) {
       console.error("Password change email error:", emailError);
       return res.status(500).json({

@@ -12,8 +12,6 @@ class ProviderController {
         address,
         accountType,
         ninSlip,
-        radius,
-        allowAnywhere,
       } = req.body;
 
       const provider = await Provider.findById(req.user.id);
@@ -26,8 +24,7 @@ class ProviderController {
       provider.address = address;
       provider.accountType = accountType;
       provider.ninSlip = ninSlip;
-      provider.radius = radius;
-      provider.allowAnywhere = allowAnywhere;
+     
 
       await provider.save();
 

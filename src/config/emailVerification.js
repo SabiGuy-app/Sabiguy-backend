@@ -77,14 +77,14 @@ const forgotPasswordOtp = async (email, otp) => {
     }
 };
 
-const passwordChangedEmail = async (email) => {
+const passwordChangedEmail = async (email, data = {}) => {
     const sendSmtpEmail = new brevo.SendSmtpEmail();
 
     sendSmtpEmail.subject = "Your SabiGuy Password Was Changed";
     sendSmtpEmail.to = [{ email }];
     sendSmtpEmail.htmlContent = renderEmailTemplate("password-changed.njk", {
       year: new Date().getFullYear(),
-
+      ...data,
     });
     sendSmtpEmail.sender = sender;
 
