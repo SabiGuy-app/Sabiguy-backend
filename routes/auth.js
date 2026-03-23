@@ -4,6 +4,7 @@ const { registerBuyer,
      login, 
      verifyEmail,
      forgotPassword,
+     resendForgotPasswordOtp,
      verifyResetOtp,
      resetPassword, 
      googleSignUp, 
@@ -274,6 +275,33 @@ router.post("/refresh", refreshAuthToken);
  *         description: User not found
  */
 router.post("/password", forgotPassword);
+
+/**
+ * @swagger
+ * /api/v1/auth/resend-forgot-password-otp:
+ *   post:
+ *     summary: Resend forgot password OTP
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "user@example.com"
+ *     responses:
+ *       200:
+ *         description: Forgot password OTP resent successfully
+ *       400:
+ *         description: User not found
+ *       429:
+ *         description: Please wait before requesting another OTP
+ */
+router.post("/resend-forgot-password-otp", resendForgotPasswordOtp);
 
 /**
  * @swagger

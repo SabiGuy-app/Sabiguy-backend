@@ -13,6 +13,7 @@ const serviceProviderSchema = new mongoose.Schema({
     refreshToken: { type: String },
     refreshTokenExpiresAt: { type: Date },
     resetOtpExpires: { type: Date },
+    lastResetOtpSentAt: { type: Date, default: null },
     emailVerificationExpires: { type: Date },
     fullName: { type: String},
     profilePicture: {
@@ -179,7 +180,8 @@ fcmToken: {
   completedJobs: {
     type: Number,
     default: 0
-  }
+  },
+  kycCompleted: { type: Boolean, default: false }
 }, {
   timestamps: true
 });

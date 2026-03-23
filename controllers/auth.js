@@ -688,7 +688,7 @@ exports.resendOTP = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if (user.isVerified) {
+    if (user.emailVerified) {
       return res.status(400).json({ message: 'Email already verified' });
     }
 
@@ -860,6 +860,55 @@ const otp = Math.floor(100000 + Math.random() * 900000).toString();
   }
 };
 
+exports.resendForgotPasswordOtp = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  try {
+    let user = await Buyer.findOne({ email });
+
+    if (!user) {
+      user = await Provider.findOne({ email });
+    }
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({ message: "User not found, please check the email" });
+    }
+
+    const now = new Date();
+    const lastSent = user.lastResetOtpSentAt
+      ? new Date(user.lastResetOtpSentAt)
+      : null;
+
+    if (lastSent && now.getTime() - lastSent.getTime() < 60 * 1000) {
+      return res
+        .status(429)
+        .json({ message: "Please wait before requesting another OTP" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    user.resetOtp = otp;
+    user.resetOtpExpires = Date.now() + 10 * 60 * 1000; // 10 min
+    user.lastResetOtpSentAt = now;
+    await user.save();
+
+    await forgotPasswordOtp(email, otp);
+
+    return res
+      .status(200)
+      .json({ message: "Forgot password OTP resent to email" });
+  } catch (error) {
+    console.error("Resend forgot password OTP error:", error);
+    return res.status(500).json({ message: "Failed to send OTP email" });
+  }
+};
+
 exports.verifyResetOtp = async (req, res) => {
   const { email, otp } = req.body;
 
@@ -887,7 +936,7 @@ exports.verifyResetOtp = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
 
-   const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
+   const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(newPassword);
   if (!isValidPassword) {
     return res.status(400).json({
       message:

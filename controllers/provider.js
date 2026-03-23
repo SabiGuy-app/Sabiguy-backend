@@ -190,6 +190,7 @@ class ProviderController {
       provider.accountNumber = accountNumber;
       provider.bankName = bankName;
       provider.bankCode = bankCode;
+      provider.kycCompleted = true;
 
       await provider.save();
 
