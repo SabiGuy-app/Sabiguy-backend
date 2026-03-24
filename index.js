@@ -15,7 +15,7 @@ dotenv.config()
 
 const io = socketIO(server, {
   cors: {
-   origin: ["http://localhost:5173", "https://sabiguy-frontend.vercel.app"],
+   origin: ["http://localhost:5173", "https://sabiguy-frontend.vercel.app", "https://sabiguy.vercel.app"],
   allowedHeaders: ["Content-Type", "Authorization"],
    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
    credentials: true,
@@ -27,7 +27,7 @@ const io = socketIO(server, {
 });
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://sabiguy-frontend.vercel.app"],
+    origin: ["http://localhost:5173", "https://sabiguy-frontend.vercel.app", "https://sabiguy.vercel.app"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
 
