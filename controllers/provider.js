@@ -573,10 +573,17 @@ class ProviderController {
    * Toggle availability
    * PUT /api/provider/availability/toggle
    */
-  async toggleAvailability(req, res) {
+ async toggleAvailability(req, res) {
     try {
       const providerId = req.user.id;
-      const { isAvailable } = req.body;
+      const { isAvailable } = req.body || {};
+
+      if (typeof isAvailable !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "isAvailable (boolean) is required",
+        });
+      }
 
       const provider = await Provider.findByIdAndUpdate(
         providerId,
