@@ -130,6 +130,7 @@ exports.googleSignUp = async (req, res) => {
             year: new Date().getFullYear(),
             ctaUrl: baseUrl,
             ctaText: "Open SabiGuy",
+            role: existingEmail.role,
           });
         } catch (welcomeError) {
           console.error("Welcome email error:", welcomeError);
@@ -170,6 +171,7 @@ exports.googleSignUp = async (req, res) => {
         year: new Date().getFullYear(),
         ctaUrl: baseUrl,
         ctaText: "Open SabiGuy",
+        role: newUser.role,
       });
     } catch (welcomeError) {
       console.error("Welcome email error:", welcomeError);
@@ -281,6 +283,7 @@ exports.googleSignUpBuyer = async (req, res) => {
             year: new Date().getFullYear(),
             ctaUrl: baseUrl,
             ctaText: "Open SabiGuy",
+            role: existingEmail.role,
           });
         } catch (welcomeError) {
           console.error("Welcome email error:", welcomeError);
@@ -322,6 +325,7 @@ exports.googleSignUpBuyer = async (req, res) => {
         year: new Date().getFullYear(),
         ctaUrl: baseUrl,
         ctaText: "Open SabiGuy",
+        role: newUser.role,
       });
     } catch (welcomeError) {
       console.error("Welcome email error:", welcomeError);
@@ -653,6 +657,7 @@ try {
         year: new Date().getFullYear(),
         appUrl: baseUrl,
         ctaText: "Open SabiGuy",
+        role: userType,
         // unsubscribeUrl: baseUrl ? `${baseUrl.replace(/\\/$/, "")}/unsubscribe` : "",
       });
     } catch (welcomeError) {
