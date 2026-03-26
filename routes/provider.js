@@ -2,6 +2,15 @@ const express = require ('express');
 const router = express.Router();
 const authMiddleware = require ('../middleware/authMiddleware');
 const ProviderController = require ('../controllers/provider');
+const rateLimit = require("express-rate-limit");
+
+const kycLevelLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
 
 /**
  * @swagger
@@ -313,7 +322,7 @@ router.put("/profile-pic", authMiddleware, ProviderController.setProfilePicture)
  *       500:
  *         description: Server error
  */
-router.post("/kyc-level", ProviderController.getKycLevel);
+router.post("/kyc-level", kycLevelLimiter, ProviderController.getKycLevel);
 
 /**
  * @swagger

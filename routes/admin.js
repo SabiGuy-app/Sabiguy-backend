@@ -2,6 +2,15 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 const AdminController = require("../controllers/admin");
+const rateLimit = require("express-rate-limit");
+
+const adminCreateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
 
 /**
  * @swagger
@@ -44,7 +53,7 @@ const AdminController = require("../controllers/admin");
  *       403:
  *         description: Admin access required
  */
-router.post("/create", AdminController.createAdmin);
+router.post("/create", adminCreateLimiter, AdminController.createAdmin);
 
 /**
  * @swagger
