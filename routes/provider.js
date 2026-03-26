@@ -271,6 +271,52 @@ router.put("/profile-pic", authMiddleware, ProviderController.setProfilePicture)
 
 /**
  * @swagger
+ * /api/v1/provider/kyc-level:
+ *   post:
+ *     summary: Get provider KYC level
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "provider@example.com"
+ *     responses:
+ *       200:
+ *         description: KYC level fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     kycLevel:
+ *                       type: number
+ *                       example: 2
+ *                     kycCompleted:
+ *                       type: boolean
+ *                       example: false
+ *       404:
+ *         description: Provider not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/kyc-level", ProviderController.getKycLevel);
+
+/**
+ * @swagger
  * /api/v1/provider/dashboard/stats:
  *   get:
  *     summary: Get provider dashboard statistics

@@ -48,7 +48,8 @@ const routes = [
    { path: '/payment', file: './routes/payment'},
    { path: '/wallet', file: './routes/wallet'},
    { path: '/chats', file: './routes/chat'},
-   { path: '/support-chatbot', file: './routes/supportChatbot'},
+  { path: '/support-chatbot', file: './routes/supportChatbot'},
+  { path: '/admin', file: './routes/admin'},
 ];
 app.use(cors());
 
