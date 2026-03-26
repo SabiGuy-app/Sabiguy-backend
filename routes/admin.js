@@ -12,6 +12,14 @@ const adminCreateLimiter = rateLimit({
   message: { message: "Too many requests, please try again later." },
 });
 
+const adminAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many authentication requests, please try again later." },
+});
+
 const adminVerifyKycLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 50,
@@ -98,6 +106,7 @@ router.post("/create", adminCreateLimiter, AdminController.createAdmin);
  */
 router.patch(
   "/providers/:providerId/kyc/verify",
+  adminAuthLimiter,
   authMiddleware,
   adminVerifyKycLimiter,
   AdminController.verifyKyc,
