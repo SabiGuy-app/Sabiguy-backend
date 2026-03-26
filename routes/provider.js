@@ -12,6 +12,14 @@ const kycLevelLimiter = rateLimit({
   message: { message: "Too many requests, please try again later." },
 });
 
+const providerUpdateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
+
 /**
  * @swagger
  * tags:
@@ -175,7 +183,12 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *       500:
  *         description: Server error
  */
-router.post("/job-service", authMiddleware, ProviderController.JobAndService);
+router.post(
+  "/job-service",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.JobAndService,
+);
 
 /**
  * @swagger
@@ -213,7 +226,12 @@ router.post("/job-service", authMiddleware, ProviderController.JobAndService);
  *       404:
  *         description: Provider not found
  */
-router.put("/work-visuals", authMiddleware, ProviderController.workVisuals);
+router.put(
+  "/work-visuals",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.workVisuals,
+);
 
 /**
  * @swagger
@@ -276,7 +294,12 @@ router.put("/bank-info", authMiddleware, ProviderController.BankInfo);
  *       404:
  *         description: Provider not found
  */
-router.put("/profile-pic", authMiddleware, ProviderController.setProfilePicture);
+router.put(
+  "/profile-pic",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.setProfilePicture,
+);
 
 /**
  * @swagger
