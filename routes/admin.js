@@ -12,6 +12,14 @@ const adminCreateLimiter = rateLimit({
   message: { message: "Too many requests, please try again later." },
 });
 
+const adminVerifyKycLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 50,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many KYC verification requests, please try again later." },
+});
+
 /**
  * @swagger
  * tags:
@@ -91,6 +99,7 @@ router.post("/create", adminCreateLimiter, AdminController.createAdmin);
 router.patch(
   "/providers/:providerId/kyc/verify",
   authMiddleware,
+  adminVerifyKycLimiter,
   AdminController.verifyKyc,
 );
 
