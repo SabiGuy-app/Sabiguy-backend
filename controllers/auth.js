@@ -157,6 +157,8 @@ exports.googleSignUp = async (req, res) => {
       googleId,
       profilePicture: picture,
       role: "provider",
+      kycLevel: 1,
+
     });
 
     await newUser.save();
@@ -593,6 +595,8 @@ exports.registerProvider = async (req, res) => {
         fullName,
         phoneNumber,
         role: "provider", 
+        kycLevel: 1,
+
 
 
     })
