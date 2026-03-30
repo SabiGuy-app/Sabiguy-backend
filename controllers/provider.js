@@ -616,14 +616,24 @@ class ProviderController {
         });
       }
 
-      const provider = await Provider.findByIdAndUpdate(
-        providerId,
-        {
-          "availability.isAvailable": isAvailable,
-          "availability.lastUpdated": new Date(),
-        },
-        { new: true },
-      );
+      const provider = await Provider.findById(providerId);
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
+
+      // if (!provider.kycVerified) {
+      //   return res.status(403).json({
+      //     success: false,
+      //     message: "KYC verification required to toggle availability",
+      //   });
+      // }
+
+      provider.availability.isAvailable = isAvailable;
+      provider.availability.lastUpdated = new Date();
+      await provider.save();
 
       return res.status(200).json({
         success: true,
@@ -654,7 +664,7 @@ class ProviderController {
 
       const bookings = await Booking.find(query)
         .populate("userId", "fullName profilePicture phoneNumber email")
-        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures")
+        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate")
 
         .sort({ createdAt: -1 })
         .limit(limit * 1)
