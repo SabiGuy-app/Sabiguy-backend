@@ -5,10 +5,10 @@ on:
          - main
          - dev
 env:
-  AWS_REGION: 
-  CONTAINER_NAME:
-  ECR_REPOSITORY:
-  EC2_USERNAME:
+  AWS_REGION: us-east-1
+  CONTAINER_NAME: sabiguy-backend
+  ECR_REPOSITORY: 914471710952.dkr.ecr.us-east-1.amazonaws.com/sabiguy-staging-backend
+  EC2_USERNAME: ec2-user
 jobs:
   build:
     runs-on: ubuntu-latest
