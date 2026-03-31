@@ -594,13 +594,11 @@ exports.registerProvider = async (req, res) => {
         email,
         password: hashedPassword,
         otp,
-        otpExpiresAt,
+        otpExpiresAt, 
         isVerified: false,
         fullName,
         phoneNumber,
         role: "provider", 
-        kycLevel: 1,
-
 
 
     })
@@ -647,12 +645,15 @@ try {
     if (!user) {
         return res.status(400).json({ message: 'Invalid or expired OTP.' });
     }
-     if (Date.now() > user.otpExpiresAt) {
+    if (Date.now() > user.otpExpiresAt) {
       return res.status(400).json({ message: 'OTP has expired.' });
     }
     user.emailVerified = true;
     user.otp = null;
     user.otpExpiresAt = null;
+    if (userType === 'provider') {
+      user.kycLevel = 1;
+    }
     await user.save();
 
     let welcomeEmailSent = true;
