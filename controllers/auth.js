@@ -120,6 +120,7 @@ exports.googleSignUp = async (req, res) => {
         existingEmail.otpExpiresAt = null;
         await existingEmail.save();
 
+        let welcomeEmailSent = true;
         try {
           const firstName = existingEmail.fullName
             ? existingEmail.fullName.trim().split(/\s+/)[0]
@@ -130,16 +131,17 @@ exports.googleSignUp = async (req, res) => {
             year: new Date().getFullYear(),
             ctaUrl: baseUrl,
             ctaText: "Open SabiGuy",
+            role: existingEmail.role,
           });
         } catch (welcomeError) {
           console.error("Welcome email error:", welcomeError);
-          return res.status(500).json({
-            message: "Account verified, but welcome email failed to send",
-          });
+          welcomeEmailSent = false;
         }
 
         return res.status(200).json({
-          message: "Email verified. Welcome email sent.",
+          message: welcomeEmailSent
+            ? "Email verified. Welcome email sent."
+            : "Email verified. Welcome email will be sent shortly.",
         });
       }
       return res.status(400).json({ message: "Email already in use" });
@@ -156,10 +158,13 @@ exports.googleSignUp = async (req, res) => {
       googleId,
       profilePicture: picture,
       role: "provider",
+      kycLevel: 1,
+
     });
 
     await newUser.save();
 
+    let welcomeEmailSent = true;
     try {
       const firstName = newUser.fullName
         ? newUser.fullName.trim().split(/\s+/)[0]
@@ -170,12 +175,11 @@ exports.googleSignUp = async (req, res) => {
         year: new Date().getFullYear(),
         ctaUrl: baseUrl,
         ctaText: "Open SabiGuy",
+        role: newUser.role,
       });
     } catch (welcomeError) {
       console.error("Welcome email error:", welcomeError);
-      return res.status(500).json({
-        message: "Signup successful, but welcome email failed to send",
-      });
+      welcomeEmailSent = false;
     }
 
     const jwtToken = jwt.sign(
@@ -185,7 +189,9 @@ exports.googleSignUp = async (req, res) => {
     );
 
     res.status(200).json({
-      message: "Signup successful! Welcome email sent.",
+      message: welcomeEmailSent
+        ? "Signup successful! Welcome email sent."
+        : "Signup successful! Welcome email will be sent shortly.",
       token: jwtToken,
       newUser: {
         email: newUser.email,
@@ -271,6 +277,7 @@ exports.googleSignUpBuyer = async (req, res) => {
         existingEmail.otpExpiresAt = null;
         await existingEmail.save();
 
+        let welcomeEmailSent = true;
         try {
           const firstName = existingEmail.fullName
             ? existingEmail.fullName.trim().split(/\s+/)[0]
@@ -281,16 +288,17 @@ exports.googleSignUpBuyer = async (req, res) => {
             year: new Date().getFullYear(),
             ctaUrl: baseUrl,
             ctaText: "Open SabiGuy",
+            role: existingEmail.role,
           });
         } catch (welcomeError) {
           console.error("Welcome email error:", welcomeError);
-          return res.status(500).json({
-            message: "Account verified, but welcome email failed to send",
-          });
+          welcomeEmailSent = false;
         }
 
         return res.status(200).json({
-          message: "Email verified. Welcome email sent.",
+          message: welcomeEmailSent
+            ? "Email verified. Welcome email sent."
+            : "Email verified. Welcome email will be sent shortly.",
         });
       }
       return res.status(400).json({ message: "Email already in use" });
@@ -312,6 +320,7 @@ exports.googleSignUpBuyer = async (req, res) => {
 
     await newUser.save();
 
+    let welcomeEmailSent = true;
     try {
       const firstName = newUser.fullName
         ? newUser.fullName.trim().split(/\s+/)[0]
@@ -322,19 +331,20 @@ exports.googleSignUpBuyer = async (req, res) => {
         year: new Date().getFullYear(),
         ctaUrl: baseUrl,
         ctaText: "Open SabiGuy",
+        role: newUser.role,
       });
     } catch (welcomeError) {
       console.error("Welcome email error:", welcomeError);
-      return res.status(500).json({
-        message: "Signup successful, but welcome email failed to send",
-      });
+      welcomeEmailSent = false;
     }
 
     // Generate JWT
     const jwtToken = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
     res.status(200).json({
-      message: "Signup successful! Welcome email sent.",
+      message: welcomeEmailSent
+        ? "Signup successful! Welcome email sent."
+        : "Signup successful! Welcome email will be sent shortly.",
       token: jwtToken,
       newUser: {
         email: newUser.email,
@@ -584,7 +594,7 @@ exports.registerProvider = async (req, res) => {
         email,
         password: hashedPassword,
         otp,
-        otpExpiresAt,
+        otpExpiresAt, 
         isVerified: false,
         fullName,
         phoneNumber,
@@ -635,14 +645,18 @@ try {
     if (!user) {
         return res.status(400).json({ message: 'Invalid or expired OTP.' });
     }
-     if (Date.now() > user.otpExpiresAt) {
+    if (Date.now() > user.otpExpiresAt) {
       return res.status(400).json({ message: 'OTP has expired.' });
     }
     user.emailVerified = true;
     user.otp = null;
     user.otpExpiresAt = null;
+    if (userType === 'provider') {
+      user.kycLevel = 1;
+    }
     await user.save();
 
+    let welcomeEmailSent = true;
     try {
       const firstName = user.fullName
         ? user.fullName.trim().split(/\s+/)[0]
@@ -653,17 +667,18 @@ try {
         year: new Date().getFullYear(),
         appUrl: baseUrl,
         ctaText: "Open SabiGuy",
+        role: userType,
         // unsubscribeUrl: baseUrl ? `${baseUrl.replace(/\\/$/, "")}/unsubscribe` : "",
       });
     } catch (welcomeError) {
       console.error("Welcome email error:", welcomeError);
-      return res.status(500).json({
-        message: "Email verified, but welcome email failed to send",
-      });
+      welcomeEmailSent = false;
     }
 
     res.status(200).json({
-      message: `Email verified successfully as ${userType}.`,
+      message: welcomeEmailSent
+        ? `Email verified successfully as ${userType}.`
+        : `Email verified successfully as ${userType}. Welcome email will be sent shortly.`,
     });
 } catch (error) {
     console.error(error);

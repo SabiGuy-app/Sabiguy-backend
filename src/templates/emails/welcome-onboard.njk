@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Welcome to Sabiguy 🎉</title>
+  <title>Welcome to SabiGuy 🎉</title>
 </head>
 <body style="margin:0; padding:0; background:#f4f7f4; font-family:Arial,Helvetica,sans-serif; color:#1a1a1a;">
 
@@ -28,11 +28,16 @@
                 Account Verified ✓
               </div>
 
+              {% set roleNormalized = (role or "") | lower %}
               <h1 style="margin:0 0 10px; font-size:27px; line-height:1.3; color:#ffffff; font-weight:700;">
                 Welcome aboard, {{ firstName }}! 🎉
               </h1>
               <p style="margin:0; font-size:15px; color:#c8e6c9; line-height:1.65;">
+                {% if roleNormalized == "provider" %}
+                You're all set. Let's get your services in front of customers.
+                {% else %}
                 You're all set. Let's get you connected to the services you need.
+                {% endif %}
               </p>
             </td>
           </tr>
@@ -47,16 +52,51 @@
             <td style="background:#ffffff; padding:36px 36px 28px;">
 
               <p style="margin:0 0 16px; font-size:15.5px; line-height:1.8; color:#374151;">
-                Hi <strong style="color:#1a6b35;">{{ firstName }}</strong>, we're excited to have you join <strong>Sabiguy</strong> — the platform that connects people who need services with trusted professionals ready to deliver.
+                {% if roleNormalized == "provider" %}
+                Hi <strong style="color:#1a6b35;">{{ firstName }}</strong>, you're officially a SabiGuy! Welcome to <strong>SabiGuy</strong> — the platform that helps you reach more customers and grow your business.
+                {% else %}
+                Hi <strong style="color:#1a6b35;">{{ firstName }}</strong>, we're excited to have you join <strong>SabiGuy</strong> — the platform that connects people who need services with trusted professionals ready to deliver.
+                {% endif %}
               </p>
 
               <p style="margin:0 0 26px; font-size:15.5px; line-height:1.8; color:#374151;">
+                {% if roleNormalized == "provider" %}
+                Your email is verified and your account is live. Here are a few things to do next:
+                {% else %}
                 Your email is verified and your account is live. Here's what you can start doing right now:
+                {% endif %}
               </p>
 
               <!-- Divider -->
               <div style="border-top:2px solid #f0f0f0; margin-bottom:26px;"></div>
 
+              {% if roleNormalized == "provider" %}
+              <!-- Feature 1: Complete Your Profile -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+                <tr>
+                  <td width="52" valign="top">
+                    <div style="width:42px; height:42px; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:10px; text-align:center; line-height:42px; font-size:20px;">✅</div>
+                  </td>
+                  <td style="padding-left:14px; vertical-align:middle;">
+                    <strong style="display:block; font-size:15px; color:#1a1a1a; margin-bottom:3px;">Complete Your Profile</strong>
+                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">Complete the verification process so customers can trust and choose you quickly.</span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Feature 2: Add Services -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                <tr>
+                  <td width="52" valign="top">
+                    <div style="width:42px; height:42px; background:#f0faf3; border:1.5px solid #bbf7d0; border-radius:10px; text-align:center; line-height:42px; font-size:20px;">🔧</div>
+                  </td>
+                  <td style="padding-left:14px; vertical-align:middle;">
+                    <strong style="display:block; font-size:15px; color:#1a1a1a; margin-bottom:3px;">Add Your Services</strong>
+                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">List what you offer, set your pricing, and get discovered faster.</span>
+                  </td>
+                </tr>
+              </table>
+              {% else %}
               <!-- Feature 1: Package Delivery -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
                 <tr>
@@ -82,12 +122,13 @@
                   </td>
                 </tr>
               </table>
+              {% endif %}
 
               <!-- CTA Button -->
               <div style="text-align:center; margin:10px 0 4px;">
-                <a href="{{ appUrl }}"
+                <a href="{{ appUrl or ctaUrl }}"
                    style="display:inline-block; background:#f47920; color:#ffffff; text-decoration:none; font-size:15.5px; font-weight:700; letter-spacing:0.4px; padding:15px 44px; border-radius:8px;">
-                  Explore Sabiguy &rarr;
+                  {{ ctaText or "Explore SabiGuy" }} &rarr;
                 </a>
               </div>
 
@@ -101,9 +142,15 @@
                 Quick Tips
               </p>
               <ul style="margin:0; padding-left:18px; font-size:13.5px; color:#374151; line-height:2.1;">
+                {% if roleNormalized == "provider" %}
+                <li>Turn on availability to receive bookings faster.</li>
+                <li>Respond quickly to improve your ranking.</li>
+                <li>Ask customers to rate you after a job.</li>
+                {% else %}
                 <li>Complete your profile to build trust with providers.</li>
                 <li>Browse services and book in under 2 minutes.</li>
                 <li>Rate your experience to help the community grow.</li>
+                {% endif %}
               </ul>
             </td>
           </tr>
@@ -123,7 +170,7 @@
                 <a href="mailto:support@sabiguy.com" style="color:#f9c48a; text-decoration:none; font-weight:600;">support@sabiguy.com</a>
               </p>
               <p style="margin:10px 0 0; font-size:11px; color:#6ee7a0; letter-spacing:0.3px;">
-                &copy; {{ year }} Sabiguy. All rights reserved. &nbsp;&middot;&nbsp;
+                &copy; {{ year }} SabiGuy. All rights reserved. &nbsp;&middot;&nbsp;
               </p>
             </td>
           </tr>
