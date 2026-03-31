@@ -33,7 +33,7 @@ jobs:
 
       - name: Build and tag docker image
         run: |
-          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           docker build -t  $IMAGE_URI .
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
