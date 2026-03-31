@@ -760,7 +760,7 @@ class BookingController {
       const booking = await Booking.findOne({
         _id: bookingId,
         userId,
-        status: "pending_providers",
+        status: { $in: ["pending_providers", "awaiting_provider_acceptance"] },
       });
 
       if (!booking) {
