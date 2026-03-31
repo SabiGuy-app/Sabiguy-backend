@@ -7,7 +7,7 @@ const Buyer = require ('../models/ServiceUser.js');
 exports.uploadFile = async (req, res) => {
     try {
     const { email, category: rawCategory } = req.params;
-        const allowedCategories = ['profile_pictures', 'work_visuals', 'identity_docs', 'certificates'];
+        const allowedCategories = ['profile_pictures', 'work_visuals', 'automobiles', 'identity_docs', 'certificates'];
         const category = allowedCategories.includes(rawCategory) 
         ? req.params.category : 'other_files';
 

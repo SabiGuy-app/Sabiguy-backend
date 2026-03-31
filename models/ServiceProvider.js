@@ -181,7 +181,16 @@ fcmToken: {
     type: Number,
     default: 0
   },
-  kycCompleted: { type: Boolean, default: false }
+  kycCompleted: { type: Boolean, default: false },
+  kycVerified: { type: Boolean, default: false },
+  kycVerifiedAt: { type: Date, default: null },
+  kycVerifiedBy: {
+    id: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+    email: { type: String },
+    fullName: { type: String },
+  },
+  kycVerificationNote: { type: String },
+  kycLevel: { type: Number, default: 0 },
 }, {
   timestamps: true
 });

@@ -16,7 +16,7 @@ const options = {
             },
           
             {
-                url: "https://sabiguy-backend.onrender.com/", 
+                url: "https://sabiguy.onrender.com/", 
                 description: "Production server",
             },
             {
