@@ -760,7 +760,7 @@ class BookingController {
       const booking = await Booking.findOne({
         _id: bookingId,
         userId,
-        status: "pending_providers",
+        status: { $in: ["pending_providers", "awaiting_provider_acceptance"] },
       });
 
       if (!booking) {
@@ -1003,7 +1003,10 @@ class BookingController {
 
       const booking = await Booking.findById(bookingId)
         .populate("userId", "fullName email phone avatar")
-        .populate("providerId", "userId fullName job rating completedJobs workVisuals.pictures profilePicture");
+        .populate(
+          "providerId",
+          "userId fullName job rating completedJobs workVisuals.pictures profilePicture currentLocation lastLocationUpdate",
+        );
 
       if (!booking) {
         return res.status(404).json({
@@ -1037,7 +1040,7 @@ class BookingController {
       }
 
       const bookings = await Booking.find(query)
-        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures")
+        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate")
         .sort({ createdAt: -1 })
         .limit(limit * 1)
         .skip((page - 1) * limit);

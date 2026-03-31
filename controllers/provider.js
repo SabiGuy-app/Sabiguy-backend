@@ -2,6 +2,9 @@ const Provider = require("../models/ServiceProvider");
 const Booking = require("../models/Bookings");
 const notificationService = require("../src/services/notification.service");
 const paymentService = require("../src/services/payment.service");
+const jwt = require("jsonwebtoken");
+
+const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
 class ProviderController {
   async ProfileInfo(req, res) {
@@ -24,6 +27,7 @@ class ProviderController {
       provider.address = address;
       provider.accountType = accountType;
       provider.ninSlip = ninSlip;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
      
 
       await provider.save();
@@ -52,6 +56,7 @@ class ProviderController {
       provider.regNumber = regNumber;
       provider.BusinessAddress = BusinessAddress;
       provider.cacFile = cacFile;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
 
       await provider.save();
 
@@ -77,7 +82,6 @@ class ProviderController {
         vehicleRegNo,
         vehicleName,
       } = req.body;
-      const providerId = req.user.id;
 
       if (!job && !service) {
         return res
@@ -85,7 +89,7 @@ class ProviderController {
           .json({ message: "Please provide job or service data" });
       }
 
-      const provider = await Provider.findById(providerId);
+      const provider = await Provider.findById(req.user.id);
       if (!provider) {
         return res.status(404).json({ message: "Provider not found" });
       }
@@ -129,6 +133,7 @@ class ProviderController {
           provider[key] = value;
         }
       });
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
 
       await provider.save();
 
@@ -146,9 +151,7 @@ class ProviderController {
   async workVisuals(req, res) {
     try {
       const { workVisuals } = req.body;
-      const providerId = req.user.id;
-
-      const provider = await Provider.findById(providerId);
+      const provider = await Provider.findById(req.user.id);
       if (!provider) {
         return res.status(404).json({ message: "Provider not found" });
       }
@@ -163,6 +166,7 @@ class ProviderController {
         pictures: Array.isArray(item.pictures) ? item.pictures : [],
         videos: Array.isArray(item.videos) ? item.videos : [],
       }));
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
 
       await provider.save();
 
@@ -191,6 +195,7 @@ class ProviderController {
       provider.bankName = bankName;
       provider.bankCode = bankCode;
       provider.kycCompleted = true;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 6);
 
       await provider.save();
 
@@ -209,46 +214,23 @@ class ProviderController {
       res.status(500).json({ success: false, message: err.message });
     }
   }
-  async WorkVisuals(req, res) {
+  
+  async setProfilePicture(req, res) {
     try {
-      const { workVisuals } = req.body;
+      const { imageUrl } = req.body;
+
+      if (!imageUrl) {
+        return res.status(400).json({ message: "Image URL is required" });
+      }
 
       const provider = await Provider.findById(req.user.id);
       if (!provider) {
         return res.status(404).json({ message: "Provider not found" });
       }
 
-      provider.workVisuals = workVisuals;
-
-      await provider.save();
-
-      res.status(200).json({
-        success: true,
-        message: "Account info updated successfully",
-        data: provider,
-      });
-    } catch (err) {
-      console.error("Account update error:", err);
-      res.status(500).json({ success: false, message: err.message });
-    }
-  }
-
-  async setProfilePicture(req, res) {
-    try {
-      const { imageUrl } = req.body;
-      const providerId = req.user.id; // from your auth middleware
-
-      if (!imageUrl) {
-        return res.status(400).json({ message: "Image URL is required" });
-      }
-
-      const provider = await Provider.findById(providerId);
-      if (!provider) {
-        return res.status(404).json({ message: "Provider not found" });
-      }
-
       // Update the provider's profile picture
       provider.profilePicture = imageUrl;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
       await provider.save();
 
       res.status(200).json({
@@ -447,6 +429,55 @@ class ProviderController {
     }
   }
 
+  async getKycLevel(req, res) {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const authEmail = req.user?.email
+        ? String(req.user.email).trim().toLowerCase()
+        : null;
+      if (authEmail && authEmail !== normalizedEmail) {
+        return res
+          .status(403)
+          .json({ message: "Email does not match authenticated user" });
+      }
+
+      const provider = await Provider.findOne({ email: normalizedEmail }).select(
+        "kycLevel kycCompleted kycVerified",
+      );
+      if (!provider) {
+        return res.status(200).json({ message: "This is a new customer" });
+      }
+
+      const token = jwt.sign(
+        { id: provider._id, role: "provider", email: normalizedEmail },
+        process.env.JWT_SECRET,
+        { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          kycLevel: provider.kycLevel || 0,
+          kycCompleted: !!provider.kycCompleted,
+          kycVerified: !!provider.kycVerified,
+          token,
+        },
+      });
+    } catch (error) {
+      console.error("Get KYC level error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching KYC level",
+        error: error.message,
+      });
+    }
+  }
+
   async updateLocation(req, res) {
     try {
       const providerId = req.user.id;
@@ -573,7 +604,7 @@ class ProviderController {
    * Toggle availability
    * PUT /api/provider/availability/toggle
    */
- async toggleAvailability(req, res) {
+  async toggleAvailability(req, res) {
     try {
       const providerId = req.user.id;
       const { isAvailable } = req.body || {};
@@ -585,14 +616,24 @@ class ProviderController {
         });
       }
 
-      const provider = await Provider.findByIdAndUpdate(
-        providerId,
-        {
-          "availability.isAvailable": isAvailable,
-          "availability.lastUpdated": new Date(),
-        },
-        { new: true },
-      );
+      const provider = await Provider.findById(providerId);
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
+
+      // if (!provider.kycVerified) {
+      //   return res.status(403).json({
+      //     success: false,
+      //     message: "KYC verification required to toggle availability",
+      //   });
+      // }
+
+      provider.availability.isAvailable = isAvailable;
+      provider.availability.lastUpdated = new Date();
+      await provider.save();
 
       return res.status(200).json({
         success: true,
@@ -623,7 +664,7 @@ class ProviderController {
 
       const bookings = await Booking.find(query)
         .populate("userId", "fullName profilePicture phoneNumber email")
-        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures")
+        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate")
 
         .sort({ createdAt: -1 })
         .limit(limit * 1)

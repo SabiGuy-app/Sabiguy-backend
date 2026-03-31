@@ -2,6 +2,23 @@ const express = require ('express');
 const router = express.Router();
 const authMiddleware = require ('../middleware/authMiddleware');
 const ProviderController = require ('../controllers/provider');
+const rateLimit = require("express-rate-limit");
+
+const kycLevelLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
+
+const providerUpdateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
 
 /**
  * @swagger
@@ -166,7 +183,12 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *       500:
  *         description: Server error
  */
-router.post("/job-service", authMiddleware, ProviderController.JobAndService);
+router.post(
+  "/job-service",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.JobAndService,
+);
 
 /**
  * @swagger
@@ -204,7 +226,12 @@ router.post("/job-service", authMiddleware, ProviderController.JobAndService);
  *       404:
  *         description: Provider not found
  */
-router.put("/work-visuals", authMiddleware, ProviderController.workVisuals);
+router.put(
+  "/work-visuals",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.workVisuals,
+);
 
 /**
  * @swagger
@@ -267,7 +294,58 @@ router.put("/bank-info", authMiddleware, ProviderController.BankInfo);
  *       404:
  *         description: Provider not found
  */
-router.put("/profile-pic", authMiddleware, ProviderController.setProfilePicture);
+router.put(
+  "/profile-pic",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.setProfilePicture,
+);
+
+/**
+ * @swagger
+ * /api/v1/provider/kyc-level:
+ *   post:
+ *     summary: Get provider KYC level
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "provider@example.com"
+ *     responses:
+ *       200:
+ *         description: KYC level fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     kycLevel:
+ *                       type: number
+ *                       example: 2
+ *                     kycCompleted:
+ *                       type: boolean
+ *                       example: false
+ *       404:
+ *         description: Provider not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/kyc-level", kycLevelLimiter, ProviderController.getKycLevel);
 
 /**
  * @swagger
