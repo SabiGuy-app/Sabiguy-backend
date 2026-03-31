@@ -1,0 +1,92 @@
+name:  Backend CI/CD Pipeline
+on:
+    push:
+      branches:
+         - main
+         - dev
+env:
+  AWS_REGION: 
+  CONTAINER_NAME:
+  ECR_REPOSITORY:
+  EC2_USERNAME:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.build-image.outputs.image_uri }}
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v2
+
+
+      - name: lOGIN TO AWS
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1    
+
+      - name: Build and tag docker image
+        run: |
+          IMAGE_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          docker build -t  $IMAGE_URI .
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+      - name: Push docker image to ECR
+        run: |
+          docker push  ${{ steps.build-image.outputs.image_uri }}
+  
+  deploy-staging:
+    needs: build
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+         IMAGE_URI: ${{ needs.build.outputs.image_uri }}
+         CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.STAGING_EC2_SSH_KEY }}
+          envs: IMAGE_URI,CONTAINER_NAME
+          script: |
+           docker pull $IMAGE_URI
+           docker stop $CONTAINER_NAME || true
+           docker rm $CONTAINER_NAME || true
+           docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_URI
+
+           
+  deploy-production:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+         IMAGE_URI: ${{ needs.build.outputs.image_uri }}
+         CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+        with:
+          host: ${{ secrets.PRODUCTION_EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
+          envs: IMAGE_URI,CONTAINER_NAME
+          script: |
+           docker pull $IMAGE_URI
+           docker stop $CONTAINER_NAME || true
+           docker rm $CONTAINER_NAME || true
+           docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_URI
+
+
+
+
+
+
