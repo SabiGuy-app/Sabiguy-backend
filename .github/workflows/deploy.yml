@@ -39,7 +39,8 @@ jobs:
 
       - name: Push docker image to ECR
         run: |
-          docker push  ${{ steps.build-image.outputs.image_uri }}
+          IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          docker push $IMAGE_URI
   
   deploy-staging:
     needs: build
