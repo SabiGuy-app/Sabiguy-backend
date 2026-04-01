@@ -1,14 +1,15 @@
-name:  Backend CI/CD Pipeline
+name: Backend CI/CD Pipeline
 on:
-    push:
-      branches:
-         - main
-         - dev
+  push:
+    branches:
+      - main
+      - dev
 env:
   AWS_REGION: us-east-1
   CONTAINER_NAME: sabiguy-backend
   ECR_REPOSITORY: 914471710952.dkr.ecr.us-east-1.amazonaws.com/sabiguy-staging-backend
   EC2_USERNAME: ec2-user
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,11 +17,10 @@ jobs:
     outputs:
       image_uri: ${{ steps.build-image.outputs.image_uri }}
     steps:
-      - name: checkout code
+      - name: Checkout code
         uses: actions/checkout@v2
 
-
-      - name: lOGIN TO AWS
+      - name: Login to AWS
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -29,19 +29,20 @@ jobs:
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1    
+        uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build and tag docker image
+        id: build-image
         run: |
           IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          docker build -t  $IMAGE_URI .
+          docker build -t $IMAGE_URI .
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
       - name: Push docker image to ECR
         run: |
           IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           docker push $IMAGE_URI
-  
+
   deploy-staging:
     needs: build
     if: github.ref == 'refs/heads/dev'
@@ -50,24 +51,42 @@ jobs:
     steps:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.0
-        env:
-         IMAGE_URI: ${{ needs.build.outputs.image_uri }}
-         CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
         with:
           host: ${{ secrets.STAGING_EC2_HOST }}
           username: ${{ env.EC2_USERNAME }}
           key: ${{ secrets.STAGING_EC2_SSH_KEY }}
-          envs: IMAGE_URI,CONTAINER_NAME
-
           script: |
-            IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-            CONTAINER_NAME=${{ env.CONTAINER_NAME }}
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
-            docker pull $IMAGE_URI
-            docker stop $CONTAINER_NAME || true
-            docker rm $CONTAINER_NAME || true
-            docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_URI
-           
+            docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
+            docker run -d --name ${{ env.CONTAINER_NAME }} -p 3000:3000 \
+              -e PORT=${{ secrets.PORT }} \
+              -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
+              -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
+              -e GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+              -e CLOUD_NAME=${{ secrets.CLOUD_NAME }} \
+              -e CLOUD_API_SECRET=${{ secrets.CLOUD_API_SECRET }} \
+              -e CLOUD_API_KEY=${{ secrets.CLOUD_API_KEY }} \
+              -e FRONTEND_URL=${{ secrets.FRONTEND_URL }} \
+              -e BREVO_API_KEY=${{ secrets.BREVO_API_KEY }} \
+              -e BREVO_SENDER_EMAIL=${{ secrets.BREVO_SENDER_EMAIL }} \
+              -e FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }} \
+              -e FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }} \
+              -e FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }} \
+              -e FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }} \
+              -e FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }} \
+              -e FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }} \
+              -e FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }} \
+              -e FIREBASE_PRIVATE_KEY="${{ secrets.FIREBASE_PRIVATE_KEY }}" \
+              -e PAYSTACK_SECRET_KEY=${{ secrets.PAYSTACK_SECRET_KEY }} \
+              -e PAYSTACK_PUBLIC_KEY=${{ secrets.PAYSTACK_PUBLIC_KEY }} \
+              -e MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }} \
+              -e GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+              -e GROQ_API_KEY=${{ secrets.GROQ_API_KEY }} \
+              -e SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }} \
+              ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
   deploy-production:
     needs: build
     if: github.ref == 'refs/heads/main'
@@ -76,22 +95,38 @@ jobs:
     steps:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.0
-        env:
-         IMAGE_URI: ${{ needs.build.outputs.image_uri }}
-         CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
         with:
           host: ${{ secrets.PRODUCTION_EC2_HOST }}
           username: ${{ env.EC2_USERNAME }}
           key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
-          envs: IMAGE_URI,CONTAINER_NAME
           script: |
-           docker pull $IMAGE_URI
-           docker stop $CONTAINER_NAME || true
-           docker rm $CONTAINER_NAME || true
-           docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_URI
-
-
-
-
-
-
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
+            docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
+            docker run -d --name ${{ env.CONTAINER_NAME }} -p 3000:3000 \
+              -e PORT=${{ secrets.PORT }} \
+              -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
+              -e DATABASE_URL=${{ secrets.DATABASE_URL }} \
+              -e GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+              -e CLOUD_NAME=${{ secrets.CLOUD_NAME }} \
+              -e CLOUD_API_SECRET=${{ secrets.CLOUD_API_SECRET }} \
+              -e CLOUD_API_KEY=${{ secrets.CLOUD_API_KEY }} \
+              -e FRONTEND_URL=${{ secrets.FRONTEND_URL }} \
+              -e BREVO_API_KEY=${{ secrets.BREVO_API_KEY }} \
+              -e BREVO_SENDER_EMAIL=${{ secrets.BREVO_SENDER_EMAIL }} \
+              -e FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }} \
+              -e FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }} \
+              -e FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }} \
+              -e FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }} \
+              -e FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }} \
+              -e FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }} \
+              -e FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }} \
+              -e FIREBASE_PRIVATE_KEY="${{ secrets.FIREBASE_PRIVATE_KEY }}" \
+              -e PAYSTACK_SECRET_KEY=${{ secrets.PAYSTACK_SECRET_KEY }} \
+              -e PAYSTACK_PUBLIC_KEY=${{ secrets.PAYSTACK_PUBLIC_KEY }} \
+              -e MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }} \
+              -e GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+              -e GROQ_API_KEY=${{ secrets.GROQ_API_KEY }} \
+              -e SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }} \
+              ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
