@@ -12,7 +12,8 @@ const { registerBuyer,
      googleLogIn,
     resendOTP,
 changePassword,
-refreshAuthToken} = require ('../controllers/auth');
+refreshAuthToken,
+me} = require ('../controllers/auth');
 const authMiddleware = require ('../middleware/authMiddleware');
 const { changePasswordLimiter } = require ('../middleware/rateLimiter.js')
 const router = express.Router();
@@ -144,6 +145,10 @@ router.post("/email", verifyEmail);
  *               password:
  *                 type: string
  *                 example: "password123"
+ *               role:
+ *                 type: string
+ *                 enum: [buyer, provider, admin]
+ *                 description: Optional role to disambiguate accounts
  *     responses:
  *       200:
  *         description: User logged in successfully
@@ -427,6 +432,24 @@ router.put(
   authMiddleware,
   changePasswordLimiter,
   changePassword);
+
+/**
+ * @swagger
+ * /api/v1/auth/me:
+ *   get:
+ *     summary: Get authenticated user profile
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Authenticated user profile
+ *       401:
+ *         description: Invalid or missing token
+ *       404:
+ *         description: User not found
+ */
+router.get("/me", authMiddleware, me);
 
 
 
