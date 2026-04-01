@@ -58,12 +58,14 @@ jobs:
           username: ${{ env.EC2_USERNAME }}
           key: ${{ secrets.STAGING_EC2_SSH_KEY }}
           envs: IMAGE_URI,CONTAINER_NAME
-          script: |
-           docker pull $IMAGE_URI
-           docker stop $CONTAINER_NAME || true
-           docker rm $CONTAINER_NAME || true
-           docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_URI
 
+          script: |
+            IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            CONTAINER_NAME=${{ env.CONTAINER_NAME }}
+            docker pull $IMAGE_URI
+            docker stop $CONTAINER_NAME || true
+            docker rm $CONTAINER_NAME || true
+            docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_URI
            
   deploy-production:
     needs: build
