@@ -1,13 +1,31 @@
 const Provider = require ('../models/ServiceProvider');
 const Buyer = require ('../models/ServiceUser');
 
+const getPagination = (req) => {
+  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+  const safeLimit = Math.min(limit, 100);
+  const skip = (page - 1) * safeLimit;
+  return { page, limit: safeLimit, skip };
+};
 
 exports.getAllBuyers = async (req, res) => {
   try {
-    const buyers = await Buyer.find().select("-password");
+    const { page, limit, skip } = getPagination(req);
+    const [buyers, total] = await Promise.all([
+      Buyer.find()
+        .select("-password")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Buyer.countDocuments(),
+    ]);
     res.status(200).json({
       success: true,
       count: buyers.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
       data: buyers,
     });
   } catch (err) {
@@ -17,10 +35,21 @@ exports.getAllBuyers = async (req, res) => {
 
 exports.getAllProviders = async (req, res) => {
   try {
-    const providers = await Provider.find().select("-password");
+    const { page, limit, skip } = getPagination(req);
+    const [providers, total] = await Promise.all([
+      Provider.find()
+        .select("-password")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Provider.countDocuments(),
+    ]);
     res.status(200).json({
       success: true,
       count: providers.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
       data: providers,
     });
   } catch (err) {
@@ -30,12 +59,38 @@ exports.getAllProviders = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
   try {
-    const buyers = await Buyer.find().select("-password");
-    const providers = await Provider.find().select("-password");
-    const users = [...buyers, ...providers];
+    const { page, limit, skip } = getPagination(req);
+
+    const [result] = await Buyer.aggregate([
+      { $addFields: { userType: "buyer" } },
+      { $project: { password: 0, __v: 0 } },
+      {
+        $unionWith: {
+          coll: "providers",
+          pipeline: [
+            { $addFields: { userType: "provider" } },
+            { $project: { password: 0, __v: 0 } },
+          ],
+        },
+      },
+      { $sort: { createdAt: -1, _id: -1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: "count" }],
+        },
+      },
+    ]);
+
+    const users = result?.data || [];
+    const total = result?.total?.[0]?.count || 0;
+
     res.status(200).json({
       success: true,
       count: users.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
       data: users,
     });
   } catch (err) {

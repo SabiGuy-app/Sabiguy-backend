@@ -1,5 +1,6 @@
 const Provider = require ('../models/ServiceProvider');
 const Buyer = require ('../models/ServiceUser');
+const Admin = require ('../models/Admin');
 const bcrypt = require ('bcryptjs');
 const jwt = require ('jsonwebtoken');
 const dotenv = require ('dotenv');
@@ -10,6 +11,7 @@ const {sendEmailOtp, forgotPasswordOtp, passwordChangedEmail, sendWelcomeEmail} 
 const roleModelMap = {
   buyer: Buyer,
   provider: Provider,
+  admin: Admin,
 };
 
 const axios = require('axios');
@@ -740,31 +742,72 @@ if (user.lastVerificationOtpSentAt && now.getTime() - lastSent.getTime() < 60 * 
 };
 
 exports.login = async (req, res) => {
-    const { email, password } = req.body;
+  const { email, password, role: requestedRole } = req.body || {};
 
-    try {
-        let user = await Buyer.findOne ({ email });
-        let role = 'buyer';
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email and password are required" });
+  }
 
-        if (!user) {
-            user = await Provider.findOne ({ email });
-            role = 'provider';
-        }
-        
- if (!user) {
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const allowedRoles = ["buyer", "provider", "admin"];
+
+  const findUserByRole = async (role) => {
+    const Model = roleModelMap[role];
+    if (!Model) return null;
+    if (role === "admin") {
+      return Model.findOne({ email: normalizedEmail }).select("+password");
+    }
+    return Model.findOne({ email: normalizedEmail });
+  };
+
+  try {
+    let user = null;
+    let role = null;
+
+    if (requestedRole) {
+      if (!allowedRoles.includes(requestedRole)) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+      user = await findUserByRole(requestedRole);
+      role = requestedRole;
+    } else {
+      user = await findUserByRole("buyer");
+      role = "buyer";
+
+      if (!user) {
+        user = await findUserByRole("provider");
+        role = "provider";
+      }
+      if (!user) {
+        user = await findUserByRole("admin");
+        role = "admin";
+      }
+    }
+
+    if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    if (!user.emailVerified) {
-       return res.status(403).json({ message: "Please verify your email before logging in" });
+    if (user.isDeleted) {
+      return res.status(403).json({ message: "Account deleted" });
+    }
 
+    if (user.isActive === false) {
+      return res.status(403).json({ message: "Account deactivated" });
+    }
+
+    if (!user.emailVerified) {
+      return res
+        .status(403)
+        .json({ message: "Please verify your email before logging in" });
     }
 
     if (user.isGoogleUser && !user.password) {
-  return res.status(400).json({
-    message: "You signed up with Google. Please log in using Google.",
-  });
-}
+      return res.status(400).json({
+        message: "You signed up with Google. Please log in using Google.",
+      });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
@@ -785,14 +828,11 @@ exports.login = async (req, res) => {
       refreshToken,
       id: user._id,
     });
-
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Failed to login", error });
-          
-    }
-
-}
+  }
+};
 
 exports.refreshAuthToken = async (req, res) => {
   const { refreshToken } = req.body;
@@ -1084,6 +1124,50 @@ if (!strongPassword.test(newPassword)) {
     return res.status(500).json({
       success: false,
       message: "Error changing password",
+    });
+  }
+};
+
+exports.me = async (req, res) => {
+  try {
+    const { id, role } = req.user || {};
+
+    if (!id || !role) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    const Model = roleModelMap[role];
+    if (!Model) {
+      return res.status(403).json({ message: "Invalid role" });
+    }
+
+    const user = await Model.findById(id).select(
+      "-password -otp -otpExpiresAt -resetOtp -resetOtpExpires -refreshToken",
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: user._id,
+        role,
+        email: user.email,
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber,
+        profilePicture: user.profilePicture,
+        emailVerified: user.emailVerified,
+        user,
+      },
+    });
+  } catch (error) {
+    console.error("Auth me error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching profile",
+      error: error.message,
     });
   }
 };

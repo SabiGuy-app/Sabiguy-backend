@@ -25,6 +25,21 @@ const router = express.Router();
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number (default 1)
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *         description: Items per page (default 20, max 100)
  *     responses:
  *       200:
  *         description: List of all buyers
@@ -36,6 +51,12 @@ const router = express.Router();
  *                 success:
  *                   type: boolean
  *                 count:
+ *                   type: number
+ *                 total:
+ *                   type: number
+ *                 page:
+ *                   type: number
+ *                 totalPages:
  *                   type: number
  *                 data:
  *                   type: array
@@ -62,6 +83,21 @@ router.get("/buyers", getAllBuyers);
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number (default 1)
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *         description: Items per page (default 20, max 100)
  *     responses:
  *       200:
  *         description: List of all service providers with business details, jobs, and visuals
@@ -73,6 +109,12 @@ router.get("/buyers", getAllBuyers);
  *                 success:
  *                   type: boolean
  *                 count:
+ *                   type: number
+ *                 total:
+ *                   type: number
+ *                 page:
+ *                   type: number
+ *                 totalPages:
  *                   type: number
  *                 data:
  *                   type: array
@@ -139,9 +181,43 @@ router.get("/providers", getAllProviders);
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number (default 1)
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *         description: Items per page (default 20, max 100)
  *     responses:
  *       200:
  *         description: Combined list of all users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: number
+ *                 total:
+ *                   type: number
+ *                 page:
+ *                   type: number
+ *                 totalPages:
+ *                   type: number
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
  */
 router.get("/", getAllUsers);
 
