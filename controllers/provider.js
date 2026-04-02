@@ -13,8 +13,6 @@ class ProviderController {
         gender,
         city,
         address,
-        accountType,
-        ninSlip,
       } = req.body;
 
       const provider = await Provider.findById(req.user.id);
@@ -25,8 +23,6 @@ class ProviderController {
       provider.gender = gender;
       provider.city = city;
       provider.address = address;
-      provider.accountType = accountType;
-      provider.ninSlip = ninSlip;
       provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
      
 
@@ -45,7 +41,7 @@ class ProviderController {
 
   async BusinessInfo(req, res) {
     try {
-      const { BusinessName, regNumber, BusinessAddress, cacFile } = req.body;
+      const { BusinessName, regNumber, BusinessAddress, cacFile, accountType, ninSlip} = req.body;
 
       const provider = await Provider.findById(req.user.id);
       if (!provider) {
@@ -56,7 +52,9 @@ class ProviderController {
       provider.regNumber = regNumber;
       provider.BusinessAddress = BusinessAddress;
       provider.cacFile = cacFile;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
+      provider.accountType = accountType;
+      provider.ninSlip = ninSlip;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
 
       await provider.save();
 
@@ -67,6 +65,35 @@ class ProviderController {
       });
     } catch (err) {
       console.error("Business update error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  async setProfilePicture(req, res) {
+    try {
+      const { imageUrl } = req.body;
+
+      if (!imageUrl) {
+        return res.status(400).json({ message: "Image URL is required" });
+      }
+
+      const provider = await Provider.findById(req.user.id);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      // Update the provider's profile picture
+      provider.profilePicture = imageUrl;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
+      await provider.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Profile picture updated successfully",
+        profilePicture: provider.profilePicture,
+      });
+    } catch (err) {
+      console.error("Profile picture error:", err);
       res.status(500).json({ success: false, message: err.message });
     }
   }
@@ -133,7 +160,7 @@ class ProviderController {
           provider[key] = value;
         }
       });
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 5);
 
       await provider.save();
 
@@ -166,7 +193,7 @@ class ProviderController {
         pictures: Array.isArray(item.pictures) ? item.pictures : [],
         videos: Array.isArray(item.videos) ? item.videos : [],
       }));
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 6);
 
       await provider.save();
 
@@ -195,7 +222,7 @@ class ProviderController {
       provider.bankName = bankName;
       provider.bankCode = bankCode;
       provider.kycCompleted = true;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 6);
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 7);
 
       await provider.save();
 
@@ -215,35 +242,7 @@ class ProviderController {
     }
   }
   
-  async setProfilePicture(req, res) {
-    try {
-      const { imageUrl } = req.body;
-
-      if (!imageUrl) {
-        return res.status(400).json({ message: "Image URL is required" });
-      }
-
-      const provider = await Provider.findById(req.user.id);
-      if (!provider) {
-        return res.status(404).json({ message: "Provider not found" });
-      }
-
-      // Update the provider's profile picture
-      provider.profilePicture = imageUrl;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
-      await provider.save();
-
-      res.status(200).json({
-        success: true,
-        message: "Profile picture updated successfully",
-        profilePicture: provider.profilePicture,
-      });
-    } catch (err) {
-      console.error("Profile picture error:", err);
-      res.status(500).json({ success: false, message: err.message });
-    }
-  }
-
+  
   async getDashboardStats(req, res) {
     try {
       const providerId = req.user.id;

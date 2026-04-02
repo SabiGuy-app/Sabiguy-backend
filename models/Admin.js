@@ -6,6 +6,8 @@ const adminSchema = new mongoose.Schema(
     password: { type: String, required: true, select: false },
     fullName: { type: String, required: true },
     role: { type: String, enum: ["admin"], default: "admin" },
+   emailVerified: { type: Boolean, default: false },
+
   },
   { timestamps: true },
 );
