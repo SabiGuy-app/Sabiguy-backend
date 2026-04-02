@@ -98,6 +98,20 @@ router.get("/buyers", getAllBuyers);
  *           type: integer
  *           example: 20
  *         description: Items per page (default 20, max 100)
+ *       - name: kycLevel
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 3
+ *         description: Filter by exact KYC level
+ *       - name: kycVerified
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           example: true
+ *         description: Filter by KYC verification status
  *     responses:
  *       200:
  *         description: List of all service providers with business details, jobs, and visuals
@@ -170,6 +184,8 @@ router.get("/buyers", getAllBuyers);
  *                         type: string
  *                       accountName:
  *                         type: string
+ *                       bookingsCount:
+ *                         type: number
  */
 router.get("/providers", getAllProviders);
 
