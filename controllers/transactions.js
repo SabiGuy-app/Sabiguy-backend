@@ -23,14 +23,66 @@ class TransactionController {
         sortOrder = "desc",
       } = req.query;
 
+      const allowedTypes = new Set([
+        "payment",
+        "payout",
+        "refund",
+        "escrow_hold",
+        "escrow_release",
+        "withdrawal",
+        "credit",
+        "debit",
+        "platform_fee",
+        "bonus",
+        "commission",
+        "tip",
+      ]);
+      const allowedStatuses = new Set([
+        "pending",
+        "processing",
+        "completed",
+        "failed",
+        "reversed",
+      ]);
+      const allowedUserModels = new Set(["Buyer", "Provider", "Platform"]);
+      const sortFields = {
+        createdAt: "createdAt",
+        amount: "amount",
+        status: "status",
+        type: "type",
+        reference: "reference",
+      };
+
+      const normalizedPage = Math.max(parseInt(page, 10) || 1, 1);
+      const normalizedLimit = Math.min(
+        Math.max(parseInt(limit, 10) || 10, 1),
+        100,
+      );
+      const normalizedSortBy = sortFields[sortBy] || "createdAt";
+      const normalizedSortOrder = sortOrder === "asc" ? 1 : -1;
+
       // Build query object
       const query = {};
+      const andFilters = [];
 
       // Filter by transaction type
       if (type) {
         if (Array.isArray(type)) {
-          query.type = { $in: type };
+          const types = type.filter((value) => allowedTypes.has(value));
+          if (types.length !== type.length) {
+            return res.status(400).json({
+              success: false,
+              message: "Invalid transaction type",
+            });
+          }
+          query.type = { $in: types };
         } else {
+          if (!allowedTypes.has(type)) {
+            return res.status(400).json({
+              success: false,
+              message: "Invalid transaction type",
+            });
+          }
           query.type = type;
         }
       }
@@ -38,19 +90,44 @@ class TransactionController {
       // Filter by status
       if (status) {
         if (Array.isArray(status)) {
-          query.status = { $in: status };
+          const statuses = status.filter((value) => allowedStatuses.has(value));
+          if (statuses.length !== status.length) {
+            return res.status(400).json({
+              success: false,
+              message: "Invalid transaction status",
+            });
+          }
+          query.status = { $in: statuses };
         } else {
+          if (!allowedStatuses.has(status)) {
+            return res.status(400).json({
+              success: false,
+              message: "Invalid transaction status",
+            });
+          }
           query.status = status;
         }
       }
 
       // Filter by from userModel
       if (fromUserModel) {
+        if (!allowedUserModels.has(fromUserModel)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid fromUserModel",
+          });
+        }
         query["from.userModel"] = fromUserModel;
       }
 
       // Filter by to userModel
       if (toUserModel) {
+        if (!allowedUserModels.has(toUserModel)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid toUserModel",
+          });
+        }
         query["to.userModel"] = toUserModel;
       }
 
@@ -62,10 +139,12 @@ class TransactionController {
             message: "Invalid user ID format",
           });
         }
-        query.$or = [
-          { "from.userId": mongoose.Types.ObjectId(userId) },
-          { "to.userId": mongoose.Types.ObjectId(userId) },
-        ];
+        andFilters.push({
+          $or: [
+            { "from.userId": mongoose.Types.ObjectId(userId) },
+            { "to.userId": mongoose.Types.ObjectId(userId) },
+          ],
+        });
       }
 
       // Filter by booking ID
@@ -92,15 +171,22 @@ class TransactionController {
 
       // Search by reference or description
       if (search) {
-        query.$or = [
-          { reference: { $regex: search, $options: "i" } },
-          { description: { $regex: search, $options: "i" } },
-        ];
+        const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        andFilters.push({
+          $or: [
+            { reference: { $regex: escaped, $options: "i" } },
+            { description: { $regex: escaped, $options: "i" } },
+          ],
+        });
+      }
+
+      if (andFilters.length > 0) {
+        query.$and = andFilters;
       }
 
       // Sort configuration
       const sortConfig = {};
-      sortConfig[sortBy] = sortOrder === "asc" ? 1 : -1;
+      sortConfig[normalizedSortBy] = normalizedSortOrder;
 
       // Execute query with pagination
       const transactions = await Transaction.find(query)
@@ -108,8 +194,8 @@ class TransactionController {
         .populate("to.userId", "fullName email phoneNumber profilePicture")
         .populate("bookingId", "reference status")
         .sort(sortConfig)
-        .limit(limit * 1)
-        .skip((page - 1) * limit)
+        .limit(normalizedLimit)
+        .skip((normalizedPage - 1) * normalizedLimit)
         .lean();
 
       // Get total count for pagination
@@ -157,9 +243,9 @@ class TransactionController {
         data: transactions,
         pagination: {
           total: count,
-          totalPages: Math.ceil(count / limit),
-          currentPage: parseInt(page),
-          perPage: parseInt(limit),
+          totalPages: Math.ceil(count / normalizedLimit),
+          currentPage: normalizedPage,
+          perPage: normalizedLimit,
         },
         stats: {
           byType: typeStats.reduce((acc, item) => {
