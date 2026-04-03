@@ -1,11 +1,12 @@
-// const admin = require ('firebase-admin');
 import admin from 'firebase-admin';
 import { initializeApp } from 'firebase-admin';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const serviceAccount = JSON.parse (process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+const serviceAccount = JSON.parse(
+  Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_KEY, 'base64').toString('utf8')
+);
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -23,4 +24,3 @@ const firebaseConfig = {
 initializeApp(firebaseConfig);
 
 export { admin };
-
