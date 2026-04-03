@@ -15,7 +15,7 @@ changePassword,
 refreshAuthToken,
 me} = require ('../controllers/auth');
 const authMiddleware = require ('../middleware/authMiddleware');
-const { changePasswordLimiter } = require ('../middleware/rateLimiter.js')
+const { changePasswordLimiter, authMeLimiter } = require ('../middleware/rateLimiter.js')
 const router = express.Router();
 
 
@@ -449,7 +449,7 @@ router.put(
  *       404:
  *         description: User not found
  */
-router.get("/me", authMiddleware, me);
+router.get("/me", authMeLimiter, authMiddleware, me);
 
 
 

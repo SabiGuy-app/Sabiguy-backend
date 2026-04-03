@@ -3,6 +3,7 @@ const router = express.Router();
 const transactionController = require("../controllers/transactions");
 const authMiddleware = require("../middleware/authMiddleware");
 const onlyRole = require("../middleware/roleMiddleware.js");
+const { transactionsLimiter } = require("../middleware/rateLimiter");
 
 /**
  * @swagger
@@ -258,7 +259,13 @@ const onlyRole = require("../middleware/roleMiddleware.js");
  *       500:
  *         description: Server error while fetching transactions
  */
-router.get("/", authMiddleware, transactionController.getAllTransactions);
+router.get(
+  "/",
+  transactionsLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  transactionController.getAllTransactions,
+);
 
 /**
  * @swagger
@@ -334,6 +341,12 @@ router.get("/", authMiddleware, transactionController.getAllTransactions);
  *       500:
  *         description: Server error while fetching transaction
  */
-router.get("/:id", authMiddleware, transactionController.getTransactionById);
+router.get(
+  "/:id",
+  transactionsLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  transactionController.getTransactionById,
+);
 
 module.exports = router;

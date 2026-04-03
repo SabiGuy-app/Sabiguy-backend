@@ -12,14 +12,53 @@ const getPagination = (req) => {
 exports.getAllBuyers = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req);
-    const [buyers, total] = await Promise.all([
-      Buyer.find()
-        .select("-password")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      Buyer.countDocuments(),
+
+    const [result] = await Buyer.aggregate([
+      { $sort: { createdAt: -1, _id: -1 } },
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $lookup: {
+                from: "bookings",
+                localField: "_id",
+                foreignField: "userId",
+                as: "bookingStats",
+                pipeline: [
+                  { $count: "count" },
+                ],
+              },
+            },
+            {
+              $addFields: {
+                bookingsCount: {
+                  $ifNull: [{ $arrayElemAt: ["$bookingStats.count", 0] }, 0],
+                },
+              },
+            },
+            {
+              $project: {
+                bookingStats: 0,
+                password: 0,
+                otp: 0,
+                otpExpiresAt: 0,
+                resetOtp: 0,
+                resetOtpExpires: 0,
+                refreshToken: 0,
+                __v: 0,
+              },
+            },
+          ],
+          total: [{ $count: "count" }],
+        },
+      },
     ]);
+
+    const buyers = result?.data || [];
+    const total = result?.total?.[0]?.count || 0;
+
     res.status(200).json({
       success: true,
       count: buyers.length,
@@ -36,14 +75,74 @@ exports.getAllBuyers = async (req, res) => {
 exports.getAllProviders = async (req, res) => {
   try {
     const { page, limit, skip } = getPagination(req);
-    const [providers, total] = await Promise.all([
-      Provider.find()
-        .select("-password")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      Provider.countDocuments(),
+    const { kycLevel, kycVerified } = req.query;
+    const query = {};
+
+    if (kycLevel !== undefined) {
+      const parsedLevel = parseInt(kycLevel, 10);
+      if (Number.isNaN(parsedLevel)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid kycLevel" });
+      }
+      query.kycLevel = parsedLevel;
+    }
+
+    if (kycVerified !== undefined) {
+      const normalized = String(kycVerified).toLowerCase();
+      if (normalized === "true" || normalized === "false") {
+        query.kycVerified = normalized === "true";
+      } else {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid kycVerified" });
+      }
+    }
+
+    const [result] = await Provider.aggregate([
+      { $match: query },
+      { $sort: { createdAt: -1, _id: -1 } },
+      {
+        $facet: {
+          data: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $lookup: {
+                from: "bookings",
+                localField: "_id",
+                foreignField: "providerId",
+                as: "bookingStats",
+                pipeline: [{ $count: "count" }],
+              },
+            },
+            {
+              $addFields: {
+                bookingsCount: {
+                  $ifNull: [{ $arrayElemAt: ["$bookingStats.count", 0] }, 0],
+                },
+              },
+            },
+            {
+              $project: {
+                bookingStats: 0,
+                password: 0,
+                otp: 0,
+                otpExpiresAt: 0,
+                resetOtp: 0,
+                resetOtpExpires: 0,
+                refreshToken: 0,
+                __v: 0,
+              },
+            },
+          ],
+          total: [{ $count: "count" }],
+        },
+      },
     ]);
+
+    const providers = result?.data || [];
+    const total = result?.total?.[0]?.count || 0;
     res.status(200).json({
       success: true,
       count: providers.length,

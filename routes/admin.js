@@ -70,7 +70,12 @@ const adminVerifyKycLimiter = rateLimit({
  *       403:
  *         description: Admin access required
  */
-router.post("/create",  AdminController.createAdmin);
+router.post(
+  "/create",
+  adminCreateLimiter,
+  adminAuthLimiter,
+  AdminController.createAdmin,
+);
 
 /**
  * @swagger
