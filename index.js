@@ -1,17 +1,19 @@
+const dotenv = require("dotenv");
+dotenv.config();
+
 const express = require("express");
 const app = express();
-const dotenv = require("dotenv");
 const connectToDB = require("./utils/db");
 const http = require("http");
 const socketIO = require("socket.io");
 const { swaggerUi, swaggerSpec } = require("./src/config/swagger");
 const notificationService = require("./src/services/notification.service");
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const cors = require("cors");
 const server = http.createServer(app);
-dotenv.config();
 
 const io = socketIO(server, {
   cors: {
@@ -29,6 +31,7 @@ const io = socketIO(server, {
   pingInterval: 25000,
   transports: ["websocket", "polling"],
 });
+
 app.use(
   cors({
     origin: [
@@ -39,7 +42,6 @@ app.use(
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
-
     credentials: true,
   }),
 );
@@ -60,6 +62,7 @@ const routes = [
   { path: "/support-chatbot", file: "./routes/supportChatbot" },
   { path: "/admin", file: "./routes/admin" },
 ];
+
 app.use(cors());
 
 routes.forEach((route) => {
@@ -78,14 +81,11 @@ notificationService.setSocketIO(io);
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth.token;
-
     if (!token) {
       return next(new Error("Authentication error: Token required"));
     }
-
     const jwt = require("jsonwebtoken");
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     socket.userId = decoded.id;
     socket.userType = decoded.role;
     next();
@@ -98,7 +98,6 @@ io.on("connection", (socket) => {
   console.log(` Client connected: ${socket.id}`);
   console.log(`   User: ${socket.userId} (${socket.userType})`);
 
-  // Join user-specific room
   const room = `${socket.userType}:${socket.userId}`;
   socket.join(room);
   console.log(`   Joined room: ${room}`);
@@ -112,33 +111,27 @@ io.on("connection", (socket) => {
   socket.on("update_location", async (data) => {
     try {
       if (socket.userType !== "provider") return;
-
       const { latitude, longitude } = data;
-
-      // Update provider location in database
       const Provider = require("./models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
         "currentLocation.coordinates": [longitude, latitude],
         lastLocationUpdate: new Date(),
       });
-
       console.log(`📍 Provider ${socket.userId} location updated`);
     } catch (error) {
       console.error("Update location error:", error.message);
     }
   });
+
   socket.on("set_availability", async (data) => {
     try {
       if (socket.userType !== "provider") return;
-
       const { isAvailable } = data;
-
       const Provider = require("./models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
         "availability.isAvailable": isAvailable,
         isOnline: true,
       });
-
       socket.emit("availability_updated", { isAvailable });
       console.log(`🟢 Provider ${socket.userId} availability: ${isAvailable}`);
     } catch (error) {
@@ -146,39 +139,25 @@ io.on("connection", (socket) => {
     }
   });
 
-  /**
-   * Join a booking chat room
-   * Automatically validates if user can access based on booking status
-   */
   socket.on("join_chat", async (data) => {
     try {
       const { bookingId } = data;
       const chatService = require("./src/services/chat.service");
-
-      // Check if user can access this chat
       const access = await chatService.canAccessChat(bookingId, socket.userId);
-
       if (!access.allowed) {
         socket.emit("error", {
           message: "Cannot access this chat - booking not in progress",
         });
         return;
       }
-
       const chatRoom = `booking:${bookingId}`;
       socket.join(chatRoom);
-
-      console.log(
-        `💬 ${socket.userType} ${socket.userId} joined chat: ${chatRoom}`,
-      );
-
-      // Notify the other party
+      console.log(`💬 ${socket.userType} ${socket.userId} joined chat: ${chatRoom}`);
       socket.to(chatRoom).emit("user_joined_chat", {
         userId: socket.userId,
         userType: socket.userType,
         bookingId,
       });
-
       socket.emit("chat_joined", {
         bookingId,
         room: chatRoom,
@@ -193,20 +172,15 @@ io.on("connection", (socket) => {
   socket.on("send_message", async (data) => {
     try {
       const { bookingId, message, messageType, attachments } = data;
-
       const chatService = require("./src/services/chat.service");
       const userModel = socket.userType === "provider" ? "Provider" : "Buyer";
-
       const result = await chatService.sendMessage(
         bookingId,
         socket.userId,
         userModel,
         { message, messageType, attachments },
       );
-
       const chatRoom = `booking:${bookingId}`;
-
-      // Broadcast to all in the room
       io.to(chatRoom).emit("new_message", {
         bookingId,
         message: result.message,
@@ -215,19 +189,16 @@ io.on("connection", (socket) => {
           type: socket.userType,
         },
       });
-
       console.log(`📨 Message sent in ${chatRoom}`);
     } catch (error) {
       console.error("Send message error:", error);
       socket.emit("error", { message: error.message });
     }
   });
-  // Handle typing indicators (for chat feature)
+
   socket.on("typing", (data) => {
     const { bookingId, isTyping } = data;
     const chatRoom = `booking:${bookingId}`;
-
-    // Notify the other party
     socket.to(chatRoom).emit("user_typing", {
       userId: socket.userId,
       userType: socket.userType,
@@ -238,10 +209,8 @@ io.on("connection", (socket) => {
   socket.on("mark_read", async (data) => {
     try {
       const { bookingId } = data;
-
       const chatService = require("./src/services/chat.service");
       await chatService.markAsRead(bookingId, socket.userId);
-
       const chatRoom = `booking:${bookingId}`;
       socket.to(chatRoom).emit("messages_read", {
         userId: socket.userId,
@@ -265,23 +234,16 @@ io.on("connection", (socket) => {
   socket.on("leave_chat", (data) => {
     const { bookingId } = data;
     const chatRoom = `booking:${bookingId}`;
-
     socket.leave(chatRoom);
-    console.log(
-      `👋 ${socket.userType} ${socket.userId} left chat: ${chatRoom}`,
-    );
-
+    console.log(`👋 ${socket.userType} ${socket.userId} left chat: ${chatRoom}`);
     socket.to(chatRoom).emit("user_left_chat", {
       userId: socket.userId,
     });
   });
 
-  // Handle disconnect
   socket.on("disconnect", async () => {
     console.log(`❌ Client disconnected: ${socket.id}`);
     console.log(`   User: ${socket.userId}`);
-
-    // Update provider online status
     if (socket.userType === "provider") {
       try {
         const Provider = require("./models/ServiceProvider");
@@ -296,7 +258,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle errors
   socket.on("error", (error) => {
     console.error("Socket error:", error);
   });
