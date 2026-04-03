@@ -27,7 +27,13 @@ jobs:
       - name: Ensure branch is up to date with dev
         run: |
           git fetch origin dev
-          git merge-base --is-ancestor origin/dev HEAD || (echo "Branch must be up to date with dev before merging into main" && exit 1)
+          git fetch origin main
+          MERGE_BASE=$(git merge-base HEAD origin/dev)
+          DEV_TIP=$(git rev-parse origin/dev)
+          if [ "$MERGE_BASE" != "$DEV_TIP" ]; then
+            echo "Branch must be created from dev and be up to date with it"
+            exit 1
+          fi
 
   build:
     if: github.event_name == 'push'
