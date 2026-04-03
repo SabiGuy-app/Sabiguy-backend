@@ -19,19 +19,10 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-
-      - name: Ensure branch is up to date with dev
+      - name: Ensure PR is from dev branch only
         run: |
-          git fetch origin dev
-          git fetch origin main
-          MERGE_BASE=$(git merge-base HEAD origin/dev)
-          DEV_TIP=$(git rev-parse origin/dev)
-          if [ "$MERGE_BASE" != "$DEV_TIP" ]; then
-            echo "Branch must be created from dev and be up to date with it"
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "Only the dev branch can be merged into main"
             exit 1
           fi
 
