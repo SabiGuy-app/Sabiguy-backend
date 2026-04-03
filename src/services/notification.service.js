@@ -5,25 +5,20 @@ const Notification = require("../../models/Notification");
 
 class NotificationService {
   constructor() {
-    // Initialize Firebase Admin SDK
     if (!admin.apps.length) {
       try {
+        const serviceAccount = JSON.parse(
+          Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_KEY, 'base64').toString('utf8')
+        );
         admin.initializeApp({
-          credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-          }),
+          credential: admin.credential.cert(serviceAccount),
         });
-        console.log(process.env.FIREBASE_PROJECT_ID);
-
         console.log("✅ Firebase Admin initialized");
       } catch (error) {
         console.error("❌ Firebase initialization error:", error.message);
       }
     }
 
-    // Socket.IO instance will be set from server
     this.io = null;
   }
 
@@ -118,18 +113,10 @@ class NotificationService {
     return { allowInApp, allowPush: pushEnabled, allowEmail: emailEnabled };
   }
 
-  /**
-   * Set Socket.IO instance
-   */
   setSocketIO(io) {
     this.io = io;
   }
 
-  /**
-   * Send notification to user
-   * @param {String} userId
-   * @param {Object} data - { type, title, message, bookingId, ... }
-   */
   async notifyUser(userId, data) {
     try {
       const preferences = await this.getPreferences(userId, "Buyer");
@@ -142,12 +129,10 @@ class NotificationService {
 
       const room = `buyer:${userId}`;
 
-      // Real-time (Socket.IO)
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
       }
 
-      // Push (FCM)
       if (decision.allowPush) {
         await this.sendPushNotification(userId, "Buyer", data);
       }
@@ -158,11 +143,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * Send notification to provider
-   * @param {String} providerId
-   * @param {Object} data
-   */
   async notifyProvider(providerId, data) {
     try {
       const preferences = await this.getPreferences(providerId, "Provider");
@@ -175,12 +155,10 @@ class NotificationService {
 
       const room = `provider:${providerId}`;
 
-      // Real-time (Socket.IO)
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
       }
 
-      // Push (FCM)
       if (decision.allowPush) {
         await this.sendPushNotification(providerId, "Provider", data);
       }
@@ -197,21 +175,17 @@ class NotificationService {
       const decision = this.shouldNotify(preferences, data.type);
       if (!decision.allowInApp && !decision.allowPush) return null;
 
-      // Create notification in database
       const notification = decision.allowInApp
         ? await this.createNotification(userId, userModel, data)
         : null;
 
-      // Determine the correct room based on userModel
       const room = `${userModel.toLowerCase()}:${userId}`;
 
-      // Real-time notification via Socket.IO
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
         console.log(`📢 Real-time notification sent to room: ${room}`);
       }
 
-      // Push notification via FCM
       if (decision.allowPush) {
         await this.sendPushNotification(userId, userModel, data);
       }
@@ -223,18 +197,13 @@ class NotificationService {
     }
   }
 
-  /**
-   * Notify when booking is taken by another provider
-   */
   async notifyBookingTaken(bookingId, acceptedProviderId) {
     try {
-      // You'd get the list of notified providers from booking
       const Booking = require("../../models/Bookings");
       const booking = await Booking.findById(bookingId);
 
       if (!booking || !booking.notifiedProviders) return;
 
-      // Notify all other providers
       const otherProviders = booking.notifiedProviders.filter(
         (id) => id.toString() !== acceptedProviderId.toString(),
       );
@@ -253,10 +222,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * Create notification record in database
-   * @private
-   */
   async createNotification(recipientId, recipientModel, data) {
     try {
       const notification = await Notification.create({
@@ -279,21 +244,15 @@ class NotificationService {
     }
   }
 
-  /**
-   * Send push notification via Firebase Cloud Messaging
-   * @private
-   */
   async sendPushNotification(recipientId, recipientModel, data) {
     try {
-      // Get user/provider FCM token from database
       let fcmToken;
 
       if (recipientModel === "Buyer") {
         const user = await Buyer.findById(recipientId).select("fcmToken");
         fcmToken = user?.fcmToken;
       } else {
-        const provider =
-          await Provider.findById(recipientId).select("fcmToken");
+        const provider = await Provider.findById(recipientId).select("fcmToken");
         fcmToken = provider?.fcmToken;
       }
 
@@ -331,13 +290,10 @@ class NotificationService {
       };
 
       await admin.messaging().send(message);
-      console.log(
-        `✅ Push notification sent to ${recipientModel}:${recipientId}`,
-      );
+      console.log(`✅ Push notification sent to ${recipientModel}:${recipientId}`);
     } catch (error) {
       console.error("Push notification error:", error.message);
 
-      // If token is invalid, remove it from database
       if (
         error.code === "messaging/invalid-registration-token" ||
         error.code === "messaging/registration-token-not-registered"
@@ -347,10 +303,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * Remove invalid FCM token
-   * @private
-   */
   async removeInvalidFCMToken(recipientId, recipientModel) {
     try {
       if (recipientModel === "Buyer") {
@@ -365,10 +317,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * Get default notification title based on type
-   * @private
-   */
   getDefaultTitle(type) {
     const titles = {
       new_booking_request: "🔔 New Booking Request",
@@ -383,9 +331,6 @@ class NotificationService {
     return titles[type] || "Notification";
   }
 
-  /**
-   * Mark notification as read
-   */
   async markAsRead(notificationId) {
     try {
       await Notification.findByIdAndUpdate(notificationId, {
