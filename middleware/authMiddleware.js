@@ -32,6 +32,12 @@ const authMiddleware = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ message: `${role} not found` });
     }
+    if (user.isDeleted) {
+      return res.status(403).json({ message: "Account deleted" });
+    }
+    if (user.isActive === false) {
+      return res.status(403).json({ message: "Account deactivated" });
+    }
 
     req.user = { id: user._id, role, email };
     next();

@@ -51,12 +51,6 @@ const providerUpdateLimiter = rateLimit({
  *               address:
  *                 type: string
  *                 example: "12 Opebi Street, Ikeja"
- *               accountType:
- *                 type: string
- *                 example: "Personal"
- *               ninSlip:
- *                 type: string
- *                 example: "https://cloudstorage.com/ninslip.jpg"
  *     responses:
  *       200:
  *         description: Profile info updated successfully
@@ -80,6 +74,12 @@ router.post("/", authMiddleware, ProviderController.ProfileInfo);
  *           schema:
  *             type: object
  *             properties:
+ *               accountType:
+ *                 type: string
+ *                 example: "Personal"
+ *               ninSlip:
+ *                 type: string
+ *                 example: "https://cloudstorage.com/ninslip.jpg"
  *               BusinessName:
  *                 type: string
  *                 example: "Queen’s Glam Studio"

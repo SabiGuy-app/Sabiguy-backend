@@ -5,6 +5,10 @@ const serviceUserSchema = new mongoose.Schema ({
     phoneNumber: { type: String, unique: true, sparse: true },
     password: { type: String, required: false},
     createdAt: { type: Date, default: Date.now},
+    isActive: { type: Boolean, default: true },
+    deactivatedAt: { type: Date, default: null },
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
     emailVerified: { type: Boolean, default: false },
     otp: { type: String },
      otpExpiresAt: {
