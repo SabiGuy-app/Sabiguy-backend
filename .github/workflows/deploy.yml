@@ -4,13 +4,33 @@ on:
     branches:
       - main
       - dev
+  pull_request:
+    branches:
+      - main
+
 env:
   AWS_REGION: us-east-1
   CONTAINER_NAME: sabiguy-backend
   ECR_REPOSITORY: 914471710952.dkr.ecr.us-east-1.amazonaws.com/sabiguy-staging-backend
   EC2_USERNAME: ec2-user
+
 jobs:
+  check-dev-sync:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Ensure branch is up to date with dev
+        run: |
+          git fetch origin dev
+          git merge-base --is-ancestor origin/dev HEAD || (echo "Branch must be up to date with dev before merging into main" && exit 1)
+
   build:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: staging
     outputs:
@@ -126,7 +146,7 @@ jobs:
             FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
             FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
             FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}
-            FIREBASE_SERVICE_ACCOUNT_KEY='${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}'
+            FIREBASE_SERVICE_ACCOUNT_KEY=${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
             PAYSTACK_SECRET_KEY=${{ secrets.PAYSTACK_SECRET_KEY }}
             PAYSTACK_PUBLIC_KEY=${{ secrets.PAYSTACK_PUBLIC_KEY }}
             MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}
