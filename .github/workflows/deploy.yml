@@ -27,7 +27,13 @@ jobs:
       - name: Ensure branch is up to date with dev
         run: |
           git fetch origin dev
-          git merge-base --is-ancestor origin/dev HEAD || (echo "Branch must be up to date with dev before merging into main" && exit 1)
+          git fetch origin main
+          MERGE_BASE=$(git merge-base HEAD origin/dev)
+          DEV_TIP=$(git rev-parse origin/dev)
+          if [ "$MERGE_BASE" != "$DEV_TIP" ]; then
+            echo "Branch must be created from dev and be up to date with it"
+            exit 1
+          fi
 
   build:
     if: github.event_name == 'push'
@@ -124,46 +130,4 @@ jobs:
       - name: Write env file to EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.PRODUCTION_EC2_HOST }}
-          username: ${{ env.EC2_USERNAME }}
-          key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
-          script: |
-            cat > /home/ec2-user/.env << ENVEOF
-            PORT=3000
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            CLOUD_NAME=${{ secrets.CLOUD_NAME }}
-            CLOUD_API_SECRET=${{ secrets.CLOUD_API_SECRET }}
-            CLOUD_API_KEY=${{ secrets.CLOUD_API_KEY }}
-            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
-            BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
-            BREVO_SENDER_EMAIL=${{ secrets.BREVO_SENDER_EMAIL }}
-            FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
-            FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
-            FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}
-            FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
-            FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
-            FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
-            FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}
-            FIREBASE_SERVICE_ACCOUNT_KEY=${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
-            PAYSTACK_SECRET_KEY=${{ secrets.PAYSTACK_SECRET_KEY }}
-            PAYSTACK_PUBLIC_KEY=${{ secrets.PAYSTACK_PUBLIC_KEY }}
-            MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}
-            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-            GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
-            SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }}
-            ENVEOF
-
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PRODUCTION_EC2_HOST }}
-          username: ${{ env.EC2_USERNAME }}
-          key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
-          script: |
-            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
-            docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-            docker stop ${{ env.CONTAINER_NAME }} || true
-            docker rm ${{ env.CONTAINER_NAME }} || true
-            docker run -d --name ${{ env.CONTAINER_NAME }} -p 3000:3000 --env-file /home/ec2-user/.env ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          host
