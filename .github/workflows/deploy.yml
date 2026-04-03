@@ -1,0 +1,149 @@
+name: Backend CI/CD Pipeline
+on:
+  push:
+    branches:
+      - main
+      - dev
+env:
+  AWS_REGION: us-east-1
+  CONTAINER_NAME: sabiguy-backend
+  ECR_REPOSITORY: 914471710952.dkr.ecr.us-east-1.amazonaws.com/sabiguy-staging-backend
+  EC2_USERNAME: ec2-user
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      image_uri: ${{ steps.build-image.outputs.image_uri }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Login to AWS
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and tag docker image
+        id: build-image
+        run: |
+          IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          docker build -t $IMAGE_URI .
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+      - name: Push docker image to ECR
+        run: |
+          IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          docker push $IMAGE_URI
+
+  deploy-staging:
+    needs: build
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Write env file to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.STAGING_EC2_SSH_KEY }}
+          script: |
+            cat > /home/ec2-user/.env << ENVEOF
+            PORT=3000
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            CLOUD_NAME=${{ secrets.CLOUD_NAME }}
+            CLOUD_API_SECRET=${{ secrets.CLOUD_API_SECRET }}
+            CLOUD_API_KEY=${{ secrets.CLOUD_API_KEY }}
+            FRONTEND_URL=https://sabiguy.vercel.app/
+            BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
+            BREVO_SENDER_EMAIL=${{ secrets.BREVO_SENDER_EMAIL }}
+            FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
+            FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
+            FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}
+            FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
+            FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
+            FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+            FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}
+            FIREBASE_SERVICE_ACCOUNT_KEY=${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+            PAYSTACK_SECRET_KEY=${{ secrets.PAYSTACK_SECRET_KEY }}
+            PAYSTACK_PUBLIC_KEY=${{ secrets.PAYSTACK_PUBLIC_KEY }}
+            MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+            SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }}
+            ENVEOF
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.STAGING_EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
+            docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
+            docker run -d --name ${{ env.CONTAINER_NAME }} -p 3000:3000 --env-file /home/ec2-user/.env ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+  deploy-production:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Write env file to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PRODUCTION_EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
+          script: |
+            cat > /home/ec2-user/.env << ENVEOF
+            PORT=3000
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            CLOUD_NAME=${{ secrets.CLOUD_NAME }}
+            CLOUD_API_SECRET=${{ secrets.CLOUD_API_SECRET }}
+            CLOUD_API_KEY=${{ secrets.CLOUD_API_KEY }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
+            BREVO_SENDER_EMAIL=${{ secrets.BREVO_SENDER_EMAIL }}
+            FIREBASE_CLIENT_EMAIL=${{ secrets.FIREBASE_CLIENT_EMAIL }}
+            FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}
+            FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}
+            FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}
+            FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}
+            FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+            FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}
+            FIREBASE_SERVICE_ACCOUNT_KEY='${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}'
+            PAYSTACK_SECRET_KEY=${{ secrets.PAYSTACK_SECRET_KEY }}
+            PAYSTACK_PUBLIC_KEY=${{ secrets.PAYSTACK_PUBLIC_KEY }}
+            MAPBOX_ACCESS_TOKEN=${{ secrets.MAPBOX_ACCESS_TOKEN }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+            SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }}
+            ENVEOF
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PRODUCTION_EC2_HOST }}
+          username: ${{ env.EC2_USERNAME }}
+          key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
+            docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker stop ${{ env.CONTAINER_NAME }} || true
+            docker rm ${{ env.CONTAINER_NAME }} || true
+            docker run -d --name ${{ env.CONTAINER_NAME }} -p 3000:3000 --env-file /home/ec2-user/.env ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
