@@ -67,17 +67,20 @@ class TransactionController {
 
       // Filter by transaction type
       if (type) {
+        // Ensure type is either a string or an array of strings
         if (Array.isArray(type)) {
-          const types = type.filter((value) => allowedTypes.has(value));
-          if (types.length !== type.length) {
+          const invalidTypeElement = type.some(
+            (value) => typeof value !== "string" || !allowedTypes.has(value),
+          );
+          if (invalidTypeElement) {
             return res.status(400).json({
               success: false,
               message: "Invalid transaction type",
             });
           }
-          query.type = { $in: types };
+          query.type = { $in: type };
         } else {
-          if (!allowedTypes.has(type)) {
+          if (typeof type !== "string" || !allowedTypes.has(type)) {
             return res.status(400).json({
               success: false,
               message: "Invalid transaction type",
@@ -89,17 +92,20 @@ class TransactionController {
 
       // Filter by status
       if (status) {
+        // Ensure status is either a string or an array of strings
         if (Array.isArray(status)) {
-          const statuses = status.filter((value) => allowedStatuses.has(value));
-          if (statuses.length !== status.length) {
+          const invalidStatusElement = status.some(
+            (value) => typeof value !== "string" || !allowedStatuses.has(value),
+          );
+          if (invalidStatusElement) {
             return res.status(400).json({
               success: false,
               message: "Invalid transaction status",
             });
           }
-          query.status = { $in: statuses };
+          query.status = { $in: status };
         } else {
-          if (!allowedStatuses.has(status)) {
+          if (typeof status !== "string" || !allowedStatuses.has(status)) {
             return res.status(400).json({
               success: false,
               message: "Invalid transaction status",
