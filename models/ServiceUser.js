@@ -56,7 +56,19 @@ fcmToken: {
       type: Boolean,
       default: false
     },
-
+ currentLocation: {
+  type: {
+    type: String,
+    enum: ['Point'],
+    default: 'Point'
+  },
+  coordinates: {
+    type: [Number],  // [longitude, latitude]
+    index: '2dsphere'
+  },
+  address: String  // Optional
+},
+  
     notificationPreferences: {
       bookings: {
         push: { type: Boolean, default: true },

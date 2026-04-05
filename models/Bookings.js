@@ -82,6 +82,35 @@ dropoffLocation: {
         default: 'km'
       }
     },
+    // Booking schema additions
+providerETA: {
+  value: Number,
+  unit: { type: String, default: "minutes" },
+},
+
+rideDuration: {
+  value: Number,
+  unit: { type: String, default: "minutes" },
+  isEstimate: { type: Boolean, default: false },
+},
+
+bookingDuration: {
+  value: Number,
+  unit: { type: String, default: "minutes" },
+  breakdown: {
+    providerToPickup: Number,
+    pickupToDropoff: Number,
+  },
+},
+providerDistances: [
+  {
+    providerId: { type: mongoose.Schema.Types.ObjectId, ref: "Provider" },
+    distanceFromPickup: Number,
+    providerETAMinutes: Number,
+    vehicleProductionYear: Number,
+  },
+],
+estimatedCompletionAt: Date,
     estimatedDuration: {
       value: Number,
       unit: {

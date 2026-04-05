@@ -105,6 +105,11 @@ fcmToken: {
   },
   address: String  // Optional
 },
+
+lastLocationUpdate: {
+  type: Date,
+  default: Date.now,
+},
   
   availability: {
     isAvailable: {
@@ -198,6 +203,9 @@ fcmToken: {
 }, {
   timestamps: true
 });
+
+serviceProviderSchema.index({ "currentLocation": "2dsphere" });
+
 
 module.exports =  mongoose.model ("Provider", serviceProviderSchema);
 
