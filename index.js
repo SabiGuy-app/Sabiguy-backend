@@ -20,7 +20,7 @@ const io = socketIO(server, {
     origin: [
       "http://localhost:5173",
       "http://localhost:3001",
-      "https://sabiguy-frontend.vercel.app",
+      "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
     ],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -37,7 +37,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "http://localhost:3001",
-      "https://sabiguy-frontend.vercel.app",
+      "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],

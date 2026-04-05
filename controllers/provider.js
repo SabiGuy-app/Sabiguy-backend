@@ -3,6 +3,8 @@ const Booking = require("../models/Bookings");
 const notificationService = require("../src/services/notification.service");
 const paymentService = require("../src/services/payment.service");
 const jwt = require("jsonwebtoken");
+const geolocationService = require("../src/services/geolocation.service");
+const pricingService = require("../src/services/pricing.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
@@ -688,125 +690,162 @@ class ProviderController {
     }
   }
 
-  // async getBookingDetails(req, res) {
-  //   try {
-  //     const providerId = req.user.providerId;
-  //     const { bookingId } = req.params;
-
-  //     const booking = await Booking.findOne({
-  //       _id: bookingId,
-  //       providerId
-  //     }).populate('userId', 'firstName lastName avatar phoneNumber email');
-
-  //     if (!booking) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         message: 'Booking not found'
-  //       });
-  //     }
-
-  //     return res.status(200).json({
-  //       success: true,
-  //       data: booking
-  //     });
-  //   } catch (error) {
-  //     console.error('Get booking details error:', error);
-  //     return res.status(500).json({
-  //       success: false,
-  //       message: 'Error fetching booking details',
-  //       error: error.message
-  //     });
-  //   }
-  // }
-
   async acceptBooking(req, res) {
-    try {
-      const bookingId = req.params.id;
-      const provider = req.user;
-      const providerId = provider.id;
+  try {
+    const bookingId = req.params.id;
+    const provider = req.user;
+    const providerId = provider.id;
 
-      // 1️⃣ Fetch booking first (read-only)
-      const booking = await Booking.findById(bookingId);
+    // 1️⃣ Fetch booking
+    const booking = await Booking.findById(bookingId);
 
-      if (!booking) {
-        return res.status(404).json({
-          success: false,
-          message: "Booking not found",
-        });
-      }
-
-      // 2️⃣ Status check
-      if (
-        !["awaiting_provider_acceptance", "pending_providers"].includes(
-          booking.status,
-        )
-      ) {
-        return res.status(409).json({
-          success: false,
-          message: "Booking is no longer available",
-        });
-      }
-
-      // 3️⃣ Service match check (🔥 BEFORE update)
-      // const isServiceMatch = provider.job?.some(j =>
-      //   j.service === booking.serviceType &&
-      //   j.title === booking.subCategory
-      // );
-
-      // if (!isServiceMatch) {
-      //   return res.status(409).json({
-      //     success: false,
-      //     message: 'You cannot accept a service you do not offer'
-      //   });
-      // }
-
-      // 4️⃣ Atomic update (fastest finger wins)
-      const updatedBooking = await Booking.findOneAndUpdate(
-        {
-          _id: bookingId,
-          providerId: { $exists: false },
-        },
-        {
-          providerId,
-          status: "provider_selected",
-          acceptedAt: new Date(),
-        },
-        { new: true },
-      ).populate("userId", "firstName lastName fcmToken");
-
-      if (!updatedBooking) {
-        return res.status(409).json({
-          success: false,
-          message: "Booking already taken by another provider",
-        });
-      }
-
-      // 5️⃣ Notifications
-      await notificationService.notifyUser(updatedBooking.userId, {
-        type: "provider_accepted",
-        title: "Provider Accepted Your Booking",
-        message: `A provider has accepted your ${updatedBooking.serviceType} booking`,
-        bookingId: updatedBooking._id,
-        providerId,
-      });
-
-      notificationService.notifyBookingTaken(bookingId, providerId);
-
-      return res.status(200).json({
-        success: true,
-        message: "Booking accepted successfully",
-        data: updatedBooking,
-      });
-    } catch (error) {
-      console.error("Accept booking error:", error);
-      return res.status(500).json({
+    if (!booking) {
+      return res.status(404).json({
         success: false,
-        message: "Failed to accept booking",
-        error: error.message,
+        message: "Booking not found",
       });
     }
+
+    // 2️⃣ Status check
+    if (
+      !["awaiting_provider_acceptance", "pending_providers"].includes(
+        booking.status,
+      )
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: "Booking is no longer available",
+      });
+    }
+
+    // 3️⃣ Fetch provider's current location and vehicle data
+    const providerData = await Provider.findById(providerId)
+      .select("currentLocation vehicleProductionYear job lastLocationUpdate");
+
+    if (!providerData) {
+      return res.status(404).json({
+        success: false,
+        message: "Provider not found",
+      });
+    }
+
+    if (
+      !providerData.currentLocation?.coordinates?.length
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Your location is unavailable. Please enable location and try again.",
+      });
+    }
+
+    // 4️⃣ Calculate provider ETA from their current location to pickup
+    const isBike = providerData.job?.some(j => j.title === "motorbike_rider");
+    const avgSpeedKmh = isBike ? 15 : 20;
+
+    const [providerLng, providerLat] = providerData.currentLocation.coordinates;
+    const [pickupLng, pickupLat] = booking.pickupLocation.coordinates.coordinates;
+
+    const distanceFromPickupKm = geolocationService.calculateDistance(
+      providerLat, providerLng,
+      pickupLat, pickupLng,
+    );
+
+    const providerETAMinutes = Math.ceil((distanceFromPickupKm / avgSpeedKmh) * 60);
+    const totalDurationMinutes = providerETAMinutes + booking.estimatedDuration.value;
+
+const updatedBooking = await Booking.findOneAndUpdate(
+  {
+    _id: bookingId,
+    $or: [
+      { providerId: { $exists: false } },  // fastest finger — no one accepted yet
+      { providerId: providerId },           // user selection — rider already chose this provider
+    ],
+    status: { $in: ["awaiting_provider_acceptance", "pending_providers"] }, // re-check status atomically
+  },
+  {
+    providerId,
+    status: "enroute_to_pickup",
+    acceptedAt: new Date(),
+    distanceFromPickup: {
+      value: parseFloat(distanceFromPickupKm.toFixed(2)),
+      unit: "km",
+    },
+    providerETA: {
+      value: providerETAMinutes,
+      unit: "minutes",
+    },
+    bookingDuration: {
+      value: totalDurationMinutes,
+      unit: "minutes",
+      breakdown: {
+        providerToPickup: providerETAMinutes,
+        pickupToDropoff: booking.estimatedDuration.value,
+      },
+    },
+    estimatedCompletionAt: new Date(
+      Date.now() + totalDurationMinutes * 60 * 1000
+    ),
+  },
+  { new: true },
+).populate("userId", "firstName lastName fcmToken");
+
+if (!updatedBooking) {
+  // Distinguish between the two failure reasons for clearer errors
+  const freshBooking = await Booking.findById(bookingId).select("status providerId");
+
+  if (!freshBooking) {
+    return res.status(404).json({
+      success: false,
+      message: "Booking not found",
+    });
   }
 
+  if (freshBooking.status === "enroute_to_pickup") {
+    return res.status(409).json({
+      success: false,
+      message: "Booking already taken by another provider",
+    });
+  }
+
+  if (freshBooking.providerId && String(freshBooking.providerId) !== String(providerId)) {
+    return res.status(403).json({
+      success: false,
+      message: "This booking was assigned to a different provider",
+    });
+  }
+
+  return res.status(409).json({
+    success: false,
+    message: "Booking is no longer available",
+  });
+}
+    // 6️⃣ Notifications
+    await notificationService.notifyUser(updatedBooking.userId, {
+      type: "provider_accepted",
+      title: "Provider Accepted Your Booking",
+      message: `A provider is on their way to your pickup location`,
+      bookingId: updatedBooking._id,
+      providerId,
+      providerETA: providerETAMinutes,
+      estimatedCompletionAt: updatedBooking.estimatedCompletionAt,
+    });
+
+    notificationService.notifyBookingTaken(bookingId, providerId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking accepted successfully",
+      data: updatedBooking,
+    });
+  } catch (error) {
+    console.error("Accept booking error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to accept booking",
+      error: error.message,
+    });
+  }
+}
   async cancelBooking(req, res) {
     try {
       const providerId = req.user.id;
