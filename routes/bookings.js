@@ -137,7 +137,7 @@ router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBook
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending_providers, awaiting_provider_acceptance, provider_selected, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
+ *           enum: [pending_providers, awaiting_provider_acceptance, provider_selected, provider_accepted, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
  *         description: Filter by booking status
  *         example: pending_providers
  *       - in: query
@@ -289,7 +289,7 @@ router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBook
  *                             example: https://example.com/avatar.jpg
  *                       status:
  *                         type: string
- *                         enum: [pending_providers, awaiting_provider_acceptance, provider_selected, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
+ *                         enum: [pending_providers, awaiting_provider_acceptance, provider_selected, provider_accepted, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
  *                         example: completed
  *                       totalAmount:
  *                         type: number
