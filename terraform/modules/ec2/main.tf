@@ -6,6 +6,11 @@ data "aws_ami" "amazon_linux" {
     name   = "name"
     values = ["al2023-ami-*-x86_64"]
   }
+
+  filter {
+    name   = "image-id"
+    values = ["ami-0f989e78a92d5f420"]
+  }
 }
 
 resource "aws_iam_role" "ec2_role" {
@@ -66,6 +71,56 @@ resource "aws_instance" "main" {
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-ec2"
+    Environment = var.environment
+  }
+}
+
+resource "aws_security_group" "ec2" {
+  name        = "${var.project_name}-${var.environment}-ec2-sg"
+  description = "Security group for EC2 instance"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Allow HTTP from anywhere"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow HTTPS from anywhere"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow Node.js app port"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-ec2-sg"
     Environment = var.environment
   }
 }
