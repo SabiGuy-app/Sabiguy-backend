@@ -19,7 +19,7 @@ const notificationController = require("../controllers/notifications");
  *         description: Page number
  *       - in: query
  *         name: limit
- *         enum: [pending_providers, awaiting_provider_acceptance, provider_selected, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
+ *         enum: [pending_providers, awaiting_provider_acceptance, provider_selected, provider_accepted, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
  *         schema:
  *           type: integer
  *           default: 20

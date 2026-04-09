@@ -172,7 +172,9 @@ estimatedCompletionAt: Date,
         'awaiting_provider_acceptance', // Transport: waiting for fastest finger
         'provider_selected',            // Provider selected/accepted
         'payment_pending',              // Awaiting payment
-        'paid_escrow',                 
+        'paid_escrow', 
+        'provider_accepted' ,
+        'accept_selection'  ,             
         'in_progress',                  
         'arrived_at_pickup',              
         'enroute_to_dropoff',             

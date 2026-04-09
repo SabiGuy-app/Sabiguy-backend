@@ -69,7 +69,12 @@ routes.forEach((route) => {
   app.use(`/api/v1${route.path}`, require(route.file));
 });
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {}));
+// app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {}));
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, 
+  {customCssUrl: "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css", 
+     customJs: [ "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js",  
+     "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"  ]}));
 
 app.get("/api-docs.json", (req, res) => {
   res.setHeader("Content-Type", "application/json");
