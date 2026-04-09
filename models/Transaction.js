@@ -91,9 +91,9 @@ const transactionSchema = new mongoose.Schema(
         type: String,
         enum: ["paystack", "internal", "bank_transfer"],
       },
-      reference: {
-        type: String,
-      },
+     
+  reference: { type: String, sparse: true, unique: true },
+      
       response: mongoose.Schema.Types.Mixed,
     },
 

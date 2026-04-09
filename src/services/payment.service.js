@@ -30,14 +30,16 @@ class paymentService {
         throw new Error("Unauthorized: This is not your booking");
       }
 
-       if (booking.status === "paid_escrow") {
+      if (booking.status === "paid_escrow") {
         throw new Error("Booking already paid for");
       }
 
-      if (booking.status !== "provider_selected") {
+      if (
+        booking.status !== "provider_selected" &&
+        booking.status !== "provider_accepted"
+      ) {
         throw new Error("Booking must have a selected provider before payment");
       }
-
 
       const agreedPrice = booking.agreedPrice || booking.budget;
       const breakdown = pricingService.calculatePricingBreakdown(agreedPrice);
@@ -280,10 +282,13 @@ class paymentService {
       }
 
       if (booking.userId._id.toString() !== userId.toString()) {
-        throw new Error("Unauthorized");
+        throw new Error("Unauthorized: Only the buyer can release escrow");
       }
       if (booking.status === "funds_released") {
-        throw new Error("Payment already released from escrow");
+        return {
+          success: true,
+          message: "Payment already released from escrow",
+        };
       }
       if (booking.status !== "user_accepted_completion") {
         throw new Error(
@@ -292,7 +297,10 @@ class paymentService {
       }
 
       if (booking.payment.escrowStatus !== "held") {
-        throw new Error("No funds in escrow for this booking");
+        return {
+          success: true,
+          message: "No funds in escrow or already released",
+        };
       }
 
       const provider = await Provider.findById(booking.providerId._id);
@@ -316,12 +324,24 @@ class paymentService {
         );
       }
 
-      const escrowTransaction = await WalletService.releaseEscrow(
-        booking.providerId._id,
-        providerPayout,
-        booking._id,
-        notificationService,
-      );
+      // Check if escrow release transaction already exists to prevent duplicates
+      const existingTx = await Transaction.findOne({
+        bookingId: booking._id,
+        type: "escrow_release",
+        status: "completed",
+      });
+
+      let escrowTransaction = existingTx;
+      if (!existingTx) {
+        // Move funds from pending to available in provider's wallet
+        escrowTransaction = await WalletService.releaseEscrow(
+          booking.providerId._id,
+          providerPayout,
+          booking._id,
+          notificationService,
+        );
+        console.log("✅ Escrow release transaction created and wallet updated");
+      }
       console.log("✅ Escrow released to provider wallet");
 
       // Update booking
@@ -332,12 +352,14 @@ class paymentService {
       console.log("✅ Booking updated to funds_released");
 
       // Notify provider
-      await notificationService.notifyProvider(booking.providerId._id, {
-        type: "funds_released",
-        title: "💰 Payment Released",
-        message: `₦${providerPayout.toLocaleString()} has been added to your wallet for booking #${booking._id}`,
-        bookingId: booking._id,
-      });
+      if (booking.providerId) {
+        await notificationService.notifyProvider(booking.providerId._id, {
+          type: "funds_released",
+          title: "💰 Payment Released",
+          message: `₦${providerPayout.toLocaleString()} has been added to your wallet for booking #${booking._id}`,
+          bookingId: booking._id,
+        });
+      }
 
       return {
         success: true,
