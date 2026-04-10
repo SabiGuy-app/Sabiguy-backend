@@ -75,21 +75,16 @@ app.get("/api-docs/swagger.json", (req, res) => {
   res.json(swaggerSpec);
 });
 
-app.use(
-  "/api-docs",
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    customCssUrl:
-      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css",
-    customJs: [
-      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js",
-      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js",
-    ],
-    swaggerOptions: {
-      url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging/api-docs/swagger.json",
-    },
-  })
-);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCssUrl: "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css",
+  customJs: [
+    "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"
+  ],
+  swaggerOptions: {
+    url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging/api-docs/swagger.json"
+  }
+}));
 
 notificationService.setSocketIO(io);
 
