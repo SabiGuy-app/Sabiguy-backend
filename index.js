@@ -69,12 +69,27 @@ routes.forEach((route) => {
   app.use(`/api/v1${route.path}`, require(route.file));
 });
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {}));
-
-app.get("/api-docs.json", (req, res) => {
+// Expose raw swagger spec - must come before swaggerUi.serve
+app.get("/api-docs/swagger.json", (req, res) => {
   res.setHeader("Content-Type", "application/json");
-  res.send(swaggerSpec);
+  res.json(swaggerSpec);
 });
+
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customCssUrl:
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css",
+    customJs: [
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js",
+    ],
+    swaggerOptions: {
+      url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging/api-docs/swagger.json",
+    },
+  })
+);
 
 notificationService.setSocketIO(io);
 

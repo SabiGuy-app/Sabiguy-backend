@@ -14,7 +14,10 @@ const options = {
                 url: "http://localhost:3000/",
                 description: 'Local server',
             },
-          
+            {
+                url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging",
+                description: "Staging server (AWS)",
+            },
             {
                 url: "https://sabiguy.onrender.com/", 
                 description: "Production server",
@@ -23,7 +26,6 @@ const options = {
                 url: "https://abiguy-backend-sabi-guy5356-92laxgmt.leapcell.dev", 
                 description: "Production server",
             },
-           
         ],
         components: {
             securitySchemes: {
@@ -151,8 +153,6 @@ const options = {
   
     apis: ["./routes/*.js"]
 };
-
-
 
 
 const swaggerSpec = swaggerJsdoc(options);
