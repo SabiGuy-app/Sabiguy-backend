@@ -10,10 +10,24 @@ const options = {
             // version: "1.0"
         },
         servers: [
-            { url: "http://localhost:3000/", description: "Local server" },
-            { url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging", description: "AWS Staging server" },
-            { url: "https://sabiguy.onrender.com/", description: "Production server" },
-            { url: "https://abiguy-backend-sabi-guy5356-92laxgmt.leapcell.dev", description: "Production server" },
+            {
+                url: "http://localhost:3000/",
+                description: 'Local server',
+            },
+          
+            {
+                url: "https://sabiguy.onrender.com/", 
+                description: "Production server",
+            },
+            {
+                url: "https://abiguy-backend-sabi-guy5356-92laxgmt.leapcell.dev", 
+                description: "Production server",
+            },
+            {
+                url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging",
+                description: "AWS Staging server"
+},
+           
         ],
         components: {
             securitySchemes: {
