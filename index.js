@@ -74,26 +74,35 @@ routes.forEach((route) => {
 
 // app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {}));
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, 
-  {customCssUrl: "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css", 
-     customJs: [ "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js",  
-     "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"  ]}));
-
-app.get("/api-docs.json", (req, res) => {
+app.get("/api-docs/swagger.json", (req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.json(swaggerSpec);
 });
 
-app.use("/api-docs/", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCssUrl: "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css",
-  customJs: [
-    "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js",
-    "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"
-  ],
-  swaggerOptions: {
-    url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging/api-docs/swagger.json"
-  }
-}));
+app.get("/api-docs/", (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>SabiGuy API</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css">
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"></script>
+<script>
+  SwaggerUIBundle({
+    url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging/api-docs/swagger.json",
+    dom_id: '#swagger-ui',
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+    layout: "StandaloneLayout"
+  })
+</script>
+</body>
+</html>`);
+});
 
 notificationService.setSocketIO(io);
 
