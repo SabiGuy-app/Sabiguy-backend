@@ -3,6 +3,9 @@ dotenv.config();
 
 const express = require("express");
 const app = express();
+
+app.set('trust proxy', true);
+
 const connectToDB = require("./utils/db");
 const http = require("http");
 const socketIO = require("socket.io");
@@ -81,7 +84,7 @@ app.get("/api-docs.json", (req, res) => {
   res.json(swaggerSpec);
 });
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+app.use("/api-docs/", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCssUrl: "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css",
   customJs: [
     "https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js",
