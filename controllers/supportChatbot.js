@@ -20,6 +20,7 @@ const ACTIVE_STATUSES = [
   "pending_providers",
   "awaiting_provider_acceptance",
   "provider_selected",
+  "provider_accepted",
   "payment_pending",
   "paid_escrow",
   "in_progress",
