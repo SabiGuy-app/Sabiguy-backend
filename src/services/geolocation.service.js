@@ -69,27 +69,82 @@ class geolocationService {
    * @param {Number} latitude
    * @returns {Object} Address information
    */
+  // async reverseGeocode(longitude, latitude) {
+  //   try {
+  //     if (!this.mapboxToken) {
+  //       throw new Error('MAPBOX_ACCESS_TOKEN is not configured');
+  //     }
+
+  //     const url = `${this.mapboxBaseUrl}/geocoding/v5/mapbox.places/${longitude},${latitude}.json`;
+
+  //     const response = await axios.get(url, {
+  //       params: {
+  //         access_token: this.mapboxToken,
+  //         limit: 1,
+  //         types: 'address,place'
+  //       }
+  //     });
+
+  //     if (!response.data.features || response.data.features.length === 0) {
+  //       throw new Error('Location not found');
+  //     }
+
+  //     const feature = response.data.features[0];
+  //     const context = this.parseMapboxContext(feature.context);
+
+  //     return {
+  //       formattedAddress: feature.place_name,
+  //       placeName: feature.text,
+  //       context: {
+  //         city: context.place || context.locality,
+  //         state: context.region,
+  //         country: context.country,
+  //         postcode: context.postcode
+  //       }
+  //     };
+  //   } catch (error) {
+  //     console.error('Reverse geocoding error:', error.message);
+  //     throw new Error(`Failed to reverse geocode: ${error.message}`);
+  //   }
+  // }
+
   async reverseGeocode(longitude, latitude) {
-    try {
-      if (!this.mapboxToken) {
-        throw new Error('MAPBOX_ACCESS_TOKEN is not configured');
-      }
+  try {
+    if (!this.mapboxToken) {
+      throw new Error('MAPBOX_ACCESS_TOKEN is not configured');
+    }
 
-      const url = `${this.mapboxBaseUrl}/geocoding/v5/mapbox.places/${longitude},${latitude}.json`;
+    const url = `${this.mapboxBaseUrl}/geocoding/v5/mapbox.places/${longitude},${latitude}.json`;
 
-      const response = await axios.get(url, {
+    const response = await axios.get(url, {
+      params: {
+        access_token: this.mapboxToken,
+        limit: 1,
+        // Changed: strict address type only, no broad 'place' fallback
+        types: 'address',
+        language: 'en',
+        country: 'NG',
+      },
+    });
+
+    // If no street-level result, fall back to neighborhood then place
+    const features = response.data.features;
+    if (!features || features.length === 0) {
+      const fallback = await axios.get(url.replace(`${longitude},${latitude}`, `${longitude},${latitude}`), {
         params: {
           access_token: this.mapboxToken,
           limit: 1,
-          types: 'address,place'
-        }
+          types: 'neighborhood,locality,place',
+          language: 'en',
+          country: 'NG',
+        },
       });
 
-      if (!response.data.features || response.data.features.length === 0) {
+      if (!fallback.data.features?.length) {
         throw new Error('Location not found');
       }
 
-      const feature = response.data.features[0];
+      const feature = fallback.data.features[0];
       const context = this.parseMapboxContext(feature.context);
 
       return {
@@ -99,14 +154,29 @@ class geolocationService {
           city: context.place || context.locality,
           state: context.region,
           country: context.country,
-          postcode: context.postcode
-        }
+          postcode: context.postcode,
+        },
       };
-    } catch (error) {
-      console.error('Reverse geocoding error:', error.message);
-      throw new Error(`Failed to reverse geocode: ${error.message}`);
     }
+
+    const feature = features[0];
+    const context = this.parseMapboxContext(feature.context);
+
+    return {
+      formattedAddress: feature.place_name,
+      placeName: feature.text,
+      context: {
+        city: context.place || context.locality,
+        state: context.region,
+        country: context.country,
+        postcode: context.postcode,
+      },
+    };
+  } catch (error) {
+    console.error('Reverse geocoding error:', error.message);
+    throw new Error(`Failed to reverse geocode: ${error.message}`);
   }
+}
 
   /**
    * Get distance and duration between two points using Mapbox Directions API
