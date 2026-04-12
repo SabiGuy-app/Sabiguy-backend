@@ -14,6 +14,22 @@ resource "aws_api_gateway_resource" "proxy" {
   path_part   = "{proxy+}"
 }
 
+resource "aws_api_gateway_method" "root" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_rest_api.main.root_resource_id
+  http_method   = "ANY"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "root" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_rest_api.main.root_resource_id
+  http_method             = aws_api_gateway_method.root.http_method
+  integration_http_method = "ANY"
+  type                    = "HTTP_PROXY"
+  uri                     = "http://${var.ec2_public_ip}:3000/"
+}
+
 resource "aws_api_gateway_method" "proxy" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
   resource_id   = aws_api_gateway_resource.proxy.id
@@ -115,6 +131,8 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.proxy.id,
       aws_api_gateway_method.proxy_options.id,
       aws_api_gateway_integration.proxy_options.id,
+      aws_api_gateway_method.root.id,
+      aws_api_gateway_integration.root.id,
     ]))
   }
 
