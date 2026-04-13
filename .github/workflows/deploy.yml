@@ -4,9 +4,15 @@ on:
     branches:
       - main
       - dev
+    paths-ignore:
+      - 'terraform/**'
+      - '**.tf'
+      - '**.tfvars'
+      - '.terraform.lock.hcl'
   pull_request:
     branches:
       - main
+      - dev
 
 env:
   AWS_REGION: us-east-1
@@ -16,7 +22,7 @@ env:
 
 jobs:
   check-dev-sync:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Ensure PR is from dev branch only
@@ -123,7 +129,7 @@ jobs:
 
   deploy-production:
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.PRODUCTION_READY == 'true'
     runs-on: ubuntu-latest
     environment: production
     steps:
