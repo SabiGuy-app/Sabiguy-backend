@@ -601,131 +601,266 @@ class ProviderController {
   //   }
   // }
 
-  async updateLocation (req, res) {
-    try {
-      const providerId = req.user.id;
-      const { latitude, longitude, address } = req.body;
+  // async updateLocation (req, res) {
+  //   try {
+  //     const providerId = req.user.id;
+  //     const { latitude, longitude, address } = req.body;
   
-      if (!latitude || !longitude) {
-        return res.status(400).json({
-          success: false,
-          message: "Latitude and longitude are required",
-        });
-      }
+  //     if (!latitude || !longitude) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Latitude and longitude are required",
+  //       });
+  //     }
   
-      if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid coordinates",
-        });
-      }
+  //     if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Invalid coordinates",
+  //       });
+  //     }
   
-      const existingProvider = await Provider.findById(providerId);
-      if (!existingProvider) {
-        return res.status(404).json({
-          success: false,
-          message: "Provider not found",
-        });
-      }
+  //     const existingProvider = await Provider.findById(providerId);
+  //     if (!existingProvider) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         message: "Provider not found",
+  //       });
+  //     }
   
-      // Helper to check if a string looks like raw coordinates (not a real address)
-      const isRawCoords = (addr) => addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
+  //     // Helper to check if a string looks like raw coordinates (not a real address)
+  //     const isRawCoords = (addr) => addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
   
-      const existingAddress = existingProvider.currentLocation?.address;
+  //     const existingAddress = existingProvider.currentLocation?.address;
   
-      // Use provided address only if it's a real address string, not raw coords
-      const hasValidProvidedAddress = address && !isRawCoords(address);
-      const hasValidCachedAddress = existingAddress && !isRawCoords(existingAddress);
+  //     // Use provided address only if it's a real address string, not raw coords
+  //     const hasValidProvidedAddress = address && !isRawCoords(address);
+  //     const hasValidCachedAddress = existingAddress && !isRawCoords(existingAddress);
   
-      let finalAddress = null;
-      let shouldReverseGeocode = true;
+  //     let finalAddress = null;
+  //     let shouldReverseGeocode = true;
   
-      if (hasValidProvidedAddress) {
-        // Caller provided a real address — trust it
-        finalAddress = address;
-        shouldReverseGeocode = false;
-      } else if (hasValidCachedAddress) {
-        // Check if moved significantly before deciding to re-geocode
-        const oldCoords = existingProvider.currentLocation?.coordinates || [0, 0];
-        const [oldLng, oldLat] = oldCoords;
+  //     if (hasValidProvidedAddress) {
+  //       // Caller provided a real address — trust it
+  //       finalAddress = address;
+  //       shouldReverseGeocode = false;
+  //     } else if (hasValidCachedAddress) {
+  //       // Check if moved significantly before deciding to re-geocode
+  //       const oldCoords = existingProvider.currentLocation?.coordinates || [0, 0];
+  //       const [oldLng, oldLat] = oldCoords;
   
-        const isFirstLocation = oldLat === 0 && oldLng === 0;
+  //       const isFirstLocation = oldLat === 0 && oldLng === 0;
   
-        if (!isFirstLocation) {
-          const R = 6371;
-          const dLat = ((latitude - oldLat) * Math.PI) / 180;
-          const dLon = ((longitude - oldLng) * Math.PI) / 180;
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos((oldLat * Math.PI) / 180) *
-              Math.cos((latitude * Math.PI) / 180) *
-              Math.sin(dLon / 2) *
-              Math.sin(dLon / 2);
-          const distanceMoved = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  //       if (!isFirstLocation) {
+  //         const R = 6371;
+  //         const dLat = ((latitude - oldLat) * Math.PI) / 180;
+  //         const dLon = ((longitude - oldLng) * Math.PI) / 180;
+  //         const a =
+  //           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+  //           Math.cos((oldLat * Math.PI) / 180) *
+  //             Math.cos((latitude * Math.PI) / 180) *
+  //             Math.sin(dLon / 2) *
+  //             Math.sin(dLon / 2);
+  //         const distanceMoved = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   
-          if (distanceMoved <= 0.5) {
-            // Hasn't moved much — reuse cached address
-            console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
-            finalAddress = existingAddress;
-            shouldReverseGeocode = false;
-          }
-        }
-      }
+  //         if (distanceMoved <= 0.0) {
+  //           // Hasn't moved much — reuse cached address
+  //           console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
+  //           finalAddress = existingAddress;
+  //           shouldReverseGeocode = false;
+  //         }
+  //       }
+  //     }
   
-      // Reverse geocode if needed
-      if (shouldReverseGeocode) {
-        try {
-          console.log(`🔄 Reverse geocoding coordinates: ${latitude}, ${longitude}`);
-          const geoData = await geolocationService.reverseGeocode(longitude, latitude);
+  //     // Reverse geocode if needed
+  //     if (shouldReverseGeocode) {
+  //       try {
+  //         console.log(`🔄 Reverse geocoding coordinates: ${latitude}, ${longitude}`);
+  //         const geoData = await geolocationService.reverseGeocode(longitude, latitude);
   
-          // Make sure Mapbox returned a real address
-          if (geoData?.formattedAddress && !isRawCoords(geoData.formattedAddress)) {
-            finalAddress = geoData.formattedAddress;
-          } else {
-            console.warn("Mapbox returned empty or invalid address:", geoData);
-            finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
-          }
-        } catch (geoError) {
-          console.warn("Reverse geocoding failed:", geoError.message);
-          finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
-        }
-      }
+  //         // Make sure Mapbox returned a real address
+  //         if (geoData?.formattedAddress && !isRawCoords(geoData.formattedAddress)) {
+  //           finalAddress = geoData.formattedAddress;
+  //         } else {
+  //           console.warn("Mapbox returned empty or invalid address:", geoData);
+  //           finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
+  //         }
+  //       } catch (geoError) {
+  //         console.warn("Reverse geocoding failed:", geoError.message);
+  //         finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
+  //       }
+  //     }
   
-      const provider = await Provider.findByIdAndUpdate(
-        providerId,
-        {
-          $set: {
-            "currentLocation.type": "Point",
-            "currentLocation.coordinates": [longitude, latitude],
-            "currentLocation.address": finalAddress,
-            lastLocationUpdate: new Date(),
-          },
-        },
-        { new: true }
-      );
+  //     const provider = await Provider.findByIdAndUpdate(
+  //       providerId,
+  //       {
+  //         $set: {
+  //           "currentLocation.type": "Point",
+  //           "currentLocation.coordinates": [longitude, latitude],
+  //           "currentLocation.address": finalAddress,
+  //           lastLocationUpdate: new Date(),
+  //         },
+  //       },
+  //       { new: true }
+  //     );
   
-      console.log(`📍 Location updated for provider ${provider.fullName}:`, {
-        coordinates: [longitude, latitude],
-        address: finalAddress,
-      });
+  //     console.log(`📍 Location updated for provider ${provider.fullName}:`, {
+  //       coordinates: [longitude, latitude],
+  //       address: finalAddress,
+  //     });
   
-      return res.status(200).json({
-        success: true,
-        message: "Location updated successfully",
-        data: {
-          currentLocation: provider.currentLocation,
-          lastLocationUpdate: provider.lastLocationUpdate,
-        },
-      });
-    } catch (error) {
-      console.error("Update location error:", error);
-      return res.status(500).json({
+  //     return res.status(200).json({
+  //       success: true,
+  //       message: "Location updated successfully",
+  //       data: {
+  //         currentLocation: provider.currentLocation,
+  //         lastLocationUpdate: provider.lastLocationUpdate,
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("Update location error:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: "Error updating location",
+  //       error: error.message,
+  //     });
+  //   }
+  // };
+
+  async updateLocation(req, res) {
+  try {
+    const providerId = req.user.id;
+    const { latitude, longitude, address } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({
         success: false,
-        message: "Error updating location",
-        error: error.message,
+        message: "Latitude and longitude are required",
       });
     }
-  };
+
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coordinates",
+      });
+    }
+
+    const existingProvider = await Provider.findById(providerId);
+    if (!existingProvider) {
+      return res.status(404).json({
+        success: false,
+        message: "Provider not found",
+      });
+    }
+
+    const isRawCoords = (addr) =>
+      addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
+
+    const existingAddress = existingProvider.currentLocation?.address;
+    const hasValidProvidedAddress = address && !isRawCoords(address);
+    const hasValidCachedAddress = existingAddress && !isRawCoords(existingAddress);
+
+    let finalAddress = null;
+    let shouldReverseGeocode = false; // default OFF — Mapbox Nigeria data is too poor
+
+    if (hasValidProvidedAddress) {
+      // App sent a real address (e.g. from device GPS + Google on frontend) — use it
+      finalAddress = address;
+
+    } else if (hasValidCachedAddress) {
+      // Check if moved more than 500m before bothering to re-geocode
+      const oldCoords = existingProvider.currentLocation?.coordinates || [0, 0];
+      const [oldLng, oldLat] = oldCoords;
+      const isFirstLocation = oldLat === 0 && oldLng === 0;
+
+      if (isFirstLocation) {
+        shouldReverseGeocode = true;
+      } else {
+        const R = 6371;
+        const dLat = ((latitude - oldLat) * Math.PI) / 180;
+        const dLon = ((longitude - oldLng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((oldLat * Math.PI) / 180) *
+            Math.cos((latitude * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const distanceMoved = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        if (distanceMoved > 0.5) {
+          // Moved more than 500m — re-geocode only if app didn't send address
+          console.log(`📍 Moved ${distanceMoved.toFixed(2)}km — attempting re-geocode`);
+          shouldReverseGeocode = true;
+        } else {
+          // Barely moved — reuse cached address
+          console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
+          finalAddress = existingAddress;
+        }
+      }
+    } else {
+      // No provided address, no valid cache — have to try geocoding
+      shouldReverseGeocode = true;
+    }
+
+    if (shouldReverseGeocode) {
+      try {
+        console.log(`🔄 Reverse geocoding: ${latitude}, ${longitude}`);
+        const geoData = await geolocationService.reverseGeocode(longitude, latitude);
+
+        if (geoData?.formattedAddress && !isRawCoords(geoData.formattedAddress)) {
+          finalAddress = geoData.formattedAddress;
+          console.log(`✅ Got address: ${finalAddress}`);
+        } else {
+          // Mapbox returned something vague — prefer cache over bad address
+          console.warn("⚠️ Mapbox returned vague address, preferring cache");
+          finalAddress = hasValidCachedAddress
+            ? existingAddress
+            : `${latitude}, ${longitude}`;
+        }
+      } catch (geoError) {
+        console.warn("Reverse geocoding failed:", geoError.message);
+        finalAddress = hasValidCachedAddress
+          ? existingAddress
+          : `${latitude}, ${longitude}`;
+      }
+    }
+
+    const provider = await Provider.findByIdAndUpdate(
+      providerId,
+      {
+        $set: {
+          "currentLocation.type": "Point",
+          "currentLocation.coordinates": [longitude, latitude],
+          "currentLocation.address": finalAddress,
+          lastLocationUpdate: new Date(),
+        },
+      },
+      { new: true },
+    );
+
+    console.log(`📍 Location updated for provider ${provider.fullName}:`, {
+      coordinates: [longitude, latitude],
+      address: finalAddress,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Location updated successfully",
+      data: {
+        currentLocation: provider.currentLocation,
+        lastLocationUpdate: provider.lastLocationUpdate,
+      },
+    });
+  } catch (error) {
+    console.error("Update location error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating location",
+      error: error.message,
+    });
+  }
+}
 
   /**
    * Toggle availability
