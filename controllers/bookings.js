@@ -1808,6 +1808,7 @@ class BookingController {
       }
 
       const bookings = await Booking.find(query)
+        .populate("userId", "fullName email phoneNumber profilePicture")
         .populate(
           "providerId",
           "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
