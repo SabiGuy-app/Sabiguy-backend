@@ -110,7 +110,16 @@ jobs:
             docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
-            docker run -d --name ${{ env.CONTAINER_NAME }} -p 3000:3000 --env-file /home/ec2-user/.env ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker run -d \
+              --name ${{ env.CONTAINER_NAME }} \
+              --restart always \
+              --log-driver awslogs \
+              --log-opt awslogs-region=us-east-1 \
+              --log-opt awslogs-group=/sabiguy/staging/app \
+              --log-opt awslogs-stream=backend \
+              -p 3000:3000 \
+              --env-file /home/ec2-user/.env \
+              ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
 
   deploy-production:
     needs: build
@@ -163,4 +172,13 @@ jobs:
             docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
-            docker run -d --name ${{ env.CONTAINER_NAME }} -p 3000:3000 --env-file /home/ec2-user/.env ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker run -d \
+              --name ${{ env.CONTAINER_NAME }} \
+              --restart always \
+              --log-driver awslogs \
+              --log-opt awslogs-region=us-east-1 \
+              --log-opt awslogs-group=/sabiguy/production/app \
+              --log-opt awslogs-stream=backend \
+              -p 3000:3000 \
+              --env-file /home/ec2-user/.env \
+              ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
