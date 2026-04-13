@@ -29,7 +29,15 @@ variable "key_pair_name" {
   type        = string
 }
 
-variable "iam_instance_profile" {
-  description = "IAM instance profile name"
+
+# ECR image URI passed in from root module
+variable "ecr_image_uri" {
+  description = "Full ECR image URI to run"
+  type        = string
+}
+
+# CloudWatch log group name passed in from monitoring module
+variable "log_group_name" {
+  description = "CloudWatch log group name for container logs"
   type        = string
 }

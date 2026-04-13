@@ -137,28 +137,9 @@
 class PricingService {
   constructor() {
     // ── Ops-configurable values ───────────────────────────────────────────────
-    // this.config = {
-    //   fuelPricePerLitre: 1500,
-    //   marketAdjustment: 1500,
-    //   platformFeePercent: 5,
-    //   driverCommissionPercent: 15,
-
-    //   efficiency: {
-    //     pre2000: 12,
-    //     post2000: 18,
-    //     bike: 35,
-    //   },
-
-    //   baseFare: {
-    //     pre2000: 1000,
-    //     post2000: 1500,
-    //     bike: 400,
-    //   },
-    // };
-
     this.config = {
-      fuelPricePerLitre: 50,
-      marketAdjustment: 10,
+      fuelPricePerLitre: 1200,
+      // marketAdjustment: 1500,
       platformFeePercent: 5,
       driverCommissionPercent: 15,
 
@@ -169,8 +150,14 @@ class PricingService {
       },
 
       baseFare: {
-        pre2000: 10,
-        post2000: 10,
+        pre2000: 600,
+        post2000: 900,
+        bike: 250,
+      },
+
+      marketAdjustment: {
+        pre2000: 1000,
+        post2000: 1500,
         bike: 400,
       },
     };
@@ -185,8 +172,16 @@ class PricingService {
   }
 
   // ── Core: replaces calculateTransportPrice(distance, subCategory, serviceType) ──
-  calculateTransportPrice(distance, subCategory, serviceType = null, durationMinutes = null, vehicleProductionYear = null, isBike = false) {
-    const { fuelPricePerLitre, marketAdjustment, efficiency, baseFare } = this.config;
+  calculateTransportPrice(
+    distance,
+    subCategory,
+    serviceType = null,
+    durationMinutes = null,
+    vehicleProductionYear = null,
+    isBike = false,
+  ) {
+    const { fuelPricePerLitre, marketAdjustment, efficiency, baseFare } =
+      this.config;
 
     const category = this.getVehicleCategory(vehicleProductionYear, isBike);
 
@@ -200,28 +195,31 @@ class PricingService {
     const distanceCost = BF + perKmRate * distance;
 
     // Per-Minute Rate (PM) = distanceCost ÷ durationMinutes
-    const perMinuteRate = durationMinutes > 0 ? distanceCost / durationMinutes : 0;
+    const perMinuteRate =
+      durationMinutes > 0 ? distanceCost / durationMinutes : 0;
 
     // Time Cost = PM × duration
     const timeCost = perMinuteRate * (durationMinutes ?? 0);
 
-    // Market Adjustment (MA)
-    const MA = marketAdjustment;
+    // Market Adjustment (MA) - varies by vehicle type
+    const MA = marketAdjustment[category];
 
     // Subtotal fare before fees
     const subtotalFare = distanceCost + timeCost + MA;
 
     // Platform / Insurance Fee
     const platformFee = this.roundToNearest50(
-      (subtotalFare * this.config.platformFeePercent) / 100
+      (subtotalFare * this.config.platformFeePercent) / 100,
     );
     const driverCommission = this.roundToNearest50(
-      (subtotalFare * this.config.driverCommissionPercent) / 100
+      (subtotalFare * this.config.driverCommissionPercent) / 100,
     );
 
     // Final amounts
     const riderPays = this.roundToNearest50(subtotalFare + platformFee);
-    const driverReceives = this.roundToNearest50(subtotalFare - driverCommission);
+    const driverReceives = this.roundToNearest50(
+      subtotalFare - driverCommission,
+    );
     const platformEarns = this.roundToNearest50(platformFee + driverCommission);
 
     return {
@@ -270,7 +268,10 @@ class PricingService {
       "book a ride": "transport",
     };
 
-    if (normalizedSubCategory && explicitSubCategoryMap[normalizedSubCategory]) {
+    if (
+      normalizedSubCategory &&
+      explicitSubCategoryMap[normalizedSubCategory]
+    ) {
       return explicitSubCategoryMap[normalizedSubCategory];
     }
 
@@ -292,9 +293,16 @@ class PricingService {
     return Math.round((agreedPrice * percentage) / 100);
   }
 
-  calculatePricingBreakdown(agreedPrice, userFeePercentage = 10, providerCommissionPercentage = 15) {
+  calculatePricingBreakdown(
+    agreedPrice,
+    userFeePercentage = 10,
+    providerCommissionPercentage = 15,
+  ) {
     const userFee = this.calculateServiceFee(agreedPrice, userFeePercentage);
-    const commission = this.calculateProviderCommission(agreedPrice, providerCommissionPercentage);
+    const commission = this.calculateProviderCommission(
+      agreedPrice,
+      providerCommissionPercentage,
+    );
 
     return {
       agreedPrice,
@@ -305,7 +313,10 @@ class PricingService {
   }
 
   calculateTotalAmount(agreedPrice, serviceFeePercentage = 10) {
-    const serviceFee = this.calculateServiceFee(agreedPrice, serviceFeePercentage);
+    const serviceFee = this.calculateServiceFee(
+      agreedPrice,
+      serviceFeePercentage,
+    );
     return agreedPrice + serviceFee;
   }
 
