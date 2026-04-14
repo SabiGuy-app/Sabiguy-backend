@@ -17,8 +17,6 @@ on:
 env:
   AWS_REGION: us-east-1
   CONTAINER_NAME: sabiguy-backend
-  ECR_REPOSITORY: 914471710952.dkr.ecr.us-east-1.amazonaws.com/sabiguy-staging-backend
-  EC2_USERNAME: ec2-user
 
 jobs:
   check-dev-sync:
@@ -32,8 +30,8 @@ jobs:
             exit 1
           fi
 
-  build:
-    if: github.event_name == 'push'
+  build-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     environment: staging
     outputs:
@@ -50,24 +48,46 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and tag docker image
+      - name: Build and push docker image
         id: build-image
         run: |
-          IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          IMAGE_URI=${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
           docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
-      - name: Push docker image to ECR
+  build-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      image_uri: ${{ steps.build-image.outputs.image_uri }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Login to AWS
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push docker image
+        id: build-image
         run: |
-          IMAGE_URI=${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          IMAGE_URI=${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
+          docker build -t $IMAGE_URI .
           docker push $IMAGE_URI
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
   deploy-staging:
-    needs: build
-    if: github.ref == 'refs/heads/dev'
+    needs: build-staging
     runs-on: ubuntu-latest
     environment: staging
     steps:
@@ -75,10 +95,10 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.STAGING_EC2_HOST }}
-          username: ${{ env.EC2_USERNAME }}
+          username: ${{ secrets.STAGING_EC2_USERNAME }}
           key: ${{ secrets.STAGING_EC2_SSH_KEY }}
           script: |
-            cat > /home/ec2-user/.env << ENVEOF
+            cat > /home/${{ secrets.STAGING_EC2_USERNAME }}/.env << ENVEOF
             PORT=3000
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             DATABASE_URL=${{ secrets.DATABASE_URL }}
@@ -109,11 +129,11 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.STAGING_EC2_HOST }}
-          username: ${{ env.EC2_USERNAME }}
+          username: ${{ secrets.STAGING_EC2_USERNAME }}
           key: ${{ secrets.STAGING_EC2_SSH_KEY }}
           script: |
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
-            docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker pull ${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
             docker run -d \
@@ -124,12 +144,12 @@ jobs:
               --log-opt awslogs-group=/sabiguy/staging/app \
               --log-opt awslogs-stream=backend \
               -p 3000:3000 \
-              --env-file /home/ec2-user/.env \
-              ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+              --env-file /home/${{ secrets.STAGING_EC2_USERNAME }}/.env \
+              ${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
 
   deploy-production:
-    needs: build
-    if: github.ref == 'refs/heads/main' && vars.PRODUCTION_READY == 'true'
+    needs: build-production
+    if: vars.PRODUCTION_READY == 'true'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -137,10 +157,10 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.PRODUCTION_EC2_HOST }}
-          username: ${{ env.EC2_USERNAME }}
+          username: ${{ secrets.PRODUCTION_EC2_USERNAME }}
           key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
           script: |
-            cat > /home/ec2-user/.env << ENVEOF
+            cat > /home/${{ secrets.PRODUCTION_EC2_USERNAME }}/.env << ENVEOF
             PORT=3000
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             DATABASE_URL=${{ secrets.DATABASE_URL }}
@@ -171,11 +191,11 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.PRODUCTION_EC2_HOST }}
-          username: ${{ env.EC2_USERNAME }}
+          username: ${{ secrets.PRODUCTION_EC2_USERNAME }}
           key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
           script: |
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
-            docker pull ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker pull ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
             docker run -d \
@@ -186,5 +206,5 @@ jobs:
               --log-opt awslogs-group=/sabiguy/production/app \
               --log-opt awslogs-stream=backend \
               -p 3000:3000 \
-              --env-file /home/ec2-user/.env \
-              ${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+              --env-file /home/${{ secrets.PRODUCTION_EC2_USERNAME }}/.env \
+              ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
