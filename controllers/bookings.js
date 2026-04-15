@@ -1,6 +1,8 @@
 const Booking = require("../models/Bookings");
 const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
+const Chat = require("../models/Chat");
+const Notification = require("../models/Notification");
 const mongoose = require("mongoose");
 const geolocationService = require("../src/services/geolocation.service");
 const notificationService = require("../src/services/notification.service");
@@ -19,8 +21,16 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "completed",
   "enroute_to_dropoff",
   "funds_released",
-  "cancelled"
+  "cancelled",
+  "payment_pending"
 ]; // Bookings that count towards provider activity
+const DELETABLE_BOOKING_STATUSES = [
+  "pending_providers",
+  "awaiting_provider_acceptance",
+  "provider_selected",
+  "payment_pending",
+  "cancelled",
+];
 
 class BookingController {
   constructor() {
@@ -1123,6 +1133,79 @@ class BookingController {
       return res.status(500).json({
         success: false,
         message: "Failed to cancel booking",
+        error: error.message,
+      });
+    }
+  }
+
+  async deleteBooking(req, res) {
+    try {
+      const bookingId = req.params.id;
+      const userId = req.user.id;
+
+      if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid booking ID format",
+        });
+      }
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        userId,
+      });
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: "Booking not found",
+        });
+      }
+
+      if (!DELETABLE_BOOKING_STATUSES.includes(booking.status)) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Booking cannot be deleted in its current state. Cancel it first or contact support.",
+        });
+      }
+
+      const bookingObjectId = booking._id;
+
+      const [deletedNotifications, deletedChat] = await Promise.all([
+        Notification.deleteMany({
+          "data.bookingId": {
+            $in: [bookingObjectId, bookingObjectId.toString()],
+          },
+        }),
+        Chat.deleteOne({ bookingId: bookingObjectId }),
+      ]);
+
+      const deletedBooking = await Booking.deleteOne({
+        _id: bookingObjectId,
+        userId,
+      });
+
+      if (!deletedBooking.deletedCount) {
+        throw new Error("Booking delete failed");
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Booking and related chats/notifications deleted successfully",
+        data: {
+          bookingId: bookingObjectId,
+          deletedRelatedRecords: {
+            notificationsDeleted: deletedNotifications.deletedCount || 0,
+            chatDeleted: Boolean(deletedChat.deletedCount),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Delete booking error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete booking",
         error: error.message,
       });
     }
