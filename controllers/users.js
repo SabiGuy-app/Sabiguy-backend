@@ -1,5 +1,5 @@
-const Provider = require ('../models/ServiceProvider');
-const Buyer = require ('../models/ServiceUser');
+const Provider = require("../models/ServiceProvider");
+const Buyer = require("../models/ServiceUser");
 const geolocationService = require("../src/services/geolocation.service");
 
 const getPagination = (req) => {
@@ -27,9 +27,7 @@ exports.getAllBuyers = async (req, res) => {
                 localField: "_id",
                 foreignField: "userId",
                 as: "bookingStats",
-                pipeline: [
-                  { $count: "count" },
-                ],
+                pipeline: [{ $count: "count" }],
               },
             },
             {
@@ -205,7 +203,9 @@ exports.getUserByEmail = async (req, res) => {
     const provider = await Provider.findOne({ email }).select("-password");
 
     if (!buyer && !provider) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     res.status(200).json({
@@ -224,7 +224,9 @@ exports.getUserById = async (req, res) => {
     const provider = await Provider.findById(id).select("-password");
 
     if (!buyer && !provider) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     res.status(200).json({
@@ -235,7 +237,6 @@ exports.getUserById = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
 
 exports.updateUserLocation = async (req, res) => {
   try {
@@ -249,7 +250,12 @@ exports.updateUserLocation = async (req, res) => {
       });
     }
 
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    if (
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid coordinates",
@@ -264,30 +270,30 @@ exports.updateUserLocation = async (req, res) => {
       });
     }
 
-    // Helper to check if a string looks like raw coordinates (not a real address)
-    const isRawCoords = (addr) => addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
+    const isRawCoords = (addr) =>
+      addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
 
     const existingAddress = existingBuyer.currentLocation?.address;
-
-    // Use provided address only if it's a real address string, not raw coords
     const hasValidProvidedAddress = address && !isRawCoords(address);
-    const hasValidCachedAddress = existingAddress && !isRawCoords(existingAddress);
+    const hasValidCachedAddress =
+      existingAddress && !isRawCoords(existingAddress);
 
     let finalAddress = null;
-    let shouldReverseGeocode = true;
+    let shouldReverseGeocode = false; // default OFF — Mapbox Nigeria data is too poor
 
     if (hasValidProvidedAddress) {
-      // Caller provided a real address — trust it
+      // App sent a real address (e.g. from device GPS + Google on frontend) — use it
       finalAddress = address;
-      shouldReverseGeocode = false;
     } else if (hasValidCachedAddress) {
-      // Check if moved significantly before deciding to re-geocode
+      // Check if moved more than 500m before bothering to re-geocode
       const oldCoords = existingBuyer.currentLocation?.coordinates || [0, 0];
       const [oldLng, oldLat] = oldCoords;
-
       const isFirstLocation = oldLat === 0 && oldLng === 0;
 
-      if (!isFirstLocation) {
+      if (isFirstLocation) {
+        // First time — try geocoding once
+        shouldReverseGeocode = true;
+      } else {
         const R = 6371;
         const dLat = ((latitude - oldLat) * Math.PI) / 180;
         const dLon = ((longitude - oldLng) * Math.PI) / 180;
@@ -297,33 +303,52 @@ exports.updateUserLocation = async (req, res) => {
             Math.cos((latitude * Math.PI) / 180) *
             Math.sin(dLon / 2) *
             Math.sin(dLon / 2);
-        const distanceMoved = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceMoved =
+          R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-        if (distanceMoved <= 0.5) {
-          // Hasn't moved much — reuse cached address
-          console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
-          finalAddress = existingAddress;
-          shouldReverseGeocode = false;
+        if (distanceMoved > 0.5) {
+          // Moved more than 500m — re-geocode only if app didn't send address
+          console.log(
+            `📍 Moved ${distanceMoved.toFixed(2)}km — attempting re-geocode`,
+          );
+          shouldReverseGeocode = true;
+        } else {
+          // Barely moved — reuse cached address
+          // console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
+          // finalAddress = existingAddress;
         }
       }
+    } else {
+      // No provided address, no valid cache — have to try geocoding
+      shouldReverseGeocode = true;
     }
 
-    // Reverse geocode if needed
     if (shouldReverseGeocode) {
       try {
-        console.log(`🔄 Reverse geocoding coordinates: ${latitude}, ${longitude}`);
-        const geoData = await geolocationService.reverseGeocode(longitude, latitude);
+        console.log(`🔄 Reverse geocoding: ${latitude}, ${longitude}`);
+        const geoData = await geolocationService.reverseGeocode(
+          longitude,
+          latitude,
+        );
 
-        // Make sure Mapbox returned a real address
-        if (geoData?.formattedAddress && !isRawCoords(geoData.formattedAddress)) {
+        if (
+          geoData?.formattedAddress &&
+          !isRawCoords(geoData.formattedAddress)
+        ) {
           finalAddress = geoData.formattedAddress;
+          console.log(`✅ Got address: ${finalAddress}`);
         } else {
-          console.warn("Mapbox returned empty or invalid address:", geoData);
-          finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
+          // Mapbox returned something vague — prefer cache over bad address
+          console.warn("⚠️ Mapbox returned vague address, preferring cache");
+          finalAddress = hasValidCachedAddress
+            ? existingAddress
+            : `${latitude}, ${longitude}`;
         }
       } catch (geoError) {
         console.warn("Reverse geocoding failed:", geoError.message);
-        finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
+        finalAddress = hasValidCachedAddress
+          ? existingAddress
+          : `${latitude}, ${longitude}`;
       }
     }
 
@@ -337,7 +362,7 @@ exports.updateUserLocation = async (req, res) => {
           lastLocationUpdate: new Date(),
         },
       },
-      { new: true }
+      { new: true },
     );
 
     console.log(`📍 Location updated for buyer ${buyer.fullName}:`, {

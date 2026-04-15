@@ -2,7 +2,51 @@ const Chat = require ('../../models/Chat');
 const notificationService = require ('./notification.service');
 const Booking = require ('../../models/Bookings');
 
+const ACTIVE_BOOKING_STATUSES = new Set([
+  'paid_escrow',
+  'provider_accepted',
+  'accept_selection',
+  'in_progress',
+  'arrived_at_pickup',
+  'enroute_to_dropoff',
+  'arrived_at_dropoff',
+  'completed',
+]);
+
+const INACTIVE_BOOKING_STATUSES = new Set([
+  'user_accepted_completion',
+  'funds_released',
+]);
+
 class ChatService {
+  normalizeBookingStatus(status) {
+    if (!status) return "";
+    return String(status).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  }
+
+  normalizeStatusCategory(category) {
+    if (!category) return "all";
+    const normalized = String(category).trim().toLowerCase();
+    if (normalized === "active" || normalized === "inactive" || normalized === "all") {
+      return normalized;
+    }
+    return "all";
+  }
+
+  isChatInStatusCategory(status, category) {
+    const normalizedStatus = this.normalizeBookingStatus(status);
+    const normalizedCategory = this.normalizeStatusCategory(category);
+
+    if (normalizedCategory === "active") {
+      return ACTIVE_BOOKING_STATUSES.has(normalizedStatus);
+    }
+
+    if (normalizedCategory === "inactive") {
+      return INACTIVE_BOOKING_STATUSES.has(normalizedStatus);
+    }
+
+    return true;
+  }
 
     async canAccessChat(bookingId, userId) {
     try {
@@ -183,10 +227,25 @@ class ChatService {
    */
   async getMessages(bookingId, userId, options = {}) {
     try {
-      const { page = 1, limit = 50 } = options;
+      const { page = 1, limit = 50, status } = options;
 
       // Check access
-      await this.canAccessChat(bookingId, userId);
+      const access = await this.canAccessChat(bookingId, userId);
+      const requestedStatus = this.normalizeBookingStatus(status);
+      const bookingStatus = this.normalizeBookingStatus(access.booking.status);
+
+      if (requestedStatus && requestedStatus !== bookingStatus) {
+        return {
+          messages: [],
+          pagination: { page, limit, total: 0, pages: 0 },
+          participants: [],
+          bookingId: access.booking._id,
+          bookingStatus: access.booking.status,
+          chatAvailable: false,
+          statusFilter: status,
+          statusMatched: false,
+        };
+      }
 
       const chat = await Chat.findOne({ bookingId });
 
@@ -197,6 +256,7 @@ class ChatService {
           pagination: { page, limit, total: 0, pages: 0 },
           participants: [],
           bookingId,
+          bookingStatus: access.booking.status,
           chatAvailable: false
         };
       }
@@ -218,6 +278,7 @@ class ChatService {
         },
         participants: chat.participants,
         bookingId: chat.bookingId,
+        bookingStatus: access.booking.status,
         chatAvailable: true
       };
 
@@ -271,8 +332,9 @@ class ChatService {
       throw error;
     }
   }
-  async getUserChats(userId, userModel) {
+  async getUserChats(userId, userModel, options = {}) {
     try {
+      const statusCategory = this.normalizeStatusCategory(options.statusCategory);
       const chats = await Chat.find({
         'participants.userId': userId,
         status: 'active'
@@ -286,7 +348,12 @@ class ChatService {
         .lean();
 
       // Add unread count for each chat
-      const chatsWithUnread = chats.map(chat => {
+      const chatsWithUnread = chats
+        .filter((chat) => {
+          const bookingStatus = chat.bookingId?.status;
+          return this.isChatInStatusCategory(bookingStatus, statusCategory);
+        })
+        .map(chat => {
         const unreadCount = chat.messages.filter(msg => {
           const isRead = msg.readBy.some(
             r => r.userId.toString() === userId.toString()

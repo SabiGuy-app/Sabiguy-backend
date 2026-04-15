@@ -34,12 +34,12 @@ class ChatController {
     try {
       const userId = req.user.id;
       const { bookingId } = req.params;
-      const { page, limit } = req.query;
+      const { page, limit, status } = req.query;
 
       const result = await chatService.getMessages(
         bookingId,
         userId,
-        { page: parseInt(page), limit: parseInt(limit) }
+        { page: parseInt(page), limit: parseInt(limit), status }
       );
 
       return res.status(200).json({
@@ -60,8 +60,12 @@ class ChatController {
     try {
       const userId = req.user.id;
       const userModel = req.user.role === 'provider' ? 'Provider' : 'Buyer';
+      const statusCategory =
+        req.query.statusCategory || req.query.bookingStatusCategory;
 
-      const chats = await chatService.getUserChats(userId, userModel);
+      const chats = await chatService.getUserChats(userId, userModel, {
+        statusCategory,
+      });
 
       return res.status(200).json({
         success: true,

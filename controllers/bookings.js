@@ -1,6 +1,8 @@
 const Booking = require("../models/Bookings");
 const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
+const Chat = require("../models/Chat");
+const Notification = require("../models/Notification");
 const mongoose = require("mongoose");
 const geolocationService = require("../src/services/geolocation.service");
 const notificationService = require("../src/services/notification.service");
@@ -19,7 +21,16 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "completed",
   "enroute_to_dropoff",
   "funds_released",
+  "cancelled",
+  "payment_pending"
 ]; // Bookings that count towards provider activity
+const DELETABLE_BOOKING_STATUSES = [
+  "pending_providers",
+  "awaiting_provider_acceptance",
+  "provider_selected",
+  "payment_pending",
+  "cancelled",
+];
 
 class BookingController {
   constructor() {
@@ -33,426 +44,6 @@ class BookingController {
     this.geocodeWithFallback = this.geocodeWithFallback.bind(this);
     this.getDirectionsWithFallback = this.getDirectionsWithFallback.bind(this);
   }
-
-  //   async createBooking(req, res) {
-  //     try {
-  //       const userId = req.user.id;
-  //       const {
-  //         serviceType,
-  //         subCategory,
-  //         title,
-  //         description,
-  //         address,
-  //         pickupAddress,
-  //         dropoffAddress,
-  //         scheduleType,
-  //         scheduleDate,
-  //         scheduledTime,
-  //         startDate,
-  //         endDate,
-  //         budget,
-  //         attachments,
-  //         modeOfDelivery: modeOfDeliveryRaw,
-  //         modeOfDelivey,
-  //       } = req.body;
-
-  //       const rawModeOfDelivery = modeOfDeliveryRaw ?? modeOfDelivey;
-  //       const normalizeModeOfDelivery = (value) => {
-  //         if (!value) return value;
-  //         const normalized = String(value).trim().toLowerCase();
-  //         if (normalized.includes("car")) return "Car";
-  //         if (normalized.includes("bike")) return "Bike";
-  //         return String(value).trim();
-  //       };
-  //       const modeOfDelivery = normalizeModeOfDelivery(rawModeOfDelivery);
-
-  //       /* -----------------------------
-  //          1️⃣ Validation
-  //       ------------------------------*/
-  //       const isTransport = this.isTransportLogistics(serviceType, subCategory);
-
-  //       if (!serviceType || !scheduleType) {
-  //         return res.status(400).json({
-  //           success: false,
-  //           message: "serviceType and scheduleType are required",
-  //         });
-  //       }
-
-  //       if (
-  //         isTransport &&
-  //         (!pickupAddress || !dropoffAddress || !modeOfDelivery)
-  //       ) {
-  //         return res.status(400).json({
-  //           success: false,
-  //           message:
-  //             "pickupAddress, dropoffAddress and mode of delivery are required for transport/logistics",
-  //         });
-  //       }
-
-  //       if (
-  //         isTransport &&
-  //         modeOfDelivery &&
-  //         !["Car", "Bike"].includes(modeOfDelivery)
-  //       ) {
-  //         return res.status(400).json({
-  //           success: false,
-  //           message:
-  //             "modeOfDelivery must be one of: Car or Bike for transport/logistics",
-  //         });
-  //       }
-
-  //       // Validate that pickup and dropoff are different for transport
-  //       if (isTransport && pickupAddress === dropoffAddress) {
-  //         return res.status(400).json({
-  //           success: false,
-  //           message: "Pickup and dropoff addresses must be different",
-  //         });
-  //       }
-
-  //       /* -----------------------------
-  //          2️⃣ Geocode addresses with fallback
-  //       ------------------------------*/
-  //       let bookingData = {
-  //         userId,
-  //         serviceType,
-  //         subCategory,
-  //         title,
-  //         description,
-  //         scheduleType,
-  //         scheduleDate,
-  //         scheduledTime,
-  //         startDate,
-  //         endDate,
-  //         budget,
-  //         modeOfDelivery,
-  //         attachments: attachments || [],
-  //       };
-
-  //       let searchCoordinates;
-  //       let transportEstimates = null;
-
-  //       if (isTransport) {
-  //         // Geocode both pickup and dropoff with fallback
-  //         const [pickupGeo, dropoffGeo] = await Promise.all([
-  //           this.geocodeWithFallback(pickupAddress),
-  //           this.geocodeWithFallback(dropoffAddress),
-  //         ]);
-
-  //         bookingData.pickupLocation = {
-  //           address: pickupGeo.formattedAddress,
-  //           coordinates: {
-  //             type: "Point",
-  //             coordinates: [pickupGeo.longitude, pickupGeo.latitude],
-  //           },
-  //         };
-
-  //         bookingData.dropoffLocation = {
-  //           address: dropoffGeo.formattedAddress,
-  //           coordinates: {
-  //             type: "Point",
-  //             coordinates: [dropoffGeo.longitude, dropoffGeo.latitude],
-  //           },
-  //         };
-
-  //         // Get directions with fallback
-  //         const directions = await this.getDirectionsWithFallback(
-  //           [pickupGeo.longitude, pickupGeo.latitude],
-  //           [dropoffGeo.longitude, dropoffGeo.latitude],
-  //         );
-
-  //         bookingData.distance = {
-  //           value: parseFloat(directions.distance.value),
-  //           unit: "km",
-  //         };
-
-  //         const durationMinutes =
-  //           Number(directions?.duration?.value) ||
-  //           Math.ceil(parseFloat(directions.distance.value) * 2);
-  //         const etaBaseTime = scheduleDate
-  //           ? new Date(scheduleDate)
-  //           : startDate
-  //             ? new Date(startDate)
-  //             : new Date();
-  //         const hasValidEtaBaseTime = !Number.isNaN(etaBaseTime.getTime());
-
-  //         transportEstimates = {
-  //           estimatedDuration: {
-  //             value: durationMinutes,
-  //             unit: directions?.duration?.unit || "minutes",
-  //             isEstimate: Boolean(directions?.isEstimate),
-  //           },
-  //           estimatedArrivalAt: hasValidEtaBaseTime
-  //             ? new Date(etaBaseTime.getTime() + durationMinutes * 60 * 1000)
-  //             : null,
-  //         };
-  //         bookingData.estimatedDuration = transportEstimates.estimatedDuration;
-  //         bookingData.estimatedArrivalAt = transportEstimates.estimatedArrivalAt;
-
-  //         console.log("📦 Transport Booking Distance:", bookingData.distance);
-
-  //         // Calculate price based on distance
-  //         // const calculatedPrice = pricingService.calculateTransportPrice(
-  //         //   parseFloat(directions.distance.value),
-  //         //   subCategory,
-  //         //   serviceType,
-  //         //   rideDurationMinutes,
-  //         //   null,                 // no provider yet
-  //         //  modeOfDelivery === "Bike",
-  //         // );
-
-  //         // // bookingData.calculatedPrice = calculatedPrice;
-  //         // bookingData.agreedPrice = calculatedPrice;
-
-  //         searchCoordinates = {
-  //           latitude: pickupGeo.latitude,
-  //           longitude: pickupGeo.longitude,
-  //         };
-  //       } else {
-  //         // Regular service - single location with fallback
-  //         const geo = await this.geocodeWithFallback(address);
-
-  //         bookingData.location = {
-  //           address: geo.formattedAddress,
-  //           coordinates: {
-  //             type: "Point",
-  //             coordinates: [geo.longitude, geo.latitude],
-  //           },
-  //         };
-
-  //         bookingData.agreedPrice = budget;
-
-  //         searchCoordinates = {
-  //           latitude: geo.latitude,
-  //           longitude: geo.longitude,
-  //         };
-  //       }
-
-  //       /* -----------------------------
-  //          3️⃣ Set initial status
-  //       ------------------------------*/
-  //       bookingData.status = isTransport
-  //         ? "awaiting_provider_acceptance"
-  //         : "pending_providers";
-
-  //       /* -----------------------------
-  //          4️⃣ Create booking
-  //       ------------------------------*/
-  //       const booking = await Booking.create(bookingData);
-
-  //       /* -----------------------------
-  //          4️⃣b Check user allowSystem flag (for transport only)
-  //       ------------------------------*/
-  //       let userAllowSystem = false;
-  //       if (isTransport) {
-  //         const user = await Buyer.findById(userId).select("allowSystem").lean();
-  //         userAllowSystem = user?.allowSystem || false;
-  //         console.log("🔔 User allowSystem:", userAllowSystem);
-  //       }
-
-  //       /* -----------------------------
-  //          5️⃣ Find nearby providers
-  //       ------------------------------*/
-  //       const nearbyProviders = await this.findNearbyProviders(
-  //         searchCoordinates,
-  //         serviceType,
-  //         subCategory,
-  //         isTransport ? modeOfDelivery : null, // Pass modeOfDelivery for transport
-  //       );
-
-  //       if (!nearbyProviders.length) {
-  //         return res.status(201).json({
-  //           success: true,
-  //           message: "Booking created but no providers available nearby",
-  //           data: {
-  //             booking,
-  //             providers: [],
-  //             ...(isTransport && transportEstimates
-  //               ? {
-  //                   distance: booking.distance,
-  //                   estimatedDuration: transportEstimates.estimatedDuration,
-  //                   estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
-  //                 }
-  //               : {}),
-  //             note: "No providers found matching this service type",
-  //           },
-  //         });
-  //       }
-
-  // const rideDistanceKm = parseFloat(bookingData.distance.value);
-  // rideDurationMinutes = durationMinutes;
-  // transportEstimates = {
-  //   estimatedDuration: { ... },
-  //   estimatedArrivalAt: ...,
-  // };
-
-  // const enrichedProviders = nearbyProviders.map(({ _raw, ...p }) => {
-  //   const isBike = p.services?.some(j => j.title === "motorbike_rider");
-
-  //   // Total billable distance and time includes provider → pickup leg
-  //   const totalDistanceKm = rideDistanceKm + p.distanceFromPickup;
-  //   const totalDurationMinutes = rideDurationMinutes + p.providerETA.value;
-
-  //   const pricing = pricingService.calculateTransportPrice(
-  //     totalDistanceKm,
-  //     p.services?.[0]?.title,   // subCategory
-  //     null,                      // serviceType — not needed, vehicle category drives it
-  //     totalDurationMinutes,
-  //     p.vehicleProductionYear,   // real year now available
-  //     isBike,
-  //   );
-
-  //   return {
-  //     ...p,
-  //     rideDuration: {
-  //       value: rideDurationMinutes,
-  //       unit: "minutes",
-  //     },
-  //     bookingDuration: {
-  //       value: totalDurationMinutes,
-  //       unit: "minutes",
-  //       breakdown: {
-  //         providerToPickup: p.providerETA.value,
-  //         pickupToDropoff: rideDurationMinutes,
-  //       },
-  //     },
-  //     estimatedCompletionAt: new Date(
-  //       Date.now() + totalDurationMinutes * 60 * 1000
-  //     ),
-  //     pricing: {
-  //       riderPays: pricing.calculatedPrice,
-  //       driverReceives: pricing.driverReceives,
-  //       platformEarns: pricing.platformEarns,
-  //       breakdown: pricing.breakdown,
-  //       meta: pricing.meta,
-  //     },
-  //   };
-  // });
-
-  // booking.providerDistances = enrichedProviders.map(p => ({
-  //   providerId: p.id,
-  //   distanceFromPickup: p.distanceFromPickup,
-  //   providerETAMinutes: p.providerETA.value,
-  //   vehicleProductionYear: p._raw?.vehicleProductionYear,  // keep _raw until this point
-  // }));
-
-  // await booking.save();
-
-  //       /* -----------------------------
-  //          6️⃣ Transport/Logistics Flow
-  //       ------------------------------*/
-
-  //   let rideDistanceKm = 0;
-  // let rideDurationMinutes = 0;
-  // let transportEstimates = null;
-
-  //       if (isTransport) {
-  //         let bookingPrice;
-
-  //         // Check user preference
-  //         if (userAllowSystem) {
-
-  //           const pricing = pricingService.calculateTransportPrice(
-  //     rideDistanceKm,
-  //     subCategory,
-  //     serviceType,
-  //     rideDurationMinutes,
-  //     null,                       // no provider → averaged car category
-  //     modeOfDelivery === "Bike",
-  //   );
-
-  //   bookingPrice = pricing;
-
-  //   // Lock price on booking immediately
-  //   bookingData.calculatedPrice = pricing.calculatedPrice;
-  //   bookingData.agreedPrice = pricing.calculatedPrice;
-  //   bookingData.driverReceives = pricing.driverReceives;
-  //   bookingData.platformEarns = pricing.platformEarns;
-  //   bookingData.pricingBreakdown = pricing.breakdown;
-  //           // ⚡ Fastest Finger Method: Notify all providers
-  //           booking.notifiedProviders = enrichedProviders.map((p) => p.id);
-  //           booking.status = "awaiting_provider_acceptance";
-  //           await booking.save();
-
-  //           // Notify providers asynchronously
-  //           this.notifyProvidersForFastestFinger(booking, enrichedProviders);
-
-  //           return res.status(201).json({
-  //             success: true,
-  //             message: "Booking created. Providers notified.",
-  //             data: {
-  //               booking,
-  //               providers: enrichedProviders.length,
-  //               calculatedPrice: booking.calculatedPrice,
-  //               distance: booking.distance,
-  //               estimatedDuration: transportEstimates?.estimatedDuration,
-  //               estimatedArrivalAt: transportEstimates?.estimatedArrivalAt,
-  //               flowType: "fastest_finger",
-  //             },
-  //           });
-  //         } else {
-  //           // User Selection Method: Suggest providers for user to choose
-  //           booking.suggestedProviders = enrichedProviders.map((p) => p.id);
-  //           booking.status = "awaiting_provider_acceptance"; // Same status as regular services
-  //           await booking.save();
-
-  //           return res.status(201).json({
-  //             success: true,
-  //             message: "Booking created successfully",
-  //             data: {
-  //               booking,
-  //               providers: enrichedProviders.map((p) => ({
-  //                 id: p.id,
-  //                 fullName: p.fullName,
-  //                 email: p.email,
-  //                 rating: p.rating,
-  //                 completedJobs: p.completedJobs,
-  //                 distance: p.distance,
-  //                 profilePicture: p.profilePicture,
-  //                 startingPrice: p.startingPrice,
-  //                 services: p.job,
-  //               })),
-  //               distance: booking.distance,
-  //               estimatedDuration: transportEstimates?.estimatedDuration,
-  //               estimatedArrivalAt: transportEstimates?.estimatedArrivalAt,
-  //               flowType: "user_selection",
-  //             },
-  //           });
-  //         }
-  //       }
-
-  //       /* -----------------------------
-  //          7️⃣ Regular Services Flow (User selects provider)
-  //       ------------------------------*/
-  //       booking.suggestedProviders = enrichedProviders.map((p) => p.id);
-  //       await booking.save();
-
-  //       return res.status(201).json({
-  //         success: true,
-  //         message: "Booking created successfully",
-  //         data: {
-  //           booking,
-  //           providers: enrichedProviders.map((p) => ({
-  //             id: p.id,
-  //             fullName: p.fullName,
-  //             email: p.email,
-  //             rating: p.rating,
-  //             completedJobs: p.completedJobs,
-  //             distance: p.distance,
-  //             profilePicture: p.profilePicture,
-  //             startingPrice: p.startingPrice,
-  //             services: p.job,
-  //           })),
-  //         },
-  //       });
-  //     } catch (error) {
-  //       console.error("Create booking error:", error);
-  //       return res.status(500).json({
-  //         success: false,
-  //         message: "Error creating booking",
-  //         error: error.message,
-  //       });
-  //     }
-  //   }
 
   async createBooking(req, res) {
     try {
@@ -484,6 +75,13 @@ class BookingController {
         if (normalized.includes("bike")) return "Bike";
         return String(value).trim();
       };
+      const formatPricing = (pricing) => ({
+        riderPays: pricing.calculatedPrice,
+        driverReceives: pricing.driverReceives,
+        platformEarns: pricing.platformEarns,
+        breakdown: pricing.breakdown,
+        meta: pricing.meta,
+      });
       const modeOfDelivery = normalizeModeOfDelivery(rawModeOfDelivery);
 
       /* -----------------------------
@@ -783,6 +381,7 @@ class BookingController {
               booking,
               notifiedProvidersCount: enrichedProviders.length,
               calculatedPrice: booking.calculatedPrice,
+              pricing: formatPricing(pricing),
               distance: booking.distance,
               estimatedDuration: transportEstimates.estimatedDuration,
               estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
@@ -1539,6 +1138,79 @@ class BookingController {
     }
   }
 
+  async deleteBooking(req, res) {
+    try {
+      const bookingId = req.params.id;
+      const userId = req.user.id;
+
+      if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid booking ID format",
+        });
+      }
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        userId,
+      });
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: "Booking not found",
+        });
+      }
+
+      if (!DELETABLE_BOOKING_STATUSES.includes(booking.status)) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Booking cannot be deleted in its current state. Cancel it first or contact support.",
+        });
+      }
+
+      const bookingObjectId = booking._id;
+
+      const [deletedNotifications, deletedChat] = await Promise.all([
+        Notification.deleteMany({
+          "data.bookingId": {
+            $in: [bookingObjectId, bookingObjectId.toString()],
+          },
+        }),
+        Chat.deleteOne({ bookingId: bookingObjectId }),
+      ]);
+
+      const deletedBooking = await Booking.deleteOne({
+        _id: bookingObjectId,
+        userId,
+      });
+
+      if (!deletedBooking.deletedCount) {
+        throw new Error("Booking delete failed");
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Booking and related chats/notifications deleted successfully",
+        data: {
+          bookingId: bookingObjectId,
+          deletedRelatedRecords: {
+            notificationsDeleted: deletedNotifications.deletedCount || 0,
+            chatDeleted: Boolean(deletedChat.deletedCount),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Delete booking error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete booking",
+        error: error.message,
+      });
+    }
+  }
+
   /* Helper: Parse human-readable dates */
   parseDate(dateString) {
     if (!dateString) return null;
@@ -1808,6 +1480,7 @@ class BookingController {
       }
 
       const bookings = await Booking.find(query)
+        .populate("userId", "fullName email phoneNumber profilePicture")
         .populate(
           "providerId",
           "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
