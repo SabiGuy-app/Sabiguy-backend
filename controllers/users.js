@@ -1,5 +1,5 @@
-const Provider = require ('../models/ServiceProvider');
-const Buyer = require ('../models/ServiceUser');
+const Provider = require("../models/ServiceProvider");
+const Buyer = require("../models/ServiceUser");
 const geolocationService = require("../src/services/geolocation.service");
 
 const getPagination = (req) => {
@@ -27,9 +27,7 @@ exports.getAllBuyers = async (req, res) => {
                 localField: "_id",
                 foreignField: "userId",
                 as: "bookingStats",
-                pipeline: [
-                  { $count: "count" },
-                ],
+                pipeline: [{ $count: "count" }],
               },
             },
             {
@@ -205,7 +203,9 @@ exports.getUserByEmail = async (req, res) => {
     const provider = await Provider.findOne({ email }).select("-password");
 
     if (!buyer && !provider) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     res.status(200).json({
@@ -224,7 +224,9 @@ exports.getUserById = async (req, res) => {
     const provider = await Provider.findById(id).select("-password");
 
     if (!buyer && !provider) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     res.status(200).json({
@@ -235,7 +237,6 @@ exports.getUserById = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
 
 exports.updateUserLocation = async (req, res) => {
   try {
@@ -249,7 +250,12 @@ exports.updateUserLocation = async (req, res) => {
       });
     }
 
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    if (
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid coordinates",
@@ -269,7 +275,8 @@ exports.updateUserLocation = async (req, res) => {
 
     const existingAddress = existingBuyer.currentLocation?.address;
     const hasValidProvidedAddress = address && !isRawCoords(address);
-    const hasValidCachedAddress = existingAddress && !isRawCoords(existingAddress);
+    const hasValidCachedAddress =
+      existingAddress && !isRawCoords(existingAddress);
 
     let finalAddress = null;
     let shouldReverseGeocode = false; // default OFF — Mapbox Nigeria data is too poor
@@ -277,7 +284,6 @@ exports.updateUserLocation = async (req, res) => {
     if (hasValidProvidedAddress) {
       // App sent a real address (e.g. from device GPS + Google on frontend) — use it
       finalAddress = address;
-
     } else if (hasValidCachedAddress) {
       // Check if moved more than 500m before bothering to re-geocode
       const oldCoords = existingBuyer.currentLocation?.coordinates || [0, 0];
@@ -297,16 +303,19 @@ exports.updateUserLocation = async (req, res) => {
             Math.cos((latitude * Math.PI) / 180) *
             Math.sin(dLon / 2) *
             Math.sin(dLon / 2);
-        const distanceMoved = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceMoved =
+          R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
         if (distanceMoved > 0.5) {
           // Moved more than 500m — re-geocode only if app didn't send address
-          console.log(`📍 Moved ${distanceMoved.toFixed(2)}km — attempting re-geocode`);
+          console.log(
+            `📍 Moved ${distanceMoved.toFixed(2)}km — attempting re-geocode`,
+          );
           shouldReverseGeocode = true;
         } else {
           // Barely moved — reuse cached address
-          console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
-          finalAddress = existingAddress;
+          // console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
+          // finalAddress = existingAddress;
         }
       }
     } else {
@@ -317,9 +326,15 @@ exports.updateUserLocation = async (req, res) => {
     if (shouldReverseGeocode) {
       try {
         console.log(`🔄 Reverse geocoding: ${latitude}, ${longitude}`);
-        const geoData = await geolocationService.reverseGeocode(longitude, latitude);
+        const geoData = await geolocationService.reverseGeocode(
+          longitude,
+          latitude,
+        );
 
-        if (geoData?.formattedAddress && !isRawCoords(geoData.formattedAddress)) {
+        if (
+          geoData?.formattedAddress &&
+          !isRawCoords(geoData.formattedAddress)
+        ) {
           finalAddress = geoData.formattedAddress;
           console.log(`✅ Got address: ${finalAddress}`);
         } else {
@@ -371,4 +386,4 @@ exports.updateUserLocation = async (req, res) => {
       error: error.message,
     });
   }
-}
+};
