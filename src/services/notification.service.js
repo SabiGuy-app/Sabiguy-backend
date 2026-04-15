@@ -5,21 +5,40 @@ const Notification = require("../../models/Notification");
 
 class NotificationService {
   constructor() {
-    if (!admin.apps.length) {
-      try {
-        const serviceAccount = JSON.parse(
-          Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_KEY, 'base64').toString('utf8')
-        );
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-        });
-        console.log("✅ Firebase Admin initialized");
-      } catch (error) {
-        console.error("❌ Firebase initialization error:", error.message);
-      }
-    }
-
     this.io = null;
+    this.firebaseInitialized = false;
+
+    if (!admin.apps.length) {
+      if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+        console.error(
+          "❌ FIREBASE_SERVICE_ACCOUNT_KEY environment variable is not set",
+        );
+        console.error(
+          "⚠️ Push notifications will not work until Firebase credentials are configured",
+        );
+      } else {
+        try {
+          const serviceAccount = JSON.parse(
+            Buffer.from(
+              process.env.FIREBASE_SERVICE_ACCOUNT_KEY,
+              "base64",
+            ).toString("utf8"),
+          );
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+          });
+          this.firebaseInitialized = true;
+          console.log("✅ Firebase Admin initialized");
+        } catch (error) {
+          console.error("❌ Firebase initialization error:", error.message);
+          console.error(
+            "⚠️ Make sure FIREBASE_SERVICE_ACCOUNT_KEY is a valid base64-encoded JSON string",
+          );
+        }
+      }
+    } else {
+      this.firebaseInitialized = true;
+    }
   }
 
   getDefaultPreferences() {
@@ -246,13 +265,21 @@ class NotificationService {
 
   async sendPushNotification(recipientId, recipientModel, data) {
     try {
+      if (!this.firebaseInitialized) {
+        console.warn(
+          `⚠️ Firebase not initialized. Push notification skipped for ${recipientModel}:${recipientId}`,
+        );
+        return;
+      }
+
       let fcmToken;
 
       if (recipientModel === "Buyer") {
         const user = await Buyer.findById(recipientId).select("fcmToken");
         fcmToken = user?.fcmToken;
       } else {
-        const provider = await Provider.findById(recipientId).select("fcmToken");
+        const provider =
+          await Provider.findById(recipientId).select("fcmToken");
         fcmToken = provider?.fcmToken;
       }
 
@@ -290,7 +317,9 @@ class NotificationService {
       };
 
       await admin.messaging().send(message);
-      console.log(`✅ Push notification sent to ${recipientModel}:${recipientId}`);
+      console.log(
+        `✅ Push notification sent to ${recipientModel}:${recipientId}`,
+      );
     } catch (error) {
       console.error("Push notification error:", error.message);
 
