@@ -123,6 +123,13 @@ const authMiddleware = require('../middleware/authMiddleware');
  *           type: integer
  *           default: 20
  *         description: Number of chats per page
+ *       - in: query
+ *         name: statusCategory
+ *         schema:
+ *           type: string
+ *           enum: [all, active, inactive]
+ *           default: all
+ *         description: Filter chats by booking status bucket
  *     responses:
  *       200:
  *         description: Chats retrieved successfully
@@ -196,6 +203,11 @@ router.get('/', authMiddleware, chatController.getUserChats);
  *           type: integer
  *           default: 50
  *         description: Messages per page
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *         description: Optional booking status filter for the requested chat
  *     responses:
  *       200:
  *         description: Messages retrieved successfully
@@ -236,6 +248,9 @@ router.get('/', authMiddleware, chatController.getUserChats);
  *                     bookingId:
  *                       type: string
  *                       example: "507f191e810c19729de860ea"
+ *                     bookingStatus:
+ *                       type: string
+ *                       example: "awaiting_provider_acceptance"
  *                     chatAvailable:
  *                       type: boolean
  *                       example: true

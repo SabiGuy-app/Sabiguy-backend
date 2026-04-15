@@ -561,6 +561,39 @@ router.put('/:id/select-provider', authMiddleware, onlyRole('buyer'), BookingCon
  */
 router.patch('/:id/cancel', authMiddleware, BookingController.cancelBooking);
 
+/**
+ * @swagger
+ * /api/v1/bookings/{id}:
+ *   delete:
+ *     summary: Delete a booking and related records
+ *     description: Permanently delete a booking owned by the authenticated buyer and remove related chat and booking notifications.
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     responses:
+ *       200:
+ *         description: Booking deleted successfully
+ *       400:
+ *         description: Invalid booking ID
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Booking not found
+ *       409:
+ *         description: Booking cannot be deleted in its current state
+ *       500:
+ *         description: Server error
+ */
+router.delete('/:id', authMiddleware, onlyRole('buyer'), BookingController.deleteBooking);
 
 /**
  * @swagger

@@ -36,7 +36,9 @@ class paymentService {
 
       if (
         booking.status !== "provider_selected" &&
-        booking.status !== "provider_accepted"
+        booking.status !== "provider_accepted" &&
+        booking.status !== "payment_pending"
+
       ) {
         throw new Error("Booking must have a selected provider before payment");
       }

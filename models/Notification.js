@@ -24,7 +24,7 @@ const notificationSchema = new mongoose.Schema({
       'booking_cancelled',
       'job_started',
       'payment_received',
-       'payment_sent',
+      'payment_sent',
       'booking_completed',
       'message_received',
       'test',
