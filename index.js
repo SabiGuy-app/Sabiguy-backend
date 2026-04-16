@@ -78,6 +78,7 @@ app.get("/api-docs/swagger.json", (req, res) => {
 });
 
 app.get(["/api-docs", "/api-docs/"], (req, res) => {
+  const apiBaseUrl = process.env.API_BASE_URL;
   res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -92,7 +93,7 @@ app.get(["/api-docs", "/api-docs/"], (req, res) => {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"></script>
 <script>
   SwaggerUIBundle({
-    url: process.env.API_BASE_URL + "/api-docs/swagger.json",
+    url: "${apiBaseUrl}/api-docs/swagger.json",
     dom_id: '#swagger-ui',
     presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
     layout: "StandaloneLayout"
