@@ -123,6 +123,7 @@ jobs:
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
             GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
             SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }}
+            API_BASE_URL=${{ secrets.API_BASE_URL }}
             ENVEOF
 
       - name: Deploy to EC2
@@ -185,6 +186,7 @@ jobs:
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
             GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
             SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }}
+            API_BASE_URL=${{ secrets.API_BASE_URL }}
             ENVEOF
 
       - name: Deploy to EC2
