@@ -92,7 +92,7 @@ app.get(["/api-docs", "/api-docs/"], (req, res) => {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"></script>
 <script>
   SwaggerUIBundle({
-    url: "https://qgohj3cga6.execute-api.us-east-1.amazonaws.com/staging/api-docs/swagger.json",
+    url: `${process.env.API_BASE_URL}/api-docs/swagger.json`,
     dom_id: '#swagger-ui',
     presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
     layout: "StandaloneLayout"
