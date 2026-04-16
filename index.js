@@ -72,6 +72,11 @@ routes.forEach((route) => {
   app.use(`/api/v1${route.path}`, require(route.file));
 });
 
+app.get("/api-docs/swagger.json", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.json(swaggerSpec);
+});
+
 app.get(["/api-docs", "/api-docs/"], (req, res) => {
   res.send(`<!DOCTYPE html>
 <html>
