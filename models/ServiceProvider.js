@@ -49,7 +49,7 @@ const serviceProviderSchema = new mongoose.Schema({
     BusinessAddress: { type: String },
     cacFile: { type: String},
     driverLicenseNumber: { type: String},
-    vehicleProviderYear: { type: String },
+    vehicleProductionYear: { type: String },
     job:[
          {
          service: { type: String } ,

@@ -139,7 +139,6 @@ class PricingService {
     // ── Ops-configurable values ───────────────────────────────────────────────
     this.config = {
       fuelPricePerLitre: 1200,
-      // marketAdjustment: 1500,
       platformFeePercent: 5,
       driverCommissionPercent: 15,
 
@@ -161,6 +160,30 @@ class PricingService {
         bike: 400,
       },
     };
+
+    //  this.config = {
+    //   fuelPricePerLitre: 20,
+    //   platformFeePercent: 5,
+    //   driverCommissionPercent: 15,
+
+    //   efficiency: {
+    //     pre2000: 12,
+    //     post2000: 18,
+    //     bike: 35,
+    //   },
+
+    //   baseFare: {
+    //     pre2000: 10,
+    //     post2000: 10,
+    //     bike: 10,
+    //   },
+
+    //   marketAdjustment: {
+    //     pre2000: 10,
+    //     post2000: 10,
+    //     bike: 10,
+    //   },
+    // };
   }
 
   // ── Resolve vehicle category ───────────────────────────────────────────────

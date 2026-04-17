@@ -793,9 +793,9 @@ class ProviderController {
           console.log(`📍 Moved ${distanceMoved.toFixed(2)}km — attempting re-geocode`);
           shouldReverseGeocode = true;
         } else {
-          // Barely moved — reuse cached address
-          console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
-          finalAddress = existingAddress;
+          // // Barely moved — reuse cached address
+          // console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
+          // finalAddress = existingAddress;
         }
       }
     } else {
@@ -1241,8 +1241,8 @@ if (!updatedBooking) {
 
       await notificationService.notifyUser(booking.userId._id, {
         type: "job_started",
-        title: " Provider Starts Job",
-        message: `Provider has started your ${booking.serviceType} job`,
+        title: " Enroute to Pickup Location",
+        message: `${booking?.providerId?.fullName || "The rider"} is on their way to you!`,
         bookingId: booking._id,
         providerId,
       });
