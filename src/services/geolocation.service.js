@@ -10,53 +10,53 @@ class GeolocationService {
   /* ─────────────────────────────────────────────────────────────
      Geocode address → coordinates
   ───────────────────────────────────────────────────────────── */
-  // async geocodeAddress(address) {
-  //   try {
-  //     if (!this.googleKey) throw new Error('GOOGLE_MAPS_API_KEY is not configured');
+  async geocodeAddress(address) {
+    try {
+      if (!this.googleKey) throw new Error('GOOGLE_MAPS_API_KEY is not configured');
 
-  //     const response = await axios.get(`${this.googleBaseUrl}/geocode/json`, {
-  //       params: {
-  //         address,
-  //         key: this.googleKey,
-  //         region: 'ng',        // bias towards Nigeria
-  //         language: 'en',
-  //       },
-  //     });
+      const response = await axios.get(`${this.googleBaseUrl}/geocode/json`, {
+        params: {
+          address,
+          key: this.googleKey,
+          region: 'ng',        // bias towards Nigeria
+          language: 'en',
+        },
+      });
 
-  //     if (
-  //       response.data.status !== 'OK' ||
-  //       !response.data.results?.length
-  //     ) {
-  //       throw new Error(`Geocoding failed: ${response.data.status}`);
-  //     }
+      if (
+        response.data.status !== 'OK' ||
+        !response.data.results?.length
+      ) {
+        throw new Error(`Geocoding failed: ${response.data.status}`);
+      }
 
-  //     const result = response.data.results[0];
-  //     const { lat: latitude, lng: longitude } = result.geometry.location;
-  //     const context = this.parseGoogleComponents(result.address_components);
+      const result = response.data.results[0];
+      const { lat: latitude, lng: longitude } = result.geometry.location;
+      const context = this.parseGoogleComponents(result.address_components);
 
-  //     return {
-  //       latitude,
-  //       longitude,
-  //       formattedAddress: result.formatted_address,
-  //       placeName: context.route || context.neighborhood || context.sublocality,
-  //       placeType: result.types?.[0],
-  //       context: {
-  //         streetNumber: context.street_number,
-  //         street: context.route,
-  //         neighborhood: context.neighborhood || context.sublocality_level_1,
-  //         city: context.locality || context.administrative_area_level_2,
-  //         state: context.administrative_area_level_1,
-  //         country: context.country,
-  //         postcode: context.postal_code,
-  //       },
-  //       placeId: result.place_id,
-  //       locationType: result.geometry.location_type, // ROOFTOP = most accurate
-  //     };
-  //   } catch (error) {
-  //     console.error('Geocoding error:', error.message);
-  //     throw new Error(`Failed to geocode address: ${error.message}`);
-  //   }
-  // }
+      return {
+        latitude,
+        longitude,
+        formattedAddress: result.formatted_address,
+        placeName: context.route || context.neighborhood || context.sublocality,
+        placeType: result.types?.[0],
+        context: {
+          streetNumber: context.street_number,
+          street: context.route,
+          neighborhood: context.neighborhood || context.sublocality_level_1,
+          city: context.locality || context.administrative_area_level_2,
+          state: context.administrative_area_level_1,
+          country: context.country,
+          postcode: context.postal_code,
+        },
+        placeId: result.place_id,
+        locationType: result.geometry.location_type, // ROOFTOP = most accurate
+      };
+    } catch (error) {
+      console.error('Geocoding error:', error.message);
+      throw new Error(`Failed to geocode address: ${error.message}`);
+    }
+  }
 
   // /* ─────────────────────────────────────────────────────────────
   //    Reverse geocode coordinates → address
