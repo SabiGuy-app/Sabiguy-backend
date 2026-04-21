@@ -124,6 +124,7 @@ jobs:
             GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
             SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }}
             API_BASE_URL=${{ secrets.API_BASE_URL }}
+            GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
             ENVEOF
 
       - name: Deploy to EC2
@@ -137,6 +138,10 @@ jobs:
             docker pull ${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
+            aws logs delete-log-stream \
+              --log-group-name /sabiguy/staging/app \
+              --log-stream-name backend \
+              --region us-east-1 || true
             docker run -d \
               --name ${{ env.CONTAINER_NAME }} \
               --restart always \
@@ -187,6 +192,7 @@ jobs:
             GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
             SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }}
             API_BASE_URL=${{ secrets.API_BASE_URL }}
+            GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
             ENVEOF
 
       - name: Deploy to EC2
@@ -200,6 +206,11 @@ jobs:
             docker pull ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
+
+            aws logs delete-log-stream \
+              --log-group-name /sabiguy/production/app \
+              --log-stream-name backend \
+              --region us-east-1 || true
             docker run -d \
               --name ${{ env.CONTAINER_NAME }} \
               --restart always \
