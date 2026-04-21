@@ -3,6 +3,7 @@ dotenv.config();
 
 const express = require("express");
 const app = express();
+const morgan = require("morgan");
 
 app.set('trust proxy', true);
 
@@ -14,6 +15,7 @@ const notificationService = require("./src/services/notification.service");
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(morgan("dev"));
 
 const cors = require("cors");
 const server = http.createServer(app);
