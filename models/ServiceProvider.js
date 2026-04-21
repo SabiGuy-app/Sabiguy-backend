@@ -182,6 +182,18 @@ lastLocationUpdate: {
       default: 0
     }
   },
+  reviews: [
+    {
+      bookingId: { type: mongoose.Schema.Types.ObjectId, ref: "Booking" },
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: "ServiceUser" },
+      userName: { type: String },
+      userAvatar: { type: String },
+      score: { type: Number },
+      review: { type: String },
+      serviceType: { type: String },
+      ratedAt: { type: Date, default: Date.now },
+    },
+  ],
 
     paystackRecipientCode: String, 
 

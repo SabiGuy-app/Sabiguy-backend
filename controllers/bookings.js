@@ -37,12 +37,31 @@ class BookingController {
     this.createBooking = this.createBooking.bind(this);
     this.findNearbyProviders = this.findNearbyProviders.bind(this);
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
+    this.getAllBookings = this.getAllBookings.bind(this);
+    this.getUserBookings = this.getUserBookings.bind(this);
     this.notifyProvidersForFastestFinger =
       this.notifyProvidersForFastestFinger.bind(this);
     this.calculateDistance = this.calculateDistance.bind(this);
     this.mockGeocode = this.mockGeocode.bind(this);
     this.geocodeWithFallback = this.geocodeWithFallback.bind(this);
     this.getDirectionsWithFallback = this.getDirectionsWithFallback.bind(this);
+  }
+
+  formatBookingPricing(booking) {
+    if (!booking) return null;
+
+    return {
+      riderPays:
+        booking.calculatedPrice ??
+        booking.agreedPrice ??
+        booking.totalAmount ??
+        booking.budget ??
+        null,
+      driverReceives: booking.driverReceives ?? null,
+      platformEarns: booking.platformEarns ?? null,
+      breakdown: booking.pricingBreakdown ?? null,
+      meta: booking.pricingMeta ?? null,
+    };
   }
 
   async createBooking(req, res) {
@@ -368,6 +387,7 @@ class BookingController {
           booking.driverReceives = pricing.driverReceives;
           booking.platformEarns = pricing.platformEarns;
           booking.pricingBreakdown = pricing.breakdown;
+          booking.pricingMeta = pricing.meta;
           booking.notifiedProviders = enrichedProviders.map((p) => p.id);
           booking.status = "awaiting_provider_acceptance";
           await booking.save();
@@ -673,7 +693,7 @@ class BookingController {
             email: 1,
             profilePicture: 1,
             job: 1,
-            // rating: 1,
+            rating: 1,
             completedJobs: 1,
             startingPrice: 1,
             currentLocation: 1,
@@ -745,7 +765,7 @@ class BookingController {
             return a.locationFresh ? -1 : 1;
           if (a.distanceFromPickup !== b.distanceFromPickup)
             return a.distanceFromPickup - b.distanceFromPickup;
-          // return (b.rating?.average ?? 0) - (a.rating?.average ?? 0);
+          return (b.rating?.average ?? 0) - (a.rating?.average ?? 0);
         })
         .slice(0, MAX_PROVIDERS_RETURNED);
 
@@ -869,8 +889,13 @@ class BookingController {
       const bookingId = req.params.id;
       const userId = req.user.id;
       const { score, review, tipAmount } = req.body;
+      const numericScore =
+        score !== undefined && score !== null ? Number(score) : undefined;
 
-      if (score && (score < 1 || score > 5)) {
+      if (
+        numericScore !== undefined &&
+        (!Number.isFinite(numericScore) || numericScore < 1 || numericScore > 5)
+      ) {
         return res.status(400).json({
           success: false,
           message: "Rating score must be between 1 and 5",
@@ -891,7 +916,10 @@ class BookingController {
         _id: bookingId,
         status: "completed",
         userId,
-      });
+      }).populate("providerId", "fullName rating reviews").populate(
+        "userId",
+        "fullName profilePicture",
+      );
 
       if (!booking) {
         return res.status(409).json({
@@ -899,6 +927,8 @@ class BookingController {
           message: "Booking not marked completed by provider",
         });
       }
+
+      const providerId = booking.providerId?._id || booking.providerId;
 
       if (tipAmount !== undefined && booking.tipAmount) {
         return res.status(409).json({
@@ -909,15 +939,45 @@ class BookingController {
 
       booking.status = "user_accepted_completion";
 
-      if (score || review) {
+      if (numericScore !== undefined || review) {
         booking.rating = {
-          score,
+          score: numericScore,
           review,
           ratedAt: new Date(),
         };
       }
 
       await booking.save();
+
+      if (providerId && numericScore !== undefined) {
+        const providerDoc = await Provider.findById(providerId).select(
+          "rating reviews",
+        );
+
+        if (providerDoc) {
+          const currentAverage = providerDoc.rating?.average || 0;
+          const currentCount = providerDoc.rating?.count || 0;
+          const nextCount = currentCount + 1;
+          const nextAverage =
+            ((currentAverage * currentCount) + numericScore) / nextCount;
+
+          providerDoc.rating.average = Math.round(nextAverage * 100) / 100;
+          providerDoc.rating.count = nextCount;
+
+          providerDoc.reviews.push({
+            bookingId: booking._id,
+            userId: booking.userId?._id || booking.userId,
+            userName: booking.userId?.fullName,
+            userAvatar: booking.userId?.profilePicture,
+            score: numericScore,
+            review,
+            serviceType: booking.serviceType,
+            ratedAt: new Date(),
+          });
+
+          await providerDoc.save();
+        }
+      }
 
       // 💰 Release escrow to provider
       let escrowReleased = false;
@@ -937,7 +997,7 @@ class BookingController {
       if (tipAmount !== undefined) {
         tipResult = await WalletService.tipProviderFromWallet(
           userId,
-          booking.providerId._id,
+          providerId,
           tipAmount,
           booking._id,
           notificationService,
@@ -947,7 +1007,7 @@ class BookingController {
 
       await booking.save();
 
-      await notificationService.notifyUser(booking.providerId._id, {
+      await notificationService.notifyUser(providerId, {
         type: "job_completed_confirmed",
         title: "✅ Job Completion Confirmed",
         message: `Your customer confirmed completion of the ${booking.serviceType} service.`,
@@ -1041,6 +1101,7 @@ class BookingController {
       booking.driverReceives = finalPricing.driverReceives;
       booking.platformEarns = finalPricing.platformEarns;
       booking.pricingBreakdown = finalPricing.breakdown;
+      booking.pricingMeta = finalPricing.meta;
       booking.status = "awaiting_provider_acceptance";
       await booking.save();
 
@@ -1275,6 +1336,8 @@ class BookingController {
         subCategory,
         search,
         modeOfDelivery,
+        maxDistanceKm,
+        minDistanceKm,
         startDate,
         endDate,
         timeWindow, // e.g., "30m", "1h", "2h", "24h"
@@ -1295,6 +1358,34 @@ class BookingController {
       if (serviceType) query.serviceType = serviceType;
       if (subCategory) query.subCategory = subCategory;
       if (modeOfDelivery) query.modeOfDelivery = modeOfDelivery;
+
+      if (maxDistanceKm !== undefined || minDistanceKm !== undefined) {
+        query["distance.value"] = {};
+
+        if (maxDistanceKm !== undefined) {
+          const parsedMaxDistanceKm = Number(maxDistanceKm);
+          if (!Number.isFinite(parsedMaxDistanceKm)) {
+            return res.status(400).json({
+              success: false,
+              message: "maxDistanceKm must be a valid number",
+            });
+          }
+
+          query["distance.value"].$lte = parsedMaxDistanceKm;
+        }
+
+        if (minDistanceKm !== undefined) {
+          const parsedMinDistanceKm = Number(minDistanceKm);
+          if (!Number.isFinite(parsedMinDistanceKm)) {
+            return res.status(400).json({
+              success: false,
+              message: "minDistanceKm must be a valid number",
+            });
+          }
+
+          query["distance.value"].$gte = parsedMinDistanceKm;
+        }
+      }
 
       // Filter by provider
       if (providerId) {
@@ -1399,6 +1490,11 @@ class BookingController {
         .skip((page - 1) * limit)
         .lean();
 
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: this.formatBookingPricing(booking),
+      }));
+
       // Get total count for pagination
       const count = await Booking.countDocuments(query);
 
@@ -1415,7 +1511,7 @@ class BookingController {
 
       return res.status(200).json({
         success: true,
-        data: bookings,
+        data: bookingsWithPricing,
         pagination: {
           total: count,
           totalPages: Math.ceil(count / limit),
@@ -1487,13 +1583,19 @@ class BookingController {
         )
         .sort({ createdAt: -1 })
         .limit(limit * 1)
-        .skip((page - 1) * limit);
+        .skip((page - 1) * limit)
+        .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: this.formatBookingPricing(booking),
+      }));
 
       const count = await Booking.countDocuments(query);
 
       return res.status(200).json({
         success: true,
-        data: bookings,
+        data: bookingsWithPricing,
         totalPages: Math.ceil(count / limit),
         currentPage: parseInt(page),
         total: count,
