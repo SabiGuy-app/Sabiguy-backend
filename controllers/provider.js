@@ -930,13 +930,30 @@ class ProviderController {
 
         .sort({ createdAt: -1 })
         .limit(limit * 1)
-        .skip((page - 1) * limit);
+        .skip((page - 1) * limit)
+        .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: {
+          riderPays:
+            booking.calculatedPrice ??
+            booking.agreedPrice ??
+            booking.totalAmount ??
+            booking.budget ??
+            null,
+          driverReceives: booking.driverReceives ?? null,
+          platformEarns: booking.platformEarns ?? null,
+          breakdown: booking.pricingBreakdown ?? null,
+          meta: booking.pricingMeta ?? null,
+        },
+      }));
 
       const count = await Booking.countDocuments(query);
 
       return res.status(200).json({
         success: true,
-        data: bookings,
+        data: bookingsWithPricing,
         totalPages: Math.ceil(count / limit),
         currentPage: parseInt(page),
         total: count,
@@ -1552,27 +1569,32 @@ if (!updatedBooking) {
 
   async getReviews(req, res) {
     try {
-      const providerId = req.user.providerId;
+      const providerId = req.user.providerId || req.user.id;
       const { page = 1, limit = 10 } = req.query;
 
-      const reviews = await Booking.find({
-        providerId,
-        "rating.score": { $exists: true },
-      })
-        .populate("userId", "firstName lastName avatar")
-        .select("rating serviceType createdAt")
-        .sort({ "rating.ratedAt": -1 })
-        .limit(limit * 1)
-        .skip((page - 1) * limit);
+      const provider = await Provider.findById(providerId)
+        .select("reviews rating")
+        .lean();
 
-      const count = await Booking.countDocuments({
-        providerId,
-        "rating.score": { $exists: true },
-      });
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
+
+      const allReviews = (provider.reviews || [])
+        .filter((item) => item && item.score !== undefined && item.score !== null)
+        .sort((a, b) => new Date(b.ratedAt || 0) - new Date(a.ratedAt || 0));
+
+      const startIndex = (page - 1) * limit;
+      const reviews = allReviews.slice(startIndex, startIndex + Number(limit));
+      const count = allReviews.length;
 
       return res.status(200).json({
         success: true,
         data: reviews,
+        rating: provider.rating,
         totalPages: Math.ceil(count / limit),
         currentPage: parseInt(page),
         total: count,

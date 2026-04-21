@@ -142,9 +142,18 @@ estimatedCompletionAt: Date,
     },
     agreedPrice: Number,
     calculatedPrice: Number, // Auto-calculated for transport/logistics
+    driverReceives: Number,
     serviceFee: Number, // Platform fee (10%)
     providerCommission: Number, // Platform commission from provider (15%)
     platformEarns: Number, // Total platform earnings (user fee + provider commission)
+    pricingBreakdown: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    pricingMeta: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     totalAmount: Number,
     
     // Provider management
