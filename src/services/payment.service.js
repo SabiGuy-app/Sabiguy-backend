@@ -6,13 +6,11 @@ const Buyer = require("../../models/ServiceUser.js");
 const notificationService = require("../services/notification.service.js");
 const Transaction = require("../../models/Transaction.js");
 const WalletService = require("../services/wallet.service.js");
-const pricingService = require("../services/pricing.service.js");
 
 class paymentService {
   constructor() {
     this.paystackBaseURL = "https://api.paystack.co";
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
-    this.platformFeePercentage = 10;
   }
 
   async initializePayment(bookingId, userId, pickupNote = null) {
@@ -43,10 +41,24 @@ class paymentService {
         throw new Error("Booking must have a selected provider before payment");
       }
 
-      const agreedPrice = booking.agreedPrice || booking.budget;
-      const breakdown = pricingService.calculatePricingBreakdown(agreedPrice);
-      const serviceFee = breakdown.userPays - agreedPrice;
-      const totalAmount = breakdown.userPays;
+      const agreedPrice =
+        booking.agreedPrice || booking.calculatedPrice || booking.budget;
+      const totalAmount = Number(
+        booking.totalAmount ?? booking.calculatedPrice ?? booking.agreedPrice,
+      );
+      const serviceFee = Number(booking.serviceFee ?? 0);
+      const providerCommission = Number(booking.providerCommission ?? 0);
+      const providerReceives = Number(
+        booking.driverReceives ??
+          booking.providerReceives ??
+          booking.payment?.providerReceives ??
+          agreedPrice,
+      );
+      const platformEarns = Number(booking.platformEarns ?? 0);
+
+      if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+        throw new Error("Missing final payment amount on booking");
+      }
 
       if (pickupNote) {
         booking.pickupNote = String(pickupNote).trim();
@@ -55,8 +67,9 @@ class paymentService {
       // Update booking with payment details
       booking.agreedPrice = agreedPrice;
       booking.serviceFee = serviceFee;
-      booking.providerCommission = breakdown.platformEarns - serviceFee;
-      booking.platformEarns = breakdown.platformEarns;
+      booking.providerCommission = providerCommission;
+      booking.providerReceives = providerReceives;
+      booking.platformEarns = platformEarns;
       booking.totalAmount = totalAmount;
 
       const paystackResponse = await axios.post(
@@ -71,13 +84,14 @@ class paymentService {
             bookingId: booking._id.toString(),
             buyerId: userId,
             providerId: booking.providerId?._id.toString(),
-            serviceType: booking.serviceType,
-            pickupNote: booking.pickupNote || null,
-            agreedPrice,
-            serviceFee,
-            totalAmount,
-            providerCommission: breakdown.platformEarns - serviceFee,
-            platformEarns: breakdown.platformEarns,
+          serviceType: booking.serviceType,
+          pickupNote: booking.pickupNote || null,
+          agreedPrice,
+          serviceFee,
+          totalAmount,
+          providerCommission,
+          providerReceives,
+          platformEarns,
             custom_fields: [
               {
                 display_name: "Booking ID",
@@ -113,7 +127,8 @@ class paymentService {
       booking.payment = {
         paystackRef: paystackResponse.data.data.reference,
         escrowStatus: "pending",
-        escrowAmount: agreedPrice,
+        escrowAmount: totalAmount,
+        providerReceives,
       };
       booking.status = "payment_pending";
       await booking.save();
@@ -133,11 +148,16 @@ class paymentService {
         breakdown: {
           agreedPrice,
           serviceFee,
+          providerCommission,
+          providerReceives,
+          driverReceives: booking.driverReceives ?? null,
+          platformEarns,
           totalAmount,
         },
         metadata: {
-          platformEarns: breakdown.platformEarns,
-          providerCommission: breakdown.platformEarns - serviceFee,
+          platformEarns,
+          providerCommission,
+          providerReceives,
         },
         bookingId: booking._id,
         gateway: {
@@ -155,6 +175,9 @@ class paymentService {
         totalAmount,
         agreedPrice,
         serviceFee,
+        providerCommission,
+        providerReceives,
+        platformEarns,
       };
     } catch (error) {
       console.error("Initialize payment error:", error);
@@ -310,13 +333,15 @@ class paymentService {
         throw new Error("Provider record missing");
       }
 
-      const commission = pricingService.calculateProviderCommission(
-        booking.payment.escrowAmount,
-      );
-      const providerPayout = Math.max(
-        0,
-        booking.payment.escrowAmount - commission,
-      );
+      const providerPayout =
+        booking.driverReceives ??
+        booking.payment?.providerReceives ??
+        booking.providerReceives;
+      const commission = booking.providerCommission;
+
+      if (!Number.isFinite(providerPayout) || !Number.isFinite(commission)) {
+        throw new Error("Missing pricing breakdown on booking");
+      }
 
       if (commission > 0) {
         await WalletService.recordPlatformFee(

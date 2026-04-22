@@ -76,7 +76,10 @@ const transactionSchema = new mongoose.Schema(
     breakdown: {
       agreedPrice: Number, // Amount for provider
       serviceFee: Number, // Platform fee
+      providerCommission: Number, // Platform commission from provider
+      providerReceives: Number, // Net amount provider receives
       totalAmount: Number, // Total paid by user
+      platformEarns: Number, // Total platform earnings
     },
 
     // Related entities
