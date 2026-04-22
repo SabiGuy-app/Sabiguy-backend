@@ -70,7 +70,7 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *                     serviceFee:
  *                       type: number
  *                       example: 500
- *                       description: Platform fee (10%)
+ *                       description: Platform fee (5%)
  *       400:
  *         description: Booking ID required or booking not ready for payment
  *       500:

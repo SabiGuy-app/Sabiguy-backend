@@ -143,8 +143,9 @@ estimatedCompletionAt: Date,
     agreedPrice: Number,
     calculatedPrice: Number, // Auto-calculated for transport/logistics
     driverReceives: Number,
-    serviceFee: Number, // Platform fee (10%)
+    serviceFee: Number, // Platform fee (5%)
     providerCommission: Number, // Platform commission from provider (15%)
+    providerReceives: Number, // Net amount provider receives from escrow
     platformEarns: Number, // Total platform earnings (user fee + provider commission)
     pricingBreakdown: {
       type: mongoose.Schema.Types.Mixed,
@@ -199,6 +200,7 @@ estimatedCompletionAt: Date,
     payment: {
       paystackRef: String,
       escrowAmount: Number,
+      providerReceives: Number,
       escrowStatus: {
         type: String,
         enum: ['held', 'pending', 'released', 'refunded'],

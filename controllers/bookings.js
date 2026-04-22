@@ -245,6 +245,7 @@ class BookingController {
         };
 
         bookingData.agreedPrice = budget;
+        bookingData.totalAmount = budget;
 
         searchCoordinates = {
           latitude: geo.latitude,
@@ -384,6 +385,7 @@ class BookingController {
 
           booking.calculatedPrice = pricing.calculatedPrice;
           booking.agreedPrice = pricing.calculatedPrice;
+          booking.totalAmount = pricing.calculatedPrice;
           booking.driverReceives = pricing.driverReceives;
           booking.platformEarns = pricing.platformEarns;
           booking.pricingBreakdown = pricing.breakdown;
@@ -1098,6 +1100,7 @@ class BookingController {
       booking.providerId = providerId;
       booking.calculatedPrice = finalPricing.calculatedPrice;
       booking.agreedPrice = finalPricing.calculatedPrice;
+      booking.totalAmount = finalPricing.calculatedPrice;
       booking.driverReceives = finalPricing.driverReceives;
       booking.platformEarns = finalPricing.platformEarns;
       booking.pricingBreakdown = finalPricing.breakdown;
