@@ -2,7 +2,6 @@ const Wallet = require("../../models/Wallet");
 const Transaction = require("../../models/Transaction");
 const Booking = require("../../models/Bookings");
 const mongoose = require("mongoose");
-const pricingService = require("../services/pricing.service.js");
 
 class WalletService {
   constructor() {
@@ -10,28 +9,39 @@ class WalletService {
     this.PLATFORM_WALLET_ID = "000000000000000000000001";
   }
 
-  normalizePaymentBreakdown(breakdown = {}, fallbackAmount = 0) {
-    const safeFallback = Number(fallbackAmount) || 0;
-    const agreedPrice = Number(
-      breakdown.agreedPrice ?? breakdown.serviceCharge ?? safeFallback,
-    );
-    const serviceFee = Number(breakdown.serviceFee ?? breakdown.platformFee ?? 0);
-    const totalAmount = Number(
-      breakdown.totalAmount ?? breakdown.total ?? agreedPrice + serviceFee,
-    );
+  normalizePaymentBreakdown(breakdown = {}) {
+    const agreedPrice = Number(breakdown.agreedPrice);
+    const serviceFee = Number(breakdown.serviceFee);
+    const providerCommission = Number(breakdown.providerCommission);
+    const providerReceives = Number(breakdown.providerReceives);
+    const totalAmount = Number(breakdown.totalAmount);
+    const platformEarns = Number(breakdown.platformEarns);
 
     if (
       !Number.isFinite(agreedPrice) ||
       !Number.isFinite(serviceFee) ||
+      !Number.isFinite(providerCommission) ||
+      !Number.isFinite(providerReceives) ||
       !Number.isFinite(totalAmount) ||
+      !Number.isFinite(platformEarns) ||
       agreedPrice < 0 ||
       serviceFee < 0 ||
-      totalAmount <= 0
+      providerCommission < 0 ||
+      providerReceives < 0 ||
+      totalAmount <= 0 ||
+      platformEarns < 0
     ) {
       throw new Error("Invalid payment breakdown");
     }
 
-    return { agreedPrice, serviceFee, totalAmount };
+    return {
+      agreedPrice,
+      serviceFee,
+      providerCommission,
+      providerReceives,
+      totalAmount,
+      platformEarns,
+    };
   }
 
   async getPlatformWallet() {
@@ -126,7 +136,7 @@ class WalletService {
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip((page - 1) * limit)
-      .populate("bookingId", "serviceType status")
+      .populate("bookingId", "serviceType status pricingBreakdown")
       .lean();
 
     const total = await Transaction.countDocuments(query);
@@ -273,49 +283,20 @@ class WalletService {
         "Provider",
       );
 
-      // Record balance snapshots
       const providerBalanceBefore = {
         available: providerWallet.balance.available,
         pending: providerWallet.balance.pending,
         total: providerWallet.balance.total,
       };
 
-      // Add to provider's pending balance (escrow)
-      await providerWallet.addPending(normalizedBreakdown.agreedPrice);
+      // Add the provider net amount directly from pricing service output.
+      await providerWallet.addPending(normalizedBreakdown.providerReceives);
 
       const providerBalanceAfter = {
         available: providerWallet.balance.available,
         pending: providerWallet.balance.pending,
         total: providerWallet.balance.total,
       };
-
-      // // Create transaction record
-      // const transaction = await Transaction.create({
-      //   reference: this.generateReference("PAY"),
-      //   type: "payment",
-      //   from: {
-      //     userId,
-      //     userModel: "Buyer",
-      //   },
-      //   to: {
-      //     userId: providerId,
-      //     userModel: "Provider",
-      //     walletId: providerWallet._id,
-      //   },
-      //   amount: totalCharge,
-      //   breakdown: normalizedBreakdown,
-      //   bookingId,
-      //   gateway: {
-      //     name: "paystack",
-      //   },
-      //   balances: {
-      //     before: providerBalanceBefore,
-      //     after: providerBalanceAfter,
-      //   },
-      //   status: "completed",
-      //   description: `Payment for booking #${bookingId}`,
-      //   completedAt: new Date(),
-      // });
 
       if (normalizedBreakdown.serviceFee > 0) {
         await this.recordPlatformFee(
@@ -326,33 +307,39 @@ class WalletService {
       }
 
       await Transaction.findOneAndUpdate(
-      { bookingId, type: "payment", status: "completed" },
-      {
-        $set: {
-          "to.walletId": providerWallet._id,
-          "balances.providerBefore": providerBalanceBefore,
-          "balances.providerAfter": providerBalanceAfter,
+        { bookingId, type: "payment", status: "completed" },
+        {
+          $set: {
+            breakdown: normalizedBreakdown,
+            amount: normalizedBreakdown.totalAmount,
+            "to.walletId": providerWallet._id,
+            "balances.providerBefore": providerBalanceBefore,
+            "balances.providerAfter": providerBalanceAfter,
+          },
         },
-      }
-    );
-      // Send notification to provider
+        { new: true },
+      );
+
       if (notificationService) {
         try {
+          const buyerId = userId?._id ?? userId;
+
           await notificationService.notifyProvider(providerId, {
             type: "payment_received",
             title: "💰 Payment Secured in Escrow",
-            message: `₦${normalizedBreakdown.agreedPrice} has been secured in escrow for booking #${bookingId}. Complete the service to receive payment.`,
+            message: `₦${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Complete the service to receive payment.`,
             bookingId,
-            amount: normalizedBreakdown.agreedPrice,
+            amount: normalizedBreakdown.providerReceives,
             pendingBalance: providerBalanceAfter.pending,
-          })
+          });
 
-            await notificationService.notifyUser(userId._id, {
-                  type: "payment_received",
-                  title: "✅ Payment Successful",
-          message: `Your payment is secured. Agreed price: NGN${normalizedBreakdown.agreedPrice.toLocaleString()}. Service fee: NGN${normalizedBreakdown.serviceFee.toLocaleString()}. New available balance: NGN${buyerBalanceAfter.available.toLocaleString()}`,
-                  bookingId
-                });
+          await notificationService.notifyUser(buyerId, {
+            type: "payment_received",
+            title: "✅ Payment Successful",
+            message: `Your payment is secured. Agreed price: NGN${normalizedBreakdown.agreedPrice.toLocaleString()}. Service fee: NGN${normalizedBreakdown.serviceFee.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`,
+            bookingId,
+            amount: normalizedBreakdown.totalAmount,
+          });
         } catch (notifyError) {
           console.error(
             "Failed to send escrow notification to provider:",
@@ -361,19 +348,18 @@ class WalletService {
         }
       }
 
-  return {
-      success: true,
-      providerWallet,
-      providerBalanceAfter,
-      amount: normalizedBreakdown.agreedPrice,
-    };
-      } catch (error) {
+      return {
+        success: true,
+        providerWallet,
+        providerBalanceAfter,
+        amount: normalizedBreakdown.providerReceives,
+      };
+    } catch (error) {
       console.error("Record payment error:", error);
       throw error;
     }
   }
 
- 
   async releaseEscrow(
     providerId,
     amount,
@@ -645,31 +631,50 @@ class WalletService {
 
   // Pay from user wallet balance (instead of Paystack)
 
- async payFromWallet(userId, providerId, amount, bookingId, breakdown, notificationService = null) {
+  async payFromWallet(
+    userId,
+    providerId,
+    amount,
+    bookingId,
+    notificationService = null,
+  ) {
   try {
-    const paymentAmount = parseFloat(amount);
-    const normalizedBreakdown = this.normalizePaymentBreakdown(
-      breakdown,
-      paymentAmount,
-    );
-
-    const pricingBreakdown = pricingService.calculatePricingBreakdown(
-      normalizedBreakdown.agreedPrice,
-    );
-    normalizedBreakdown.serviceFee =
-      pricingBreakdown.userPays - normalizedBreakdown.agreedPrice;
-    normalizedBreakdown.totalAmount = pricingBreakdown.userPays;
-    const totalCharge = normalizedBreakdown.totalAmount;
-    if (isNaN(paymentAmount) || paymentAmount <= 0) {
-      throw new Error("Invalid payment amount");
-    }
-
     const existingBooking = await Booking.findById(bookingId)
-      .select("status payment userId providerId")
+      .select(
+        "status payment userId providerId agreedPrice calculatedPrice budget serviceType totalAmount serviceFee providerCommission providerReceives platformEarns driverReceives pricingBreakdown",
+      )
       .lean();
 
     if (!existingBooking) {
       throw new Error("Booking not found");
+    }
+
+    const agreedPrice = Number(existingBooking.agreedPrice);
+    const totalCharge = Number(
+      existingBooking.pricingBreakdown?.riderPaysFinal ??
+        existingBooking.calculatedPrice ??
+        existingBooking.totalAmount,
+    );
+    const serviceFee = Number(existingBooking.serviceFee ?? 0);
+    const providerCommission = Number(existingBooking.providerCommission ?? 0);
+    const providerReceives = Number(
+      existingBooking.driverReceives ??
+        existingBooking.providerReceives ??
+        agreedPrice,
+    );
+    const platformEarns = Number(existingBooking.platformEarns ?? 0);
+
+    if (
+      !Number.isFinite(agreedPrice) ||
+      !Number.isFinite(totalCharge) ||
+      !Number.isFinite(serviceFee) ||
+      !Number.isFinite(providerCommission) ||
+      !Number.isFinite(providerReceives) ||
+      !Number.isFinite(platformEarns) ||
+      agreedPrice <= 0 ||
+      totalCharge <= 0
+    ) {
+      throw new Error("Invalid booking pricing data");
     }
 
     const paymentAlreadyCaptured =
@@ -696,20 +701,18 @@ class WalletService {
       throw new Error("Payment already recorded for this booking");
     }
 
-    // Get buyer's wallet
     const buyerWallet = await this.getOrCreateWallet(userId, "Buyer");
 
-    console.log("💰 Buyer Wallet before payment:", {
+    console.log("?? Buyer Wallet before payment:", {
       available: buyerWallet.balance.available,
       pending: buyerWallet.balance.pending,
       total: buyerWallet.balance.total,
     });
 
-    // Check if sufficient balance
     if (buyerWallet.balance.available < totalCharge) {
       throw new Error(
         `Insufficient wallet balance. ` +
-          `Required: ${totalCharge}, Available: ₦${buyerWallet.balance.available}`,
+          `Required: ${totalCharge}, Available: ?${buyerWallet.balance.available}`,
       );
     }
 
@@ -719,7 +722,6 @@ class WalletService {
       total: buyerWallet.balance.total,
     };
 
-    // Debit buyer's available balance
     buyerWallet.balance.available -= totalCharge;
     buyerWallet.balance.total -= totalCharge;
     buyerWallet.lastTransactionAt = new Date();
@@ -731,7 +733,6 @@ class WalletService {
       total: buyerWallet.balance.total,
     };
 
-    // Create transaction record
     const transaction = await Transaction.create({
       reference: this.generateReference("WPAY"),
       type: "payment",
@@ -745,9 +746,16 @@ class WalletService {
         userModel: "Provider",
       },
       amount: totalCharge,
-      agreedPrice: normalizedBreakdown.agreedPrice,
+      agreedPrice,
       bookingId,
-      breakdown: normalizedBreakdown,
+      breakdown: {
+        agreedPrice,
+        serviceFee,
+        providerCommission,
+        providerReceives,
+        platformEarns,
+        totalAmount: totalCharge,
+      },
       balances: {
         before: buyerBalanceBefore,
         after: buyerBalanceAfter,
@@ -758,7 +766,6 @@ class WalletService {
       completedAt: new Date(),
     });
 
-    // Update booking - Move money to escrow (same as verifyPayment)
     const booking = await Booking.findByIdAndUpdate(
       bookingId,
       {
@@ -766,13 +773,14 @@ class WalletService {
         "payment.method": "wallet",
         "payment.escrowStatus": "held",
         "payment.paidAt": new Date(),
-        "payment.escrowAmount": normalizedBreakdown.agreedPrice,
+        "payment.escrowAmount": totalCharge,
+        "payment.providerReceives": providerReceives,
         "payment.transactionReference": transaction.reference,
-        serviceFee: normalizedBreakdown.serviceFee,
-        providerCommission:
-          pricingBreakdown.platformEarns - normalizedBreakdown.serviceFee,
-        platformEarns: pricingBreakdown.platformEarns,
-        totalamount: totalCharge,
+        serviceFee,
+        providerCommission,
+        providerReceives,
+        platformEarns,
+        totalAmount: totalCharge,
       },
       { new: true },
     )
@@ -783,41 +791,44 @@ class WalletService {
       throw new Error("Booking not found");
     }
 
-    // Record payment in wallet service (credits provider's pending balance)
     await this.recordPayment(
       userId,
       providerId,
       booking._id,
-      normalizedBreakdown,
+      {
+        agreedPrice,
+        serviceFee,
+        providerCommission,
+        providerReceives,
+        platformEarns,
+        totalAmount: totalCharge,
+      },
       notificationService,
     );
 
-    console.log(`✅ Paid from wallet: ₦${amount} for booking ${bookingId}`);
+    console.log(`? Paid from wallet: ?${amount} for booking ${bookingId}`);
 
-    // Send notifications if service is provided
     if (notificationService) {
       try {
-        // Notify provider that payment is secured
         await notificationService.createNotification({
           providerId,
           type: "payment_received",
-          title: "💰 Payment Secured",
-          message: `Payment secured for your ${booking.serviceType} booking. Agreed price: NGN${normalizedBreakdown.agreedPrice.toLocaleString()}. Service fee: NGN${normalizedBreakdown.serviceFee.toLocaleString()}. Complete the service to receive payment.`,
+          title: "?? Payment Secured",
+          message: `Payment secured for your ${booking.serviceType} booking. Agreed price: NGN${agreedPrice.toLocaleString()}. Service fee: NGN${serviceFee.toLocaleString()}. Complete the service to receive payment.`,
           data: {
             bookingId: booking._id,
-            amount: paymentAmount,
+            amount: providerReceives,
           },
         });
 
-        // Notify user
         await notificationService.createNotification({
           userId,
           type: "payment_sent",
-          title: "✅ Payment Successful",
-          message: `Your payment is secured. Agreed price: NGN${normalizedBreakdown.agreedPrice.toLocaleString()}. Service fee: NGN${normalizedBreakdown.serviceFee.toLocaleString()}. New available balance: NGN${buyerBalanceAfter.available.toLocaleString()}`,
+          title: "? Payment Successful",
+          message: `Your payment is secured. Agreed price: NGN${agreedPrice.toLocaleString()}. Service fee: NGN${serviceFee.toLocaleString()}. Total amount: NGN${totalCharge.toLocaleString()}. New available balance: NGN${buyerBalanceAfter.available.toLocaleString()}`,
           data: {
             bookingId: booking._id,
-            amount: paymentAmount,
+            amount: totalCharge,
             newBalance: buyerBalanceAfter.available,
           },
         });
@@ -841,52 +852,6 @@ class WalletService {
     throw error;
   }
 }
-  /**
-   * Get transaction history
-   */
-  // async getTransactionHistory(userId, userModel, options = {}) {
-  //   const { page = 1, limit = 20, type, status } = options;
-
-  //   const query = {
-  //     $or: [
-  //       { 'from.userId': userId, 'from.userModel': userModel },
-  //       { 'to.userId': userId, 'to.userModel': userModel }
-  //     ]
-  //   };
-
-  //   if (type) query.type = type;
-  //   if (status) query.status = status;
-
-  //   const transactions = await Transaction.find(query)
-  //     .sort({ createdAt: -1 })
-  //     .limit(limit)
-  //     .skip((page - 1) * limit)
-  //     .populate('bookingId', 'serviceType status')
-  //     .lean();
-
-  //   const total = await Transaction.countDocuments(query);
-
-  //   // Format transactions (determine if credit or debit)
-  //   const formatted = transactions.map(txn => {
-  //     const isCredit = txn.to?.userId?.toString() === userId.toString();
-
-  //     return {
-  //       ...txn,
-  //       direction: isCredit ? 'credit' : 'debit',
-  //       displayAmount: isCredit ? `+₦${txn.amount}` : `-₦${txn.amount}`
-  //     };
-  //   });
-
-  //   return {
-  //     transactions: formatted,
-  //     pagination: {
-  //       page,
-  //       limit,
-  //       total,
-  //       pages: Math.ceil(total / limit)
-  //     }
-  //   };
-  // }
 
   async getTransactionHistory(userId, userModel, options = {}) {
     const { page = 1, limit = 20, type, status } = options;
@@ -917,11 +882,26 @@ class WalletService {
     // Format transactions
     const formatted = transactions.map((txn) => {
       const isCredit = txn.to?.userId?.toString() === userId.toString();
+      const bookingSubtotal = Number(txn.bookingId?.pricingBreakdown?.subtotal);
+      const derivedSubtotal =
+        Number.isFinite(txn.breakdown?.providerReceives) &&
+        Number.isFinite(txn.breakdown?.providerCommission)
+          ? Number(txn.breakdown.providerReceives) +
+            Number(txn.breakdown.providerCommission)
+          : null;
+      const providerSubtotal = Number.isFinite(bookingSubtotal)
+        ? bookingSubtotal
+        : Number.isFinite(derivedSubtotal)
+          ? derivedSubtotal
+          : null;
+      const displayAmountValue =
+        isCredit && providerSubtotal !== null ? providerSubtotal : txn.amount;
 
       return {
         ...txn,
         direction: isCredit ? "credit" : "debit",
-        displayAmount: isCredit ? `+₦${txn.amount}` : `-₦${txn.amount}`,
+        displayAmount: isCredit ? `+₦${displayAmountValue}` : `-₦${txn.amount}`,
+        providerSubtotal,
       };
     });
 
@@ -1014,8 +994,6 @@ class WalletService {
 }
 
 module.exports = new WalletService();
-
-
 
 
 
