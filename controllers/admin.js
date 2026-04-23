@@ -4,6 +4,7 @@ const Admin = require("../models/Admin");
 const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
 const Booking = require("../models/Bookings");
+const { findUserByEmailAcrossDb, normalizeEmail } = require("../src/services/identity.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
@@ -24,11 +25,11 @@ class AdminController {
         });
       }
 
-      const normalizedEmail = String(email).trim().toLowerCase();
+      const normalizedEmail = normalizeEmail(email);
 
-      const existing = await Admin.findOne({ email: normalizedEmail });
+      const existing = await findUserByEmailAcrossDb(normalizedEmail);
       if (existing) {
-        return res.status(400).json({ message: "Admin already exists" });
+        return res.status(400).json({ message: "Email already in use" });
       }
 
       // const adminCount = await Admin.countDocuments();
@@ -102,7 +103,7 @@ class AdminController {
         });
       }
 
-      const normalizedEmail = String(email).trim().toLowerCase();
+      const normalizedEmail = normalizeEmail(email);
 
       const admin = await Admin.findOne({ email: normalizedEmail }).select(
         "+password",
