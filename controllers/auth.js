@@ -7,11 +7,39 @@ const dotenv = require ('dotenv');
 dotenv.config();
 const { OAuth2Client } = require ('google-auth-library');
 const {sendEmailOtp, forgotPasswordOtp, passwordChangedEmail, sendWelcomeEmail} = require ('../src/config/emailVerification')
+const { findUserByEmailAcrossDb, findUserByPhoneAcrossDb, normalizePhoneNumber } = require("../src/services/identity.service");
 
 const roleModelMap = {
   buyer: Buyer,
   provider: Provider,
   admin: Admin,
+};
+
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+
+const escapeRegex = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const findUserByEmail = async (Model, email, { includePassword = false } = {}) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return null;
+
+  let query = Model.findOne({ email: normalizedEmail });
+  if (includePassword) {
+    query = query.select("+password");
+  }
+
+  const exactMatch = await query;
+  if (exactMatch) return exactMatch;
+
+  let fallbackQuery = Model.findOne({
+    email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, "i"),
+  });
+  if (includePassword) {
+    fallbackQuery = fallbackQuery.select("+password");
+  }
+
+  return fallbackQuery;
 };
 
 const axios = require('axios');
@@ -114,21 +142,22 @@ exports.googleSignUp = async (req, res) => {
     }
 
     // Check if email exists
-    const existingEmail = await Provider.findOne({ email });
+    const normalizedEmail = normalizeEmail(email);
+    const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
-      if (!existingEmail.emailVerified) {
-        existingEmail.emailVerified = true;
-        existingEmail.otp = null;
-        existingEmail.otpExpiresAt = null;
-        await existingEmail.save();
+      if (existingEmail.role === "provider" && !existingEmail.user.emailVerified) {
+        existingEmail.user.emailVerified = true;
+        existingEmail.user.otp = null;
+        existingEmail.user.otpExpiresAt = null;
+        await existingEmail.user.save();
 
         let welcomeEmailSent = true;
         try {
-          const firstName = existingEmail.fullName
-            ? existingEmail.fullName.trim().split(/\s+/)[0]
+          const firstName = existingEmail.user.fullName
+            ? existingEmail.user.fullName.trim().split(/\s+/)[0]
             : "there";
           const baseUrl = process.env.FRONTEND_URL || "";
-          await sendWelcomeEmail(existingEmail.email, {
+          await sendWelcomeEmail(existingEmail.user.email, {
             firstName,
             year: new Date().getFullYear(),
             ctaUrl: baseUrl,
@@ -150,7 +179,7 @@ exports.googleSignUp = async (req, res) => {
     }
     
     const newUser = new Provider({
-      email,
+      email: normalizedEmail,
       fullName: name,
       password: null,
       otp: null,
@@ -271,21 +300,22 @@ exports.googleSignUpBuyer = async (req, res) => {
       }
     }
 
-    const existingEmail = await Buyer.findOne({ email });
+    const normalizedEmail = normalizeEmail(email);
+    const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
-      if (!existingEmail.emailVerified) {
-        existingEmail.emailVerified = true;
-        existingEmail.otp = null;
-        existingEmail.otpExpiresAt = null;
-        await existingEmail.save();
+      if (existingEmail.role === "buyer" && !existingEmail.user.emailVerified) {
+        existingEmail.user.emailVerified = true;
+        existingEmail.user.otp = null;
+        existingEmail.user.otpExpiresAt = null;
+        await existingEmail.user.save();
 
         let welcomeEmailSent = true;
         try {
-          const firstName = existingEmail.fullName
-            ? existingEmail.fullName.trim().split(/\s+/)[0]
+          const firstName = existingEmail.user.fullName
+            ? existingEmail.user.fullName.trim().split(/\s+/)[0]
             : "there";
           const baseUrl = process.env.FRONTEND_URL || "";
-          await sendWelcomeEmail(existingEmail.email, {
+          await sendWelcomeEmail(existingEmail.user.email, {
             firstName,
             year: new Date().getFullYear(),
             ctaUrl: baseUrl,
@@ -308,7 +338,7 @@ exports.googleSignUpBuyer = async (req, res) => {
 
     // Create new user
     const newUser = new Buyer({
-      email,
+      email: normalizedEmail,
       fullName: name,
       password: null,
       profilePicture: picture,
@@ -424,10 +454,11 @@ exports.googleLogIn = async (req, res) => {
     }
 
     // Check if user exists
-    let user = await Provider.findOne({ email });
+    const normalizedEmail = normalizeEmail(email);
+    let user = await findUserByEmail(Provider, normalizedEmail);
 
     if (!user) {
-      user = await Buyer.findOne({ email });
+      user = await findUserByEmail(Buyer, normalizedEmail);
     }
     if (!user) {
       return res.status(400).json({ message: "Account not found. Please sign up" });
@@ -478,6 +509,8 @@ exports.googleLogIn = async (req, res) => {
 };
 exports.registerBuyer = async (req, res) => {
     const { email, password, phoneNumber, city, fullName } = req.body;
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
   const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
   if (!isValidPassword) {
@@ -487,22 +520,28 @@ exports.registerBuyer = async (req, res) => {
     });
   }
   try {
-
-    const existingEmail = await Buyer.findOne ({ email });
+    const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
-      if (!existingEmail.emailVerified) {
+      if (existingEmail.role === "buyer" && !existingEmail.user.emailVerified) {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-        existingEmail.otp = otp;
-        existingEmail.otpExpiresAt = otpExpiresAt;
-        await existingEmail.save();
+        existingEmail.user.otp = otp;
+        existingEmail.user.otpExpiresAt = otpExpiresAt;
+        await existingEmail.user.save();
 
-        await sendEmailOtp(email, otp);
+        await sendEmailOtp(normalizedEmail, otp);
         return res.status(200).json({
           message: "Email not verified. OTP sent to email.",
         });
       }
       return res.status(400).json({ message: "Email already in use" });
+    }
+
+    if (normalizedPhoneNumber) {
+      const existingPhone = await findUserByPhoneAcrossDb(normalizedPhoneNumber);
+      if (existingPhone) {
+        return res.status(400).json({ message: "Phone number already in use" });
+      }
     }
 
     let hashedPassword = null;
@@ -514,14 +553,14 @@ exports.registerBuyer = async (req, res) => {
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // expires in 10 mins
 
     const newBuyer = new Buyer ({
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         otp,
         otpExpiresAt,
         isVerified: false,
         city,
         fullName,
-        phoneNumber,
+        phoneNumber: normalizedPhoneNumber || phoneNumber,
         role: "buyer", 
 
     })
@@ -529,7 +568,7 @@ exports.registerBuyer = async (req, res) => {
     await newBuyer.save();
 
     try {
-        await sendEmailOtp(email, otp);
+        await sendEmailOtp(normalizedEmail, otp);
         
     } catch (OtpError) {
         await Buyer.findByIdAndDelete(newBuyer._id);
@@ -557,6 +596,7 @@ exports.registerBuyer = async (req, res) => {
 
 exports.registerProvider = async (req, res) => {
     const { email, password, phoneNumber, fullName } = req.body;
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
   const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
   if (!isValidPassword) {
@@ -567,21 +607,29 @@ exports.registerProvider = async (req, res) => {
   }
   try {
 
-    const existingEmail = await Provider.findOne ({ email });
+    const normalizedEmail = normalizeEmail(email);
+    const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
-      if (!existingEmail.emailVerified) {
+      if (existingEmail.role === "provider" && !existingEmail.user.emailVerified) {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-        existingEmail.otp = otp;
-        existingEmail.otpExpiresAt = otpExpiresAt;
-        await existingEmail.save();
+        existingEmail.user.otp = otp;
+        existingEmail.user.otpExpiresAt = otpExpiresAt;
+        await existingEmail.user.save();
 
-        await sendEmailOtp(email, otp);
+        await sendEmailOtp(normalizedEmail, otp);
         return res.status(200).json({
           message: "Email not verified. OTP sent to email.",
         });
       }
       return res.status(400).json({ message: "Email already in use" });
+    }
+
+    if (normalizedPhoneNumber) {
+      const existingPhone = await findUserByPhoneAcrossDb(normalizedPhoneNumber);
+      if (existingPhone) {
+        return res.status(400).json({ message: "Phone number already in use" });
+      }
     }
 
     let hashedPassword = null;
@@ -593,13 +641,13 @@ exports.registerProvider = async (req, res) => {
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // expires in 10 mins
 
     const newProvider = new Provider ({
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         otp,
         otpExpiresAt, 
         isVerified: false,
         fullName,
-        phoneNumber,
+        phoneNumber: normalizedPhoneNumber || phoneNumber,
         role: "provider", 
 
 
@@ -608,7 +656,7 @@ exports.registerProvider = async (req, res) => {
     await newProvider.save();
 
     try {
-        await sendEmailOtp(email, otp);
+        await sendEmailOtp(normalizedEmail, otp);
         
     } catch (OtpError) {
         await Provider.findByIdAndDelete(newProvider._id);
@@ -691,13 +739,14 @@ try {
 
 exports.resendOTP = async (req, res) => {
   const { email } = req.body;
+  const normalizedEmail = normalizeEmail(email);
 
   try {
-    let user = await Buyer.findOne({ email });
+    let user = await findUserByEmail(Buyer, normalizedEmail);
     let role = "buyer";
 
     if (!user) {
-      user = await Provider.findOne({ email });
+      user = await findUserByEmail(Provider, normalizedEmail);
       role = "provider";
     }    
 
@@ -726,7 +775,7 @@ if (user.lastVerificationOtpSentAt && now.getTime() - lastSent.getTime() < 60 * 
     await user.save();
 
  try {
-         await sendEmailOtp(email, otp);
+         await sendEmailOtp(normalizedEmail, otp);
 
           
         } catch (OtpError) {
@@ -748,16 +797,16 @@ exports.login = async (req, res) => {
     return res.status(400).json({ message: "Email and password are required" });
   }
 
-  const normalizedEmail = String(email).trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   const allowedRoles = ["buyer", "provider", "admin"];
 
   const findUserByRole = async (role) => {
     const Model = roleModelMap[role];
     if (!Model) return null;
     if (role === "admin") {
-      return Model.findOne({ email: normalizedEmail }).select("+password");
+      return findUserByEmail(Model, normalizedEmail, { includePassword: true });
     }
-    return Model.findOne({ email: normalizedEmail });
+    return findUserByEmail(Model, normalizedEmail);
   };
 
   try {
@@ -887,13 +936,14 @@ exports.refreshAuthToken = async (req, res) => {
 
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body
+  const normalizedEmail = normalizeEmail(email);
 
   try {
-    let user = await Buyer.findOne ({ email });
+    let user = await findUserByEmail(Buyer, normalizedEmail);
     let role = 'buyer';
     
     if (!user) {
-      user = await Provider.findOne ({ email });
+      user = await findUserByEmail(Provider, normalizedEmail);
       role = 'provider';
     }
 
@@ -905,7 +955,7 @@ const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetOtp = otp;
     user.resetOtpExpires = Date.now() + 10 * 60 * 1000; // 10 min
     await user.save();
-    await forgotPasswordOtp(email, otp);
+    await forgotPasswordOtp(normalizedEmail, otp);
 
     res.status(201).json({ message: "Forgot password otp sent to email" });
 
@@ -917,16 +967,17 @@ const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
 exports.resendForgotPasswordOtp = async (req, res) => {
   const { email } = req.body;
+  const normalizedEmail = normalizeEmail(email);
 
   if (!email) {
     return res.status(400).json({ message: "Email is required" });
   }
 
   try {
-    let user = await Buyer.findOne({ email });
+    let user = await findUserByEmail(Buyer, normalizedEmail);
 
     if (!user) {
-      user = await Provider.findOne({ email });
+      user = await findUserByEmail(Provider, normalizedEmail);
     }
 
     if (!user) {
@@ -953,7 +1004,7 @@ exports.resendForgotPasswordOtp = async (req, res) => {
     user.lastResetOtpSentAt = now;
     await user.save();
 
-    await forgotPasswordOtp(email, otp);
+    await forgotPasswordOtp(normalizedEmail, otp);
 
     return res
       .status(200)
@@ -966,11 +1017,12 @@ exports.resendForgotPasswordOtp = async (req, res) => {
 
 exports.verifyResetOtp = async (req, res) => {
   const { email, otp } = req.body;
+  const normalizedEmail = normalizeEmail(email);
 
   try {
-    let user = await Buyer.findOne({ email });
+    let user = await findUserByEmail(Buyer, normalizedEmail);
     if (!user) {
-      user = await Provider.findOne({ email });
+      user = await findUserByEmail(Provider, normalizedEmail);
     }
 
     if (!user) {
@@ -990,6 +1042,7 @@ exports.verifyResetOtp = async (req, res) => {
 
 exports.resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
+  const normalizedEmail = normalizeEmail(email);
 
    const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(newPassword);
   if (!isValidPassword) {
@@ -1000,11 +1053,11 @@ exports.resetPassword = async (req, res) => {
   }
 
   try {
-     let user = await Buyer.findOne ({ email });
+     let user = await findUserByEmail(Buyer, normalizedEmail);
     let role = 'buyer';
     
     if (!user) {
-      user = await Provider.findOne ({ email });
+      user = await findUserByEmail(Provider, normalizedEmail);
       role = 'provider';
     }
 
