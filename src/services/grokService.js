@@ -41,8 +41,12 @@ User's question: ${message}`;
       stream: false,
     });
 
-    const response = completion.choices[0].message.content;
+const rawResponse = completion.choices[0].message.content;
 
+// Detect WhatsApp escalation trigger
+
+// Clean the tag from the displayed response
+const response = rawResponse.replace("[[ESCALATE_WHATSAPP]]", "").trim();
     // Verify the response mentions the correct booking status if booking context exists
     if (userContext.currentBooking) {
       const actualStatus = userContext.currentBooking.status;
@@ -53,9 +57,15 @@ User's question: ${message}`;
     // Detect intent
     const intent = await this.detectIntent(message, response);
 
+    const escalationTriggered = 
+  rawResponse.includes("[[ESCALATE_WHATSAPP]]") || 
+  intent.escalationNeeded === true;
+  
+
     return {
       response,
       intent,
+      escalationTriggered,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
@@ -181,7 +191,17 @@ COMMON SCENARIOS:
 - Status "confirmed" → "Your booking is confirmed! [Provider name] will arrive on [date]."
 - Status "in-progress" → "Your service is currently in progress with [provider name]."
 - Status "completed" → "Your service is complete! Please confirm and rate your experience."
+- Status "cancelled" → "Your booking was cancelled. If this was a mistake, you can book again anytime."
 
+ESCALATION TO WHATSAPP:
+If the user:
+- Explicitly asks to speak to a human or agent
+- Is angry or repeatedly unsatisfied
+- Has an issue you cannot resolve
+- Has a complex complaint
+
+Then END your response with this exact tag on a new line: [[ESCALATE_WHATSAPP]]
+Do NOT explain the tag. The frontend will handle it.
 When you need to escalate, clearly state: "Let me connect you with a human agent."`;
 }
 
