@@ -156,6 +156,7 @@ async chat(req, res) {
         intent: result.intent,
         faqSuggestions,
         escalated: Boolean(result.intent?.escalationNeeded),
+        escalationTriggered: result.escalationTriggered, 
         // Include booking data in response for debugging
         bookingContext: userContext.currentBooking || null,
       },
