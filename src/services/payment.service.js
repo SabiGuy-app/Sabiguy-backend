@@ -266,23 +266,24 @@ class paymentService {
         notificationService,
       );
 
-      // Notify provider that payment is secured
-      if (booking.providerId) {
-        await notificationService.notifyProvider(booking.providerId._id, {
-          type: "payment_received",
-          title: "💰 Payment Secured",
-          message: `Payment for your ${booking.serviceType} booking is now in escrow. Complete the service to receive payment.`,
-          bookingId: booking._id,
-        });
-      }
+      // Notify provider that payment is Your payment is secured. Agreed price: NGN4,300. Service fee: NGN0. Total amount: NGN4,300.
 
-      // Notify user
-      await notificationService.notifyUser(booking.userId._id, {
-        type: "payment_received",
-        title: "✅ Payment Successful",
-        message: `Your payment is secured. Provider can now start the service.`,
-        bookingId: booking._id,
-      });
+      // if (booking.providerId) {
+      //   await notificationService.notifyProvider(booking.providerId._id, {
+      //     type: "payment_received",
+      //     title: "💰 Payment Secured",
+      //     message: `Payment for your ${booking.serviceType} booking is now in escrow. Complete the service to receive payment.`,
+      //     bookingId: booking._id,
+      //   });
+      // }
+
+      // // Notify user
+      // await notificationService.notifyUser(booking.userId._id, {
+      //   type: "payment_received",
+      //   title: "✅ Payment Successful",
+      //   message: `Your payment is secured. Provider can now start the service.`,
+      //   bookingId: booking._id,
+      // });
 
       return {
         success: true,

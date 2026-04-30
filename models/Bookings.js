@@ -102,15 +102,34 @@ bookingDuration: {
     pickupToDropoff: Number,
   },
 },
-providerDistances: [
-  {
-    providerId: { type: mongoose.Schema.Types.ObjectId, ref: "Provider" },
-    distanceFromPickup: Number,
-    providerETAMinutes: Number,
-    vehicleProductionYear: Number,
-  },
-],
-estimatedCompletionAt: Date,
+    providerDistances: [
+      {
+        providerId: { type: mongoose.Schema.Types.ObjectId, ref: "Provider" },
+        distanceFromPickup: Number,
+        providerETAMinutes: Number,
+        vehicleProductionYear: Number,
+      },
+    ],
+    providerPricingOptions: {
+      type: [
+        {
+          providerId: { type: mongoose.Schema.Types.ObjectId, ref: "Provider" },
+          riderPays: Number,
+          driverReceives: Number,
+          platformEarns: Number,
+          breakdown: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null,
+          },
+          meta: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null,
+          },
+        },
+      ],
+      default: [],
+    },
+    estimatedCompletionAt: Date,
     estimatedDuration: {
       value: Number,
       unit: {
