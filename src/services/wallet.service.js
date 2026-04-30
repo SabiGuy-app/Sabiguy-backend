@@ -814,7 +814,7 @@ class WalletService {
           providerId,
           type: "payment_received",
           title: "?? Payment Secured",
-          message: `Payment secured for your ${booking.serviceType} booking. Agreed price: NGN${agreedPrice.toLocaleString()}. Service fee: NGN${serviceFee.toLocaleString()}. Complete the service to receive payment.`,
+          message: `Payment secured for your ${booking.serviceType} booking. Complete the service to receive payment.`,
           data: {
             bookingId: booking._id,
             amount: providerReceives,
@@ -825,7 +825,7 @@ class WalletService {
           userId,
           type: "payment_sent",
           title: "? Payment Successful",
-          message: `Your payment is secured. Agreed price: NGN${agreedPrice.toLocaleString()}. Service fee: NGN${serviceFee.toLocaleString()}. Total amount: NGN${totalCharge.toLocaleString()}. New available balance: NGN${buyerBalanceAfter.available.toLocaleString()}`,
+          message: `Your payment is secured. New available balance: NGN${buyerBalanceAfter.available.toLocaleString()}`,
           data: {
             bookingId: booking._id,
             amount: totalCharge,
