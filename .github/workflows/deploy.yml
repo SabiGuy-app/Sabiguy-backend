@@ -34,17 +34,19 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       image_uri: ${{ steps.build-image.outputs.image_uri }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Login to AWS
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::914471710952:role/sabiguy-github-actions-backend
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -61,18 +63,19 @@ jobs:
   build-production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       image_uri: ${{ steps.build-image.outputs.image_uri }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Login to AWS
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::914471710952:role/sabiguy-github-actions-backend
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -135,13 +138,10 @@ jobs:
           key: ${{ secrets.STAGING_EC2_SSH_KEY }}
           script: |
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
-            docker pull ${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
-            aws logs delete-log-stream \
-              --log-group-name /sabiguy/staging/app \
-              --log-stream-name backend \
-              --region us-east-1 || true
+            docker system prune -af
+            docker pull ${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
             docker run -d \
               --name ${{ env.CONTAINER_NAME }} \
               --restart always \
@@ -203,14 +203,10 @@ jobs:
           key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
           script: |
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
-            docker pull ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
-
-            aws logs delete-log-stream \
-              --log-group-name /sabiguy/production/app \
-              --log-stream-name backend \
-              --region us-east-1 || true
+            docker system prune -af
+            docker pull ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
             docker run -d \
               --name ${{ env.CONTAINER_NAME }} \
               --restart always \
