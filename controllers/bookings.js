@@ -893,19 +893,29 @@ class BookingController {
 
       const booking = await Booking.findOne({
         _id: bookingId,
-        status: "completed",
+        status: { $in: ["completed", "user_accepted_completion", "funds_released"] },
         userId,
-      }).populate("providerId", "fullName rating reviews").populate(
-        "userId",
-        "fullName profilePicture",
-      );
+      })
+        .populate("providerId", "fullName rating reviews")
+        .populate("userId", "fullName profilePicture");
 
       if (!booking) {
-        return res.status(409).json({
+        return res.status(400).json({
           success: false,
           message: "Booking not marked completed by provider",
         });
       }
+
+      if (
+        ["user_accepted_completion", "funds_released"].includes(booking.status)
+      ) {
+        return res.status(409).json({
+          success: false,
+          message: "Job completion already accepted",
+        });
+      }
+
+    
 
       const providerId = booking.providerId?._id || booking.providerId;
 

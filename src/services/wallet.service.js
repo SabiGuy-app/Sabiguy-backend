@@ -323,11 +323,13 @@ class WalletService {
       if (notificationService) {
         try {
           const buyerId = userId?._id ?? userId;
+          const deductionAmount = normalizedBreakdown.providerCommission;
+          const grossEarnings = normalizedBreakdown.agreedPrice;
 
           await notificationService.notifyProvider(providerId, {
             type: "payment_received",
             title: "💰 Payment Secured in Escrow",
-            message: `₦${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Complete the service to receive payment.`,
+            message: `₦${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. A 15% deduction of ₦${deductionAmount.toLocaleString()} was taken from your gross earnings of ₦${grossEarnings.toLocaleString()}, leaving you with ₦${normalizedBreakdown.providerReceives.toLocaleString()}. Complete the service to receive payment.`,
             bookingId,
             amount: normalizedBreakdown.providerReceives,
             pendingBalance: providerBalanceAfter.pending,
