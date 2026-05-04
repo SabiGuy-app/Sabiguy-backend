@@ -27,6 +27,7 @@ const io = socketIO(server, {
       "http://localhost:3001",
       "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
+      "https://sabiguy.com"
     ],
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],

@@ -1076,6 +1076,7 @@ if ( user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
       const changedAt = new Date().toLocaleString("en-NG", {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone: "Africa/Lagos",
       });
       await passwordChangedEmail(user.email, { changedAt });
     } catch (emailError) {
@@ -1156,6 +1157,7 @@ if (!strongPassword.test(newPassword)) {
       const changedAt = new Date().toLocaleString("en-NG", {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone: "Africa/Lagos",
       });
       await passwordChangedEmail(user.email, { changedAt });
     } catch (emailError) {
