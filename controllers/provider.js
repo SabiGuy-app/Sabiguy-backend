@@ -1378,12 +1378,15 @@ if (!updatedBooking) {
         $inc: { completedJobs: 1 },
       });
 
+      const provider = await Provider.findById(providerId).select("fullName");
+
       await notificationService.notifyUser(booking.userId, {
         type: "booking_completed",
         title: "✅ Service Completed",
         message:
-          "Your service has been completed. Please rate your experience.",
+          "Your service has been completed. Please accept the service completion and leave a review.",
         bookingId: booking._id,
+        providerName: provider?.fullName,
       });
       return res.status(200).json({
         success: true,
