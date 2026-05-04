@@ -39,6 +39,7 @@ class BookingController {
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
     this.getAllBookings = this.getAllBookings.bind(this);
     this.getUserBookings = this.getUserBookings.bind(this);
+    this.getBookingById = this.getBookingById.bind(this);
     this.notifyProvidersForFastestFinger =
       this.notifyProvidersForFastestFinger.bind(this);
     this.calculateDistance = this.calculateDistance.bind(this);
@@ -50,7 +51,7 @@ class BookingController {
   formatBookingPricing(booking) {
     if (!booking) return null;
 
-    return {
+    const directPricing = {
       riderPays:
         booking.calculatedPrice ??
         booking.agreedPrice ??
@@ -62,6 +63,85 @@ class BookingController {
       breakdown: booking.pricingBreakdown ?? null,
       meta: booking.pricingMeta ?? null,
     };
+
+    const hasDirectPricing =
+      directPricing.riderPays !== null ||
+      directPricing.driverReceives !== null ||
+      directPricing.platformEarns !== null ||
+      directPricing.breakdown !== null ||
+      directPricing.meta !== null;
+
+    if (hasDirectPricing) {
+      return directPricing;
+    }
+
+    const providerPricingOptions = Array.isArray(booking.providerPricingOptions)
+      ? booking.providerPricingOptions
+      : [];
+
+    if (providerPricingOptions.length) {
+      const firstEstimate = providerPricingOptions[0] || null;
+
+      return {
+        riderPays: firstEstimate?.riderPays ?? null,
+        driverReceives: firstEstimate?.driverReceives ?? null,
+        platformEarns: firstEstimate?.platformEarns ?? null,
+        breakdown: firstEstimate?.breakdown ?? null,
+        meta: firstEstimate?.meta ?? null,
+        suggestedProviderPricing: providerPricingOptions,
+      };
+    }
+
+    const providerDistances = Array.isArray(booking.providerDistances)
+      ? booking.providerDistances
+      : [];
+    const isTransportBooking =
+      this.isTransportLogistics(booking.serviceType, booking.subCategory) &&
+      booking.distance?.value !== undefined &&
+      booking.estimatedDuration?.value !== undefined;
+
+    if (providerDistances.length && isTransportBooking) {
+      const isBike = String(booking.modeOfDelivery || "").toLowerCase() === "bike";
+      const suggestedProviderPricing = providerDistances.map((provider) => {
+        const totalDistanceKm =
+          Number(booking.distance?.value || 0) +
+          Number(provider.distanceFromPickup || 0);
+        const totalDurationMinutes =
+          Number(booking.estimatedDuration?.value || 0) +
+          Number(provider.providerETAMinutes || 0);
+
+        const pricing = pricingService.calculateTransportPrice(
+          totalDistanceKm,
+          booking.subCategory,
+          booking.serviceType,
+          totalDurationMinutes,
+          provider.vehicleProductionYear,
+          isBike,
+        );
+
+        return {
+          providerId: provider.providerId,
+          riderPays: pricing.calculatedPrice,
+          driverReceives: pricing.driverReceives,
+          platformEarns: pricing.platformEarns,
+          breakdown: pricing.breakdown,
+          meta: pricing.meta,
+        };
+      });
+
+      const firstEstimate = suggestedProviderPricing[0] || null;
+
+      return {
+        riderPays: firstEstimate?.riderPays ?? null,
+        driverReceives: firstEstimate?.driverReceives ?? null,
+        platformEarns: firstEstimate?.platformEarns ?? null,
+        breakdown: firstEstimate?.breakdown ?? null,
+        meta: firstEstimate?.meta ?? null,
+        suggestedProviderPricing,
+      };
+    }
+
+    return directPricing;
   }
 
   async createBooking(req, res) {
@@ -360,6 +440,15 @@ class BookingController {
         };
       });
 
+      const providerPricingOptions = enrichedProviders.map((p) => ({
+        providerId: p.id,
+        riderPays: p.pricing.riderPays,
+        driverReceives: p.pricing.driverReceives,
+        platformEarns: p.pricing.platformEarns,
+        breakdown: p.pricing.breakdown,
+        meta: p.pricing.meta,
+      }));
+
       // Store provider distances for later use in confirmProvider
       booking.providerDistances = enrichedProviders.map((p) => ({
         providerId: p.id,
@@ -367,6 +456,7 @@ class BookingController {
         providerETAMinutes: p.providerETA.value,
         vehicleProductionYear: p.vehicleProductionYear,
       }));
+      booking.providerPricingOptions = providerPricingOptions;
 
       /* -----------------------------
        6️⃣ Transport flow
@@ -390,6 +480,7 @@ class BookingController {
           booking.platformEarns = pricing.platformEarns;
           booking.pricingBreakdown = pricing.breakdown;
           booking.pricingMeta = pricing.meta;
+          booking.selectedAt = new Date();
           booking.notifiedProviders = enrichedProviders.map((p) => p.id);
           booking.status = "awaiting_provider_acceptance";
           await booking.save();
@@ -422,6 +513,7 @@ class BookingController {
             data: {
               booking,
               providers: enrichedProviders,
+              pricing: this.formatBookingPricing(booking),
               distance: booking.distance,
               estimatedDuration: transportEstimates.estimatedDuration,
               estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
@@ -962,34 +1054,60 @@ class BookingController {
         "vehicleProductionYear job",
       );
 
-      const isBike = provider.job?.some((j) => j.title === "motorbike_rider");
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
 
-      const providerMeta = booking.providerDistances.find(
-        (p) => String(p.providerId) === String(providerId),
-      );
+      const selectedPricing =
+        Array.isArray(booking.providerPricingOptions) &&
+        booking.providerPricingOptions.find(
+          (p) => String(p.providerId) === String(providerId),
+        );
 
-      const totalDistanceKm =
-        booking.distance.value + providerMeta.distanceFromPickup;
-      const totalDurationMinutes =
-        booking.estimatedDuration.value + providerMeta.providerETAMinutes;
+      let finalPricing = selectedPricing || null;
 
-      const finalPricing = pricingService.calculateTransportPrice(
-        totalDistanceKm,
-        booking.subCategory,
-        booking.serviceType,
-        totalDurationMinutes,
-        provider.vehicleProductionYear,
-        isBike,
-      );
+      if (!finalPricing) {
+        const isBike = provider.job?.some((j) => j.title === "motorbike_rider");
+
+        const providerMeta = booking.providerDistances.find(
+          (p) => String(p.providerId) === String(providerId),
+        );
+
+        if (!providerMeta) {
+          return res.status(400).json({
+            success: false,
+            message: "Pricing snapshot for this provider is unavailable",
+          });
+        }
+
+        const totalDistanceKm =
+          booking.distance.value + providerMeta.distanceFromPickup;
+        const totalDurationMinutes =
+          booking.estimatedDuration.value + providerMeta.providerETAMinutes;
+
+        finalPricing = pricingService.calculateTransportPrice(
+          totalDistanceKm,
+          booking.subCategory,
+          booking.serviceType,
+          totalDurationMinutes,
+          provider.vehicleProductionYear,
+          isBike,
+        );
+      }
 
       booking.providerId = providerId;
-      booking.calculatedPrice = finalPricing.calculatedPrice;
-      booking.agreedPrice = finalPricing.calculatedPrice;
-      booking.totalAmount = finalPricing.calculatedPrice;
-      booking.driverReceives = finalPricing.driverReceives;
-      booking.platformEarns = finalPricing.platformEarns;
-      booking.pricingBreakdown = finalPricing.breakdown;
-      booking.pricingMeta = finalPricing.meta;
+      booking.calculatedPrice =
+        finalPricing.calculatedPrice ?? finalPricing.riderPays ?? null;
+      booking.agreedPrice = booking.calculatedPrice;
+      booking.totalAmount = booking.calculatedPrice;
+      booking.driverReceives = finalPricing.driverReceives ?? null;
+      booking.platformEarns = finalPricing.platformEarns ?? null;
+      booking.pricingBreakdown = finalPricing.breakdown ?? null;
+      booking.pricingMeta = finalPricing.meta ?? null;
+      booking.selectedAt = new Date();
       booking.status = "awaiting_provider_acceptance";
       await booking.save();
 
@@ -1441,7 +1559,10 @@ class BookingController {
 
       return res.status(200).json({
         success: true,
-        data: { booking },
+        data: {
+          booking,
+          pricing: this.formatBookingPricing(booking),
+        },
       });
     } catch (error) {
       console.error("Get booking error:", error);

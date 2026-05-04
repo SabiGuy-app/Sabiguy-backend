@@ -20,12 +20,8 @@ const options = {
                 description: "Production server",
             },
             {
-                url: "https://abiguy-backend-sabi-guy5356-92laxgmt.leapcell.dev", 
-                description: "Production server",
-            },
-            {
-                url: "https://n3yr6d4uxi.execute-api.us-east-1.amazonaws.com/staging",
-                description: "AWS Staging server"
+                url: "https://api.nifesi.xyz",
+                description: "AWS server"
 },
            
         ],

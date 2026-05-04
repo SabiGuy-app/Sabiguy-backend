@@ -9,6 +9,11 @@ const { findUserByEmailAcrossDb, normalizeEmail } = require("../src/services/ide
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
 class AdminController {
+  constructor() {
+    this.deactivateUser = this.deactivateUser.bind(this);
+    this.deleteUser = this.deleteUser.bind(this);
+  }
+
   getUserModel(userType) {
     if (userType === "buyer") return Buyer;
     if (userType === "provider") return Provider;
