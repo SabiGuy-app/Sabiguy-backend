@@ -186,6 +186,9 @@ class PricingService {
         riderPaysBeforeTax: riderPays,
         tax,
         riderPaysFinal,                       // === calculatedPrice
+        driverCommission,                     // provider-side fee (15%)
+        driverReceives,                       // provider net earnings
+        platformEarns,                        // total platform earnings
       },
 
       driverReceives,

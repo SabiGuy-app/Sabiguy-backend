@@ -4,6 +4,7 @@ const Admin = require("../models/Admin");
 const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
 const Booking = require("../models/Bookings");
+const Transaction = require("../models/Transaction");
 const { findUserByEmailAcrossDb, normalizeEmail } = require("../src/services/identity.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
@@ -12,6 +13,8 @@ class AdminController {
   constructor() {
     this.deactivateUser = this.deactivateUser.bind(this);
     this.deleteUser = this.deleteUser.bind(this);
+    this.getPlatformFeeReport = this.getPlatformFeeReport.bind(this);
+    this.getPlatformBalance = this.getPlatformBalance.bind(this);
   }
 
   getUserModel(userType) {
@@ -20,6 +23,86 @@ class AdminController {
     if (userType === "admin") return Admin;
     return null;
   }
+
+  buildFeeBreakdown(booking = {}) {
+    const pricingBreakdown = booking.pricingBreakdown || {};
+    const subtotal = Number(
+      pricingBreakdown.subtotal ??
+        booking.agreedPrice ??
+        booking.totalAmount ??
+        booking.budget ??
+        0,
+    );
+    const riderPays = Number(
+      pricingBreakdown.riderPaysFinal ??
+        booking.calculatedPrice ??
+        booking.totalAmount ??
+        0,
+    );
+    const userPlatformFee = Number(
+      pricingBreakdown.platformFee ?? booking.serviceFee ?? 0,
+    );
+    const providerCommissionRaw = Number(
+      pricingBreakdown.driverCommission ?? booking.providerCommission ?? 0,
+    );
+    const totalPlatformFee = Number(
+      pricingBreakdown.platformEarns ?? booking.platformEarns ?? 0,
+    );
+    const providerCommission = providerCommissionRaw || Math.max(totalPlatformFee - userPlatformFee, 0);
+    const providerReceives = Number(
+      pricingBreakdown.driverReceives ??
+        booking.driverReceives ??
+        booking.providerReceives ??
+        Math.max(subtotal - providerCommission, 0),
+    );
+    const taxCollected = Number(pricingBreakdown.tax ?? 0);
+
+    return {
+      subtotal,
+      riderPays,
+      userPlatformFee,
+      providerCommission,
+      providerReceives,
+      totalPlatformFee,
+      taxCollected,
+    };
+  }
+
+  async getPlatformFeeStats(match = {}) {
+    const bookings = await Booking.find(match)
+      .select(
+        "pricingBreakdown agreedPrice totalAmount budget calculatedPrice serviceFee providerCommission driverReceives providerReceives platformEarns",
+      )
+      .lean();
+
+    return bookings.reduce(
+      (acc, booking) => {
+        const breakdown = this.buildFeeBreakdown(booking);
+
+        acc.totalBookings += 1;
+        acc.totalSubtotal += breakdown.subtotal;
+        acc.totalRiderPays += breakdown.riderPays;
+        acc.totalUserPlatformFee += breakdown.userPlatformFee;
+        acc.totalProviderCommission += breakdown.providerCommission;
+        acc.totalProviderReceives += breakdown.providerReceives;
+        acc.totalPlatformFee += breakdown.totalPlatformFee;
+        acc.totalTaxCollected += breakdown.taxCollected;
+
+        return acc;
+      },
+      {
+        totalBookings: 0,
+        totalSubtotal: 0,
+        totalRiderPays: 0,
+        totalUserPlatformFee: 0,
+        totalProviderCommission: 0,
+        totalProviderReceives: 0,
+        totalPlatformFee: 0,
+        totalTaxCollected: 0,
+      },
+    );
+  }
+
   async createAdmin(req, res) {
     try {
       const { email, password, fullName } = req.body || {};
@@ -329,6 +412,184 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error fetching dashboard statistics",
+        error: error.message,
+      });
+    }
+  }
+
+  async getPlatformFeeReport(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { page = 1, limit = 20, status } = req.query;
+      const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+      const skip = (pageNumber - 1) * pageSize;
+
+      const match = {};
+      if (status) {
+        match.status = status;
+      }
+
+      const [result] = await Booking.aggregate([
+        { $match: match },
+        { $sort: { createdAt: -1, _id: -1 } },
+        {
+          $facet: {
+            data: [
+              { $skip: skip },
+              { $limit: pageSize },
+              {
+                $lookup: {
+                  from: "buyers",
+                  localField: "userId",
+                  foreignField: "_id",
+                  as: "user",
+                },
+              },
+              {
+                $lookup: {
+                  from: "providers",
+                  localField: "providerId",
+                  foreignField: "_id",
+                  as: "provider",
+                },
+              },
+              {
+                $addFields: {
+                  user: { $arrayElemAt: ["$user", 0] },
+                  provider: { $arrayElemAt: ["$provider", 0] },
+                },
+              },
+              {
+                $project: {
+                  _id: 1,
+                  bookingId: "$_id",
+                  reference: 1,
+                  serviceType: 1,
+                  subCategory: 1,
+                  status: 1,
+                  createdAt: 1,
+                  updatedAt: 1,
+                  user: {
+                    _id: "$user._id",
+                    fullName: "$user.fullName",
+                    email: "$user.email",
+                    phoneNumber: "$user.phoneNumber",
+                  },
+                  provider: {
+                    _id: "$provider._id",
+                    fullName: "$provider.fullName",
+                    email: "$provider.email",
+                    phoneNumber: "$provider.phoneNumber",
+                  },
+                  feeBreakdown: {
+                    subtotal: {
+                      $ifNull: [
+                        "$pricingBreakdown.subtotal",
+                        { $ifNull: ["$agreedPrice", { $ifNull: ["$totalAmount", "$budget"] }] },
+                      ],
+                    },
+                    riderPays: {
+                      $ifNull: [
+                        "$pricingBreakdown.riderPaysFinal",
+                        { $ifNull: ["$calculatedPrice", "$totalAmount"] },
+                      ],
+                    },
+                    userPlatformFee: {
+                      $ifNull: ["$pricingBreakdown.platformFee", "$serviceFee"],
+                    },
+                    providerCommission: {
+                      $ifNull: ["$pricingBreakdown.driverCommission", "$providerCommission"],
+                    },
+                    providerReceives: {
+                      $ifNull: [
+                        "$pricingBreakdown.driverReceives",
+                        { $ifNull: ["$driverReceives", "$providerReceives"] },
+                      ],
+                    },
+                    totalPlatformFee: {
+                      $ifNull: ["$pricingBreakdown.platformEarns", "$platformEarns"],
+                    },
+                  },
+                  payment: 1,
+                  pricingBreakdown: 1,
+                },
+              },
+            ],
+            total: [{ $count: "count" }],
+          },
+        },
+      ]);
+
+      const rows = (result?.data || []).map((row) => ({
+        ...row,
+        feeBreakdown: this.buildFeeBreakdown(row),
+      }));
+      const total = result?.total?.[0]?.count || 0;
+      const summary = await this.getPlatformFeeStats(match);
+
+      return res.status(200).json({
+        success: true,
+        data: rows,
+        summary,
+        pagination: {
+          total,
+          totalPages: Math.ceil(total / pageSize) || 1,
+          currentPage: pageNumber,
+          perPage: pageSize,
+        },
+      });
+    } catch (error) {
+      console.error("Platform fee report error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching platform fee report",
+        error: error.message,
+      });
+    }
+  }
+
+  async getPlatformBalance(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const summary = await this.getPlatformFeeStats();
+      const balance = {
+        available: summary.totalPlatformFee,
+        pending: 0,
+        total: summary.totalPlatformFee,
+        platformFeeCollected: summary.totalUserPlatformFee,
+        providerCommissionCollected: summary.totalProviderCommission,
+        totalPlatformFeeCollected: summary.totalPlatformFee,
+        taxCollected: summary.totalTaxCollected,
+        totalCollectedIncludingTax:
+          summary.totalPlatformFee + summary.totalTaxCollected,
+      };
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          balance,
+          revenue: {
+            platformFeeCollected: summary.totalUserPlatformFee,
+            providerCommissionCollected: summary.totalProviderCommission,
+            totalPlatformFeeCollected: summary.totalPlatformFee,
+            taxCollected: summary.totalTaxCollected,
+            totalCollectedIncludingTax: summary.totalPlatformFee + summary.totalTaxCollected,
+          },
+          source: "platform-fee-report",
+        },
+      });
+    } catch (error) {
+      console.error("Platform balance error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching platform balance",
         error: error.message,
       });
     }

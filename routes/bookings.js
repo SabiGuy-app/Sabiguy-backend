@@ -446,6 +446,96 @@ router.get('/user', authMiddleware, onlyRole('buyer'), BookingController.getUser
 
 /**
  * @swagger
+ * /api/v1/bookings/user/{userId}:
+ *   get:
+ *     summary: Get bookings by user ID
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The MongoDB user ID
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional booking status filter
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Bookings retrieved successfully
+ *       400:
+ *         description: Invalid user ID format
+ *       403:
+ *         description: Admin access only
+ *       500:
+ *         description: Server error
+ */
+router.get('/user/:userId', authMiddleware, onlyRole('admin'), BookingController.getBookingsByUserId);
+
+/**
+ * @swagger
+ * /api/v1/bookings/provider/{providerId}:
+ *   get:
+ *     summary: Get bookings by provider ID
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: providerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The MongoDB provider ID
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional booking status filter
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Bookings retrieved successfully
+ *       400:
+ *         description: Invalid provider ID format
+ *       403:
+ *         description: Admin access only
+ *       500:
+ *         description: Server error
+ */
+router.get('/provider/:providerId', authMiddleware, onlyRole('admin'), BookingController.getBookingsByProviderId);
+
+/**
+ * @swagger
  * /api/v1/bookings/{id}:
  *   get:
  *     summary: Get booking details

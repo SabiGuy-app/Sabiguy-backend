@@ -323,13 +323,15 @@ class WalletService {
       if (notificationService) {
         try {
           const buyerId = userId?._id ?? userId;
-          const deductionAmount = normalizedBreakdown.providerCommission;
-          const grossEarnings = normalizedBreakdown.agreedPrice;
+          const subtotal = normalizedBreakdown.agreedPrice;
+          const userPlatformFee = normalizedBreakdown.serviceFee;
+          const providerPlatformFee = normalizedBreakdown.providerCommission;
+          const totalPlatformFee = normalizedBreakdown.platformEarns;
 
           await notificationService.notifyProvider(providerId, {
             type: "payment_received",
             title: "💰 Payment Secured in Escrow",
-            message: `₦${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. A 15% deduction of ₦${deductionAmount.toLocaleString()} was taken from your gross earnings of ₦${grossEarnings.toLocaleString()}, leaving you with ₦${normalizedBreakdown.providerReceives.toLocaleString()}. Complete the service to receive payment.`,
+            message: `₦${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: ₦${subtotal.toLocaleString()}. Service charge:(15%) ₦${providerPlatformFee.toLocaleString()}. Complete the service to receive payment.`,
             bookingId,
             amount: normalizedBreakdown.providerReceives,
             pendingBalance: providerBalanceAfter.pending,
@@ -338,7 +340,7 @@ class WalletService {
           await notificationService.notifyUser(buyerId, {
             type: "payment_received",
             title: "✅ Payment Successful",
-            message: `Your payment is secured. Agreed price: NGN${normalizedBreakdown.agreedPrice.toLocaleString()}. Service fee: NGN${normalizedBreakdown.serviceFee.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`,
+            message: `Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${normalizedBreakdown.tax.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`,
             bookingId,
             amount: normalizedBreakdown.totalAmount,
           });
@@ -651,20 +653,35 @@ class WalletService {
       throw new Error("Booking not found");
     }
 
-    const agreedPrice = Number(existingBooking.agreedPrice);
+    const pricingBreakdown = existingBooking.pricingBreakdown ?? {};
+    const agreedPrice = Number(
+      pricingBreakdown.subtotal ??
+        existingBooking.agreedPrice ??
+        existingBooking.calculatedPrice ??
+        existingBooking.budget,
+    );
     const totalCharge = Number(
-      existingBooking.pricingBreakdown?.riderPaysFinal ??
+      pricingBreakdown.riderPaysFinal ??
         existingBooking.calculatedPrice ??
         existingBooking.totalAmount,
     );
-    const serviceFee = Number(existingBooking.serviceFee ?? 0);
-    const providerCommission = Number(existingBooking.providerCommission ?? 0);
-    const providerReceives = Number(
-      existingBooking.driverReceives ??
-        existingBooking.providerReceives ??
-        agreedPrice,
+    const serviceFee = Number(
+      pricingBreakdown.platformFee ?? existingBooking.serviceFee ?? 0,
     );
-    const platformEarns = Number(existingBooking.platformEarns ?? 0);
+    const providerCommission = Number(
+      pricingBreakdown.driverCommission ??
+        existingBooking.providerCommission ??
+        0,
+    );
+    const providerReceives = Number(
+      pricingBreakdown.driverReceives ??
+        existingBooking.driverReceives ??
+        existingBooking.providerReceives ??
+        agreedPrice - providerCommission,
+    );
+    const platformEarns = Number(
+      pricingBreakdown.platformEarns ?? existingBooking.platformEarns ?? 0,
+    );
 
     if (
       !Number.isFinite(agreedPrice) ||
