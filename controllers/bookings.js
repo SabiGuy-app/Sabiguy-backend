@@ -39,6 +39,8 @@ class BookingController {
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
     this.getAllBookings = this.getAllBookings.bind(this);
     this.getUserBookings = this.getUserBookings.bind(this);
+    this.getBookingsByUserId = this.getBookingsByUserId.bind(this);
+    this.getBookingsByProviderId = this.getBookingsByProviderId.bind(this);
     this.getBookingById = this.getBookingById.bind(this);
     this.notifyProvidersForFastestFinger =
       this.notifyProvidersForFastestFinger.bind(this);
@@ -51,16 +53,50 @@ class BookingController {
   formatBookingPricing(booking) {
     if (!booking) return null;
 
+    const breakdown = booking.pricingBreakdown ?? null;
+    const subtotal =
+      breakdown?.subtotal ??
+      booking.agreedPrice ??
+      booking.totalAmount ??
+      booking.budget ??
+      null;
+    const userPlatformFee = breakdown?.platformFee ?? booking.serviceFee ?? null;
+    const providerPlatformFee =
+      breakdown?.driverCommission ?? booking.providerCommission ?? null;
+    const totalPlatformFee =
+      breakdown?.platformEarns ?? booking.platformEarns ?? null;
+    const providerNet =
+      breakdown?.driverReceives ??
+      booking.driverReceives ??
+      booking.providerReceives ??
+      null;
+    const riderPays =
+      breakdown?.riderPaysFinal ??
+      booking.calculatedPrice ??
+      booking.totalAmount ??
+      booking.agreedPrice ??
+      booking.budget ??
+      null;
+
     const directPricing = {
-      riderPays:
-        booking.calculatedPrice ??
-        booking.agreedPrice ??
-        booking.totalAmount ??
-        booking.budget ??
-        null,
-      driverReceives: booking.driverReceives ?? null,
-      platformEarns: booking.platformEarns ?? null,
-      breakdown: booking.pricingBreakdown ?? null,
+      riderPays,
+      subtotal,
+      grossEarnings: subtotal,
+      userPlatformFee,
+      providerPlatformFee,
+      totalPlatformFee,
+      providerReceives: providerNet,
+      driverReceives: providerNet,
+      paymentBreakdown: {
+        subtotal,
+        grossEarnings: subtotal,
+        riderPays,
+        userPlatformFee,
+        providerPlatformFee,
+        totalPlatformFee,
+        providerReceives: providerNet,
+      },
+      breakdown,
       meta: booking.pricingMeta ?? null,
     };
 
@@ -84,8 +120,16 @@ class BookingController {
 
       return {
         riderPays: firstEstimate?.riderPays ?? null,
-        driverReceives: firstEstimate?.driverReceives ?? null,
-        platformEarns: firstEstimate?.platformEarns ?? null,
+        providerReceives: firstEstimate?.providerReceives ?? null,
+        paymentBreakdown: {
+          subtotal: firstEstimate?.subtotal ?? null,
+          grossEarnings: firstEstimate?.grossEarnings ?? null,
+          riderPays: firstEstimate?.riderPays ?? null,
+          userPlatformFee: firstEstimate?.userPlatformFee ?? null,
+          providerPlatformFee: firstEstimate?.providerPlatformFee ?? null,
+          totalPlatformFee: firstEstimate?.totalPlatformFee ?? null,
+          providerReceives: firstEstimate?.providerReceives ?? null,
+        },
         breakdown: firstEstimate?.breakdown ?? null,
         meta: firstEstimate?.meta ?? null,
         suggestedProviderPricing: providerPricingOptions,
@@ -122,8 +166,16 @@ class BookingController {
         return {
           providerId: provider.providerId,
           riderPays: pricing.calculatedPrice,
-          driverReceives: pricing.driverReceives,
-          platformEarns: pricing.platformEarns,
+          providerReceives: pricing.breakdown?.driverReceives ?? pricing.driverReceives ?? null,
+          paymentBreakdown: {
+            subtotal: pricing.breakdown?.subtotal ?? null,
+            grossEarnings: pricing.breakdown?.subtotal ?? null,
+            riderPays: pricing.calculatedPrice,
+            userPlatformFee: pricing.breakdown?.platformFee ?? null,
+            providerPlatformFee: pricing.breakdown?.driverCommission ?? null,
+            totalPlatformFee: pricing.breakdown?.platformEarns ?? null,
+            providerReceives: pricing.breakdown?.driverReceives ?? pricing.driverReceives ?? null,
+          },
           breakdown: pricing.breakdown,
           meta: pricing.meta,
         };
@@ -133,8 +185,8 @@ class BookingController {
 
       return {
         riderPays: firstEstimate?.riderPays ?? null,
-        driverReceives: firstEstimate?.driverReceives ?? null,
-        platformEarns: firstEstimate?.platformEarns ?? null,
+        providerReceives: firstEstimate?.providerReceives ?? null,
+        paymentBreakdown: firstEstimate?.paymentBreakdown ?? null,
         breakdown: firstEstimate?.breakdown ?? null,
         meta: firstEstimate?.meta ?? null,
         suggestedProviderPricing,
@@ -1624,6 +1676,110 @@ class BookingController {
       return res.status(500).json({
         success: false,
         message: "Error fetching bookings",
+        error: error.message,
+      });
+    }
+  }
+
+  async getBookingsByUserId(req, res) {
+    try {
+      const { userId } = req.params;
+      const { status, page = 1, limit = 10 } = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid user ID format",
+        });
+      }
+
+      const query = { userId };
+      if (status) {
+        query.status = status;
+      }
+
+      const bookings = await Booking.find(query)
+        .populate("userId", "fullName email phoneNumber profilePicture")
+        .populate(
+          "providerId",
+          "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
+        )
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: this.formatBookingPricing(booking),
+      }));
+
+      const count = await Booking.countDocuments(query);
+
+      return res.status(200).json({
+        success: true,
+        data: bookingsWithPricing,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page),
+        total: count,
+      });
+    } catch (error) {
+      console.error("Get bookings by userId error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching bookings by userId",
+        error: error.message,
+      });
+    }
+  }
+
+  async getBookingsByProviderId(req, res) {
+    try {
+      const { providerId } = req.params;
+      const { status, page = 1, limit = 10 } = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(providerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid provider ID format",
+        });
+      }
+
+      const query = { providerId };
+      if (status) {
+        query.status = status;
+      }
+
+      const bookings = await Booking.find(query)
+        .populate("userId", "fullName email phoneNumber profilePicture")
+        .populate(
+          "providerId",
+          "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
+        )
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: this.formatBookingPricing(booking),
+      }));
+
+      const count = await Booking.countDocuments(query);
+
+      return res.status(200).json({
+        success: true,
+        data: bookingsWithPricing,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page),
+        total: count,
+      });
+    } catch (error) {
+      console.error("Get bookings by providerId error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching bookings by providerId",
         error: error.message,
       });
     }

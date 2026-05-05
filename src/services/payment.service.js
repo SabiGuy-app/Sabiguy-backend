@@ -13,6 +13,49 @@ class paymentService {
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
   }
 
+  resolvePaymentBreakdown(booking) {
+    const pricingBreakdown = booking?.pricingBreakdown ?? {};
+    const subtotal = Number(
+      pricingBreakdown.subtotal ??
+        booking?.agreedPrice ??
+        booking?.calculatedPrice ??
+        booking?.budget ??
+        0,
+    );
+    const userPlatformFee = Number(
+      pricingBreakdown.platformFee ?? booking?.serviceFee ?? 0,
+    );
+    const providerPlatformFee = Number(
+      pricingBreakdown.driverCommission ?? booking?.providerCommission ?? 0,
+    );
+    const providerReceives = Number(
+      pricingBreakdown.driverReceives ??
+        booking?.driverReceives ??
+        booking?.providerReceives ??
+        Math.max(subtotal - providerPlatformFee, 0),
+    );
+    const totalPlatformFee = Number(
+      pricingBreakdown.platformEarns ??
+        booking?.platformEarns ??
+        userPlatformFee + providerPlatformFee,
+    );
+    const riderPays = Number(
+      pricingBreakdown.riderPaysFinal ??
+        booking?.totalAmount ??
+        booking?.calculatedPrice ??
+        subtotal + userPlatformFee,
+    );
+
+    return {
+      agreedPrice: subtotal,
+      serviceFee: userPlatformFee,
+      providerCommission: providerPlatformFee,
+      providerReceives,
+      platformEarns: totalPlatformFee,
+      totalAmount: riderPays,
+    };
+  }
+
   async initializePayment(bookingId, userId, pickupNote = null) {
     try {
       const booking = await Booking.findById(bookingId)
@@ -41,20 +84,13 @@ class paymentService {
         throw new Error("Booking must have a selected provider before payment");
       }
 
-      const agreedPrice =
-        booking.agreedPrice || booking.calculatedPrice || booking.budget;
-      const totalAmount = Number(
-        booking.totalAmount ?? booking.calculatedPrice ?? booking.agreedPrice,
-      );
-      const serviceFee = Number(booking.serviceFee ?? 0);
-      const providerCommission = Number(booking.providerCommission ?? 0);
-      const providerReceives = Number(
-        booking.driverReceives ??
-          booking.providerReceives ??
-          booking.payment?.providerReceives ??
-          agreedPrice,
-      );
-      const platformEarns = Number(booking.platformEarns ?? 0);
+      const paymentBreakdown = this.resolvePaymentBreakdown(booking);
+      const agreedPrice = paymentBreakdown.agreedPrice;
+      const totalAmount = paymentBreakdown.totalAmount;
+      const serviceFee = paymentBreakdown.serviceFee;
+      const providerCommission = paymentBreakdown.providerCommission;
+      const providerReceives = paymentBreakdown.providerReceives;
+      const platformEarns = paymentBreakdown.platformEarns;
 
       if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
         throw new Error("Missing final payment amount on booking");
@@ -147,11 +183,17 @@ class paymentService {
         amount: totalAmount,
         breakdown: {
           agreedPrice,
+          subtotal: agreedPrice,
+          grossEarnings: agreedPrice,
+          riderPays: totalAmount,
           serviceFee,
+          userPlatformFee: serviceFee,
           providerCommission,
+          providerPlatformFee: providerCommission,
           providerReceives,
           driverReceives: booking.driverReceives ?? null,
           platformEarns,
+          totalPlatformFee: platformEarns,
           totalAmount,
         },
         metadata: {

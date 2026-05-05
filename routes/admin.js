@@ -133,6 +133,73 @@ router.get(
 
 /**
  * @swagger
+ * /api/v1/admin/platform-fee-report:
+ *   get:
+ *     summary: Get platform fee report for dashboard
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional booking status filter
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Platform fee report retrieved successfully
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/platform-fee-report",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getPlatformFeeReport,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/platform-balance:
+ *   get:
+ *     summary: Get platform wallet balance
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Platform balance retrieved successfully
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/platform-balance",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getPlatformBalance,
+);
+
+/**
+ * @swagger
  * /api/v1/admin/users/{userType}/{userId}/deactivate:
  *   patch:
  *     summary: Deactivate or activate a user
