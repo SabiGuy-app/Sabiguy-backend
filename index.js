@@ -45,6 +45,7 @@ app.use(
       "http://localhost:3001",
       "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
+      "https://sabiguy.com"
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
