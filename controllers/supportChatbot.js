@@ -4,6 +4,7 @@ const SupportTicket = require("../models/supportChatbot");
 const Buyer = require("../models/ServiceUser");
 const Provider = require("../models/ServiceProvider");
 const Booking = require("../models/Bookings");
+const mongoose = require("mongoose");
 
 const CATEGORY_MAP = {
   booking_status: "booking_status",
@@ -31,6 +32,7 @@ class SupportChatbotController {
     this.chat = this.chat.bind(this);
     this.getFAQ = this.getFAQ.bind(this);
     this.getBookingInfo = this.getBookingInfo.bind(this);
+    this.getConversationHistory = this.getConversationHistory.bind(this);
     this.createSupportTicket = this.createSupportTicket.bind(this);
   }
 
@@ -44,6 +46,38 @@ class SupportChatbotController {
 
   resolveCategory(intent) {
     return CATEGORY_MAP[intent] || "other";
+  }
+
+  buildConversationTimeline(ticket) {
+    const conversation = [];
+
+    if (ticket?.message) {
+      conversation.push({
+        role: "user",
+        content: ticket.message,
+        timestamp: ticket.createdAt,
+      });
+    }
+
+    if (Array.isArray(ticket?.responses)) {
+      ticket.responses.forEach((response) => {
+        const role =
+          response.from === "user" ? "user" : "assistant";
+
+        conversation.push({
+          role,
+          sender: response.from || "chatbot",
+          content: response.message,
+          timestamp: response.timestamp,
+        });
+      });
+    }
+
+    return conversation.sort((a, b) => {
+      const left = new Date(a.timestamp || 0).getTime();
+      const right = new Date(b.timestamp || 0).getTime();
+      return left - right;
+    });
   }
 
   // controllers/supportChatbotController.js
@@ -170,7 +204,118 @@ async chat(req, res) {
       error: error.message,
     });
   }
-}
+  }
+
+  async getConversationHistory(req, res) {
+    try {
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: "Authentication required",
+        });
+      }
+
+      if (!["buyer", "provider"].includes(userRole)) {
+        return res.status(403).json({
+          success: false,
+          message: "Only buyers and providers can access chatbot history",
+        });
+      }
+
+      const { ticketId, status, page = 1, limit = 20, userId: requestedUserId } = req.query;
+      const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+      const pageSize = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+
+      let query = {};
+
+      if (requestedUserId) {
+        if (!mongoose.Types.ObjectId.isValid(requestedUserId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid userId format",
+          });
+        }
+
+        if (userRole !== "admin" && String(requestedUserId) !== String(userId)) {
+          return res.status(403).json({
+            success: false,
+            message: "You can only view your own chatbot history",
+          });
+        }
+
+        query.userId = requestedUserId;
+      } else if (userRole === "admin") {
+        query = {};
+      } else if (userRole === "provider") {
+        query.providerId = userId;
+      } else {
+        query.userId = userId;
+      }
+
+      if (status) {
+        query.status = status;
+      }
+
+      if (ticketId) {
+        if (!mongoose.Types.ObjectId.isValid(ticketId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid ticketId format",
+          });
+        }
+
+        query._id = ticketId;
+      }
+
+      const total = await SupportTicket.countDocuments(query);
+      const tickets = await SupportTicket.find(query)
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .skip((pageNumber - 1) * pageSize)
+        .limit(pageSize)
+        .lean();
+
+      const conversations = tickets.map((ticket) => ({
+        ticketId: ticket._id,
+        userId: ticket.userId || null,
+        providerId: ticket.providerId || null,
+        subject: ticket.subject,
+        category: ticket.category,
+        status: ticket.status,
+        priority: ticket.priority,
+        source: ticket.source,
+        metadata: ticket.metadata || {},
+        resolvedAt: ticket.resolvedAt || null,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        conversation: this.buildConversationTimeline(ticket),
+      }));
+
+      return res.status(200).json({
+        success: true,
+        data: ticketId
+          ? conversations[0] || null
+          : conversations,
+        pagination: ticketId
+          ? undefined
+          : {
+              total,
+              totalPages: Math.ceil(total / pageSize) || 1,
+              currentPage: pageNumber,
+              perPage: pageSize,
+            },
+      });
+    } catch (error) {
+      console.error("Get conversation history error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching chatbot conversation history",
+        error: error.message,
+      });
+    }
+  }
 
   async createSupportTicket(userId, userRole, message, intent) {
     try {

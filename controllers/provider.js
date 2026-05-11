@@ -886,12 +886,12 @@ class ProviderController {
         });
       }
 
-      // if (!provider.kycVerified) {
-      //   return res.status(403).json({
-      //     success: false,
-      //     message: "KYC verification required to toggle availability",
-      //   });
-      // }
+      if (!provider.kycVerified) {
+        return res.status(403).json({
+          success: false,
+          message: "KYC verification required to toggle availability",
+        });
+      }
 
       provider.availability.isAvailable = isAvailable;
       provider.availability.lastUpdated = new Date();

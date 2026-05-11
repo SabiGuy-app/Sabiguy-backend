@@ -5,7 +5,14 @@ const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
 const Booking = require("../models/Bookings");
 const Transaction = require("../models/Transaction");
-const { findUserByEmailAcrossDb, normalizeEmail } = require("../src/services/identity.service");
+const {
+  findUserByEmailAcrossDb,
+  normalizeEmail,
+} = require("../src/services/identity.service");
+const {
+  sendKycVerificationEmail,
+  sendKycDisputeEmail,
+} = require("../src/config/emailVerification");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
@@ -48,7 +55,8 @@ class AdminController {
     const totalPlatformFee = Number(
       pricingBreakdown.platformEarns ?? booking.platformEarns ?? 0,
     );
-    const providerCommission = providerCommissionRaw || Math.max(totalPlatformFee - userPlatformFee, 0);
+    const providerCommission =
+      providerCommissionRaw || Math.max(totalPlatformFee - userPlatformFee, 0);
     const providerReceives = Number(
       pricingBreakdown.driverReceives ??
         booking.driverReceives ??
@@ -272,6 +280,17 @@ class AdminController {
 
       await provider.save();
 
+      // Send KYC verification confirmation email
+      try {
+        await sendKycVerificationEmail(provider.email, {
+          providerName: provider.fullName || "Service Provider",
+          note: note || "",
+        });
+      } catch (emailError) {
+        console.error("Failed to send KYC verification email:", emailError);
+        // Don't fail the request if email sending fails
+      }
+
       return res.status(200).json({
         success: true,
         message: "KYC verified successfully",
@@ -288,6 +307,82 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error verifying KYC",
+        error: error.message,
+      });
+    }
+  }
+
+  async disputeKyc(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { providerId } = req.params;
+      const { reason, note } = req.body || {};
+
+      if (!providerId) {
+        return res.status(400).json({ message: "providerId is required" });
+      }
+
+      if (!reason) {
+        return res.status(400).json({ message: "reason is required" });
+      }
+
+      const admin = await Admin.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+
+      const provider = await Provider.findById(providerId);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      // Mark KYC as rejected/disputed
+      provider.kycVerified = false;
+      provider.kycRejected = true;
+      provider.kycRejectedAt = new Date();
+      provider.kycRejectedBy = {
+        id: admin._id,
+        email: admin.email,
+        fullName: admin.fullName,
+      };
+      provider.kycRejectionReason = reason;
+      if (note) provider.kycRejectionNote = note;
+
+      await provider.save();
+
+      // Send KYC dispute/rejection email
+      try {
+        await sendKycDisputeEmail(provider.email, {
+          providerName: provider.fullName || "Service Provider",
+          reason: reason,
+          note: note || "",
+        });
+      } catch (emailError) {
+        console.error("Failed to send KYC dispute email:", emailError);
+        // Don't fail the request if email sending fails
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "KYC disputed successfully",
+        data: {
+          providerId: provider._id,
+          kycVerified: provider.kycVerified,
+          kycRejected: provider.kycRejected,
+          kycRejectedAt: provider.kycRejectedAt,
+          kycRejectedBy: provider.kycRejectedBy,
+          kycRejectionReason: provider.kycRejectionReason,
+          kycRejectionNote: provider.kycRejectionNote,
+        },
+      });
+    } catch (error) {
+      console.error("Dispute KYC error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error disputing KYC",
         error: error.message,
       });
     }
@@ -489,7 +584,12 @@ class AdminController {
                     subtotal: {
                       $ifNull: [
                         "$pricingBreakdown.subtotal",
-                        { $ifNull: ["$agreedPrice", { $ifNull: ["$totalAmount", "$budget"] }] },
+                        {
+                          $ifNull: [
+                            "$agreedPrice",
+                            { $ifNull: ["$totalAmount", "$budget"] },
+                          ],
+                        },
                       ],
                     },
                     riderPays: {
@@ -502,7 +602,10 @@ class AdminController {
                       $ifNull: ["$pricingBreakdown.platformFee", "$serviceFee"],
                     },
                     providerCommission: {
-                      $ifNull: ["$pricingBreakdown.driverCommission", "$providerCommission"],
+                      $ifNull: [
+                        "$pricingBreakdown.driverCommission",
+                        "$providerCommission",
+                      ],
                     },
                     providerReceives: {
                       $ifNull: [
@@ -511,7 +614,10 @@ class AdminController {
                       ],
                     },
                     totalPlatformFee: {
-                      $ifNull: ["$pricingBreakdown.platformEarns", "$platformEarns"],
+                      $ifNull: [
+                        "$pricingBreakdown.platformEarns",
+                        "$platformEarns",
+                      ],
                     },
                   },
                   payment: 1,
@@ -580,7 +686,8 @@ class AdminController {
             providerCommissionCollected: summary.totalProviderCommission,
             totalPlatformFeeCollected: summary.totalPlatformFee,
             taxCollected: summary.totalTaxCollected,
-            totalCollectedIncludingTax: summary.totalPlatformFee + summary.totalTaxCollected,
+            totalCollectedIncludingTax:
+              summary.totalPlatformFee + summary.totalTaxCollected,
           },
           source: "platform-fee-report",
         },
