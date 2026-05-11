@@ -1,10 +1,10 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const BookingController = require ('../controllers/bookings')
-const authMiddleware = require ('../middleware/authMiddleware');
-const onlyRole = require ('../middleware/roleMiddleware.js')
+const BookingController = require("../controllers/bookings");
+const authMiddleware = require("../middleware/authMiddleware");
+const onlyRole = require("../middleware/roleMiddleware.js");
 
-/** 
+/**
  *  @swagger
  * /api/v1/bookings:
  *   post:
@@ -121,7 +121,12 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBooking);
+router.post(
+  "/",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.createBooking,
+);
 
 /**
  * @swagger
@@ -388,8 +393,7 @@ router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBook
  *                   type: string
  *                   example: Database connection failed
  */
-router.get('/', authMiddleware, BookingController.getAllBookings);
-
+router.get("/", authMiddleware, BookingController.getAllBookings);
 
 /**
  * @swagger
@@ -442,7 +446,12 @@ router.get('/', authMiddleware, BookingController.getAllBookings);
  *       500:
  *         description: Server error
  */
-router.get('/user', authMiddleware, onlyRole('buyer'), BookingController.getUserBookings);
+router.get(
+  "/user",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.getUserBookings,
+);
 
 /**
  * @swagger
@@ -487,7 +496,12 @@ router.get('/user', authMiddleware, onlyRole('buyer'), BookingController.getUser
  *       500:
  *         description: Server error
  */
-router.get('/user/:userId', authMiddleware, onlyRole('admin'), BookingController.getBookingsByUserId);
+router.get(
+  "/user/:userId",
+  authMiddleware,
+  onlyRole("admin"),
+  BookingController.getBookingsByUserId,
+);
 
 /**
  * @swagger
@@ -532,7 +546,12 @@ router.get('/user/:userId', authMiddleware, onlyRole('admin'), BookingController
  *       500:
  *         description: Server error
  */
-router.get('/provider/:providerId', authMiddleware, onlyRole('admin'), BookingController.getBookingsByProviderId);
+router.get(
+  "/provider/:providerId",
+  authMiddleware,
+  onlyRole("admin"),
+  BookingController.getBookingsByProviderId,
+);
 
 /**
  * @swagger
@@ -570,8 +589,7 @@ router.get('/provider/:providerId', authMiddleware, onlyRole('admin'), BookingCo
  *       500:
  *         description: Server error
  */
-router.get('/:id', authMiddleware, BookingController.getBookingById);
-
+router.get("/:id", authMiddleware, BookingController.getBookingById);
 
 /**
  * @swagger
@@ -611,7 +629,12 @@ router.get('/:id', authMiddleware, BookingController.getBookingById);
  *       500:
  *         description: Server error
  */
-router.put('/:id/select-provider', authMiddleware, onlyRole('buyer'), BookingController.selectProvider);
+router.put(
+  "/:id/select-provider",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.selectProvider,
+);
 
 /**
  * @swagger
@@ -649,7 +672,7 @@ router.put('/:id/select-provider', authMiddleware, onlyRole('buyer'), BookingCon
  *       500:
  *         description: Server error
  */
-router.patch('/:id/cancel', authMiddleware, BookingController.cancelBooking);
+router.patch("/:id/cancel", authMiddleware, BookingController.cancelBooking);
 
 /**
  * @swagger
@@ -683,7 +706,12 @@ router.patch('/:id/cancel', authMiddleware, BookingController.cancelBooking);
  *       500:
  *         description: Server error
  */
-router.delete('/:id', authMiddleware, onlyRole('buyer'), BookingController.deleteBooking);
+router.delete(
+  "/:id",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.deleteBooking,
+);
 
 /**
  * @swagger
@@ -752,7 +780,81 @@ router.delete('/:id', authMiddleware, onlyRole('buyer'), BookingController.delet
  *         description: Server error
  */
 
-router.patch('/:id/accept-completion', authMiddleware, onlyRole('buyer'), BookingController.acceptJobCompleted);
+router.patch(
+  "/:id/accept-completion",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.acceptJobCompleted,
+);
+
+/**
+ * @swagger
+ * /api/v1/bookings/{id}/dispute:
+ *   patch:
+ *     summary: Raise a dispute for a completed booking
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Reason for the dispute
+ *                 example: "Service was not completed as agreed"
+ *     responses:
+ *       200:
+ *         description: Dispute raised successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Dispute raised successfully. Our team will review and contact both parties."
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bookingId:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       example: "disputed"
+ *                     disputeRaisedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     reason:
+ *                       type: string
+ *       400:
+ *         description: Invalid input or booking not eligible for dispute
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.patch(
+  "/:id/dispute",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.disputeJobCompleted,
+);
 
 /**
  * @swagger
@@ -803,8 +905,11 @@ router.patch('/:id/accept-completion', authMiddleware, onlyRole('buyer'), Bookin
  *       500:
  *         description: Server error
  */
-
-router.put('/allow-system', authMiddleware, onlyRole('buyer'), BookingController.allowSystem);
-
+router.put(
+  "/allow-system",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.allowSystem,
+);
 
 module.exports = router;

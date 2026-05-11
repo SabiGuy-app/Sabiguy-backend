@@ -57,6 +57,64 @@ router.post("/chat", authMiddleware, supportChatbotController.chat);
 
 /**
  * @swagger
+ * /api/v1/support-chatbot/history:
+ *   get:
+ *     summary: Get support chatbot conversation history
+ *     tags: [Support Chatbot]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: ticketId
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional support ticket ID to fetch one conversation thread
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [open, in-progress, resolved, closed]
+ *         description: Optional ticket status filter
+ *       - in: query
+ *         name: userId
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Admin-only filter to fetch one user's chatbot history
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Conversation history returned successfully
+ *       400:
+ *         description: Invalid ticket ID
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Access denied
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/history",
+  authMiddleware,
+  supportChatbotController.getConversationHistory,
+);
+
+/**
+ * @swagger
  * /api/v1/support-chatbot/faqs:
  *   get:
  *     summary: Get support FAQs
