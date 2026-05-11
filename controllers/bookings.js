@@ -22,7 +22,7 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "enroute_to_dropoff",
   "funds_released",
   "cancelled",
-  "payment_pending"
+  "payment_pending",
 ]; // Bookings that count towards provider activity
 const DELETABLE_BOOKING_STATUSES = [
   "pending_providers",
@@ -60,7 +60,8 @@ class BookingController {
       booking.totalAmount ??
       booking.budget ??
       null;
-    const userPlatformFee = breakdown?.platformFee ?? booking.serviceFee ?? null;
+    const userPlatformFee =
+      breakdown?.platformFee ?? booking.serviceFee ?? null;
     const providerPlatformFee =
       breakdown?.driverCommission ?? booking.providerCommission ?? null;
     const totalPlatformFee =
@@ -145,7 +146,8 @@ class BookingController {
       booking.estimatedDuration?.value !== undefined;
 
     if (providerDistances.length && isTransportBooking) {
-      const isBike = String(booking.modeOfDelivery || "").toLowerCase() === "bike";
+      const isBike =
+        String(booking.modeOfDelivery || "").toLowerCase() === "bike";
       const suggestedProviderPricing = providerDistances.map((provider) => {
         const totalDistanceKm =
           Number(booking.distance?.value || 0) +
@@ -166,7 +168,8 @@ class BookingController {
         return {
           providerId: provider.providerId,
           riderPays: pricing.calculatedPrice,
-          providerReceives: pricing.breakdown?.driverReceives ?? pricing.driverReceives ?? null,
+          providerReceives:
+            pricing.breakdown?.driverReceives ?? pricing.driverReceives ?? null,
           paymentBreakdown: {
             subtotal: pricing.breakdown?.subtotal ?? null,
             grossEarnings: pricing.breakdown?.subtotal ?? null,
@@ -174,7 +177,10 @@ class BookingController {
             userPlatformFee: pricing.breakdown?.platformFee ?? null,
             providerPlatformFee: pricing.breakdown?.driverCommission ?? null,
             totalPlatformFee: pricing.breakdown?.platformEarns ?? null,
-            providerReceives: pricing.breakdown?.driverReceives ?? pricing.driverReceives ?? null,
+            providerReceives:
+              pricing.breakdown?.driverReceives ??
+              pricing.driverReceives ??
+              null,
           },
           breakdown: pricing.breakdown,
           meta: pricing.meta,
@@ -945,7 +951,9 @@ class BookingController {
 
       const booking = await Booking.findOne({
         _id: bookingId,
-        status: { $in: ["completed", "user_accepted_completion", "funds_released"] },
+        status: {
+          $in: ["completed", "user_accepted_completion", "funds_released"],
+        },
         userId,
       })
         .populate("providerId", "fullName rating reviews")
@@ -966,8 +974,6 @@ class BookingController {
           message: "Job completion already accepted",
         });
       }
-
-    
 
       const providerId = booking.providerId?._id || booking.providerId;
 
@@ -991,16 +997,15 @@ class BookingController {
       await booking.save();
 
       if (providerId && numericScore !== undefined) {
-        const providerDoc = await Provider.findById(providerId).select(
-          "rating reviews",
-        );
+        const providerDoc =
+          await Provider.findById(providerId).select("rating reviews");
 
         if (providerDoc) {
           const currentAverage = providerDoc.rating?.average || 0;
           const currentCount = providerDoc.rating?.count || 0;
           const nextCount = currentCount + 1;
           const nextAverage =
-            ((currentAverage * currentCount) + numericScore) / nextCount;
+            (currentAverage * currentCount + numericScore) / nextCount;
 
           providerDoc.rating.average = Math.round(nextAverage * 100) / 100;
           providerDoc.rating.count = nextCount;
@@ -1070,6 +1075,91 @@ class BookingController {
       return res.status(500).json({
         success: false,
         message: "Failed to accept job completion",
+        error: error.message,
+      });
+    }
+  }
+
+  async disputeJobCompleted(req, res) {
+    try {
+      const bookingId = req.params.id;
+      const userId = req.user.id;
+      const { reason } = req.body;
+
+      if (!reason || String(reason).trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "reason is required",
+        });
+      }
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        status: {
+          $in: ["completed", "user_accepted_completion", "funds_released"],
+        },
+        userId,
+      })
+        .populate("providerId", "fullName email")
+        .populate("userId", "fullName profilePicture");
+
+      if (!booking) {
+        return res.status(400).json({
+          success: false,
+          message: "Booking not found or not eligible for dispute",
+        });
+      }
+
+      const providerId = booking.providerId?._id || booking.providerId;
+
+      // Mark booking as disputed
+      booking.status = "disputed";
+      booking.disputeRaisedAt = new Date();
+      booking.disputeRaisedBy = userId;
+      booking.disputeReason = reason;
+
+      await booking.save();
+
+      // 🔔 Notify provider about the dispute
+      try {
+        await notificationService.notifyProvider(providerId, {
+          type: "booking_disputed",
+          title: "⚠️ Dispute Raised",
+          message: `A customer has raised a dispute regarding the ${booking.serviceType} booking. Our team will review and contact you shortly.`,
+          bookingId: booking._id,
+          userId,
+          reason: reason,
+          additionalInfo: {
+            reason: reason,
+            service: booking.serviceType,
+            note: "Our team will investigate this matter and send you feedback within 48 hours.",
+          },
+        });
+      } catch (notificationErr) {
+        console.error(
+          `❌ Failed to notify provider about dispute:`,
+          notificationErr,
+        );
+        // Don't fail the entire request if notification fails
+      }
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Dispute raised successfully. Our team will review and contact both parties.",
+        data: {
+          bookingId: booking._id,
+          status: booking.status,
+          disputeRaisedAt: booking.disputeRaisedAt,
+          reason: booking.disputeReason,
+          note: "Our support team will investigate this matter and send feedback within 48 hours.",
+        },
+      });
+    } catch (error) {
+      console.error("Dispute job completion error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to raise dispute",
         error: error.message,
       });
     }

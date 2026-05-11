@@ -11,7 +11,7 @@ const bookingSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Provider",
     },
-    
+
     // Service info
     serviceType: {
       type: String,
@@ -26,82 +26,81 @@ const bookingSchema = new mongoose.Schema(
     description: {
       type: String,
     },
-    
+
     // Location (for regular services)
-   location: {
-  address: {
-    type: String,
-    required: false  
-  },
-  coordinates: {
-    type: {
-      type: String,
-      enum: ["Point"],
+    location: {
+      address: {
+        type: String,
+        required: false,
+      },
+      coordinates: {
+        type: {
+          type: String,
+          enum: ["Point"],
+        },
+        coordinates: {
+          type: [Number], // [lng, lat]
+        },
+      },
     },
-    coordinates: {
-      type: [Number],   // [lng, lat]
-    }
-  }
-},
 
-    
-   // Transport / Logistics
-pickupLocation: {
-  address: String,
-  coordinates: {
-    type: {
-      type: String,
-      enum: ['Point'],
+    // Transport / Logistics
+    pickupLocation: {
+      address: String,
+      coordinates: {
+        type: {
+          type: String,
+          enum: ["Point"],
+        },
+        coordinates: {
+          type: [Number], // [lng, lat]
+        },
+      },
     },
-    coordinates: {
-      type: [Number] // [lng, lat]
-    }
-  }
-},
-pickupNote: {
-  type: String
-},
+    pickupNote: {
+      type: String,
+    },
 
-dropoffLocation: {
-  address: String,
-  coordinates: {
-    type: {
-      type: String,
-      enum: ['Point'],
+    dropoffLocation: {
+      address: String,
+      coordinates: {
+        type: {
+          type: String,
+          enum: ["Point"],
+        },
+        coordinates: {
+          type: [Number], // [lng, lat]
+        },
+      },
     },
-    coordinates: {
-      type: [Number] // [lng, lat]
-    }
-  }
-},
     // Distance (for transport/logistics)
     distance: {
       value: Number, // in kilometers
       unit: {
         type: String,
-        default: 'km'
-      }
+        default: "km",
+      },
     },
     // Booking schema additions
-providerETA: {
-  value: Number,
-  unit: { type: String, default: "minutes" },
-},
+    providerETA: {
+      value: Number,
+      unit: { type: String, default: "minutes" },
+    },
 
-rideDuration: {
-  value: Number,
-  unit: { type: String, default: "minutes" },
-  isEstimate: { type: Boolean, default: false },
-},
+    rideDuration: {
+      value: Number,
+      unit: { type: String, default: "minutes" },
+      isEstimate: { type: Boolean, default: false },
+    },
 
-bookingDuration: {
-  value: Number,
-  unit: { type: String, default: "minutes" },
-  breakdown: {
-    providerToPickup: Number,
-    pickupToDropoff: Number,
-  },
-},
+    bookingDuration: {
+      value: Number,
+      unit: { type: String, default: "minutes" },
+      breakdown: {
+        providerToPickup: Number,
+        pickupToDropoff: Number,
+      },
+    },
     providerDistances: [
       {
         providerId: { type: mongoose.Schema.Types.ObjectId, ref: "Provider" },
@@ -142,22 +141,22 @@ bookingDuration: {
       },
     },
     estimatedArrivalAt: Date,
-    
+
     // Schedule
     scheduleType: {
       type: String,
-      enum: ['immediate', 'scheduled'],
-      required: true
+      enum: ["immediate", "scheduled"],
+      required: true,
     },
     scheduleDate: Date,
     scheduledTime: String,
     startDate: Date,
     endDate: Date,
-    
+
     // Pricing
     budget: {
       type: Number,
-      required: false
+      required: false,
     },
     agreedPrice: Number,
     calculatedPrice: Number, // Auto-calculated for transport/logistics
@@ -175,104 +174,116 @@ bookingDuration: {
       default: null,
     },
     totalAmount: Number,
-    
+
     // Provider management
-    suggestedProviders: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Provider'
-    }],
-    notifiedProviders: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Provider'
-    }],
-    
+    suggestedProviders: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Provider",
+      },
+    ],
+    notifiedProviders: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Provider",
+      },
+    ],
+
     providerOffer: Number,
     providerResponse: {
       type: String,
-      enum: ['pending', 'accepted', 'declined', 'counter_offer'],
-      default: 'pending'
+      enum: ["pending", "accepted", "declined", "counter_offer"],
+      default: "pending",
     },
-    
+
     // Status
     status: {
       type: String,
       enum: [
-        'pending_providers',           // User created, awaiting provider selection
-        'awaiting_provider_acceptance', // Transport: waiting for fastest finger
-        'provider_selected',            // Provider selected/accepted
-        'payment_pending',              // Awaiting payment
-        'paid_escrow', 
-        'provider_accepted' ,
-        'accept_selection'  ,             
-        'in_progress',                  
-        'arrived_at_pickup',              
-        'enroute_to_dropoff',             
-        'arrived_at_dropoff',              
-        'completed',                    // Service completed
-        'cancelled',                    // Cancelled
-        'user_accepted_completion',
-        'funds_released',               // Payment released to provider
+        "pending_providers", // User created, awaiting provider selection
+        "awaiting_provider_acceptance", // Transport: waiting for fastest finger
+        "provider_selected", // Provider selected/accepted
+        "payment_pending", // Awaiting payment
+        "paid_escrow",
+        "provider_accepted",
+        "accept_selection",
+        "in_progress",
+        "arrived_at_pickup",
+        "enroute_to_dropoff",
+        "arrived_at_dropoff",
+        "completed", // Service completed
+        "cancelled", // Cancelled
+        "user_accepted_completion",
+        "funds_released", // Payment released to provider
+        "disputed", // Dispute raised
       ],
-      default: 'pending_providers',
+      default: "pending_providers",
     },
-    
+
     payment: {
       paystackRef: String,
       escrowAmount: Number,
       providerReceives: Number,
       escrowStatus: {
         type: String,
-        enum: ['held', 'pending', 'released', 'refunded'],
+        enum: ["held", "pending", "released", "refunded"],
       },
       paidAt: Date,
       releasedAt: Date,
     },
     modeOfDelivery: {
-        type: String,
-      enum: ['Car', 'Bike']
+      type: String,
+      enum: ["Car", "Bike"],
     },
     // Timestamps for tracking
     acceptedAt: Date,
     selectedAt: Date,
     startedAt: Date,
     completedAt: Date,
-    
+
     // Attachments
     attachments: [String],
-    
+
     // Cancellation
     cancellationReason: String,
     cancelledBy: {
       type: mongoose.Schema.Types.ObjectId,
-      refPath: 'cancelledByModel'
+      refPath: "cancelledByModel",
     },
     cancelledByModel: {
       type: String,
-      enum: ['User', 'Provider']
+      enum: ["User", "Provider"],
     },
-    
+
     // Ratings
     rating: {
       score: Number,
       review: String,
-      ratedAt: Date
+      ratedAt: Date,
     },
-    tipAmount: Number
+    tipAmount: Number,
+
+    // Dispute
+    disputeRaisedAt: Date,
+    disputeRaisedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServiceUser",
+    },
+    disputeReason: String,
+    disputeResolution: String,
+    disputeResolvedAt: Date,
   },
   {
-    timestamps: true
-  }
+    timestamps: true,
+  },
 );
 
 // Indexes
 bookingSchema.index({ userId: 1, status: 1 });
 bookingSchema.index({ providerId: 1, status: 1 });
 bookingSchema.index({ status: 1 });
-bookingSchema.index({ 'location.coordinates': '2dsphere' });
-bookingSchema.index({ 'pickupLocation.coordinates': '2dsphere' });
-bookingSchema.index({ 'dropoffLocation.coordinates': '2dsphere' });
+bookingSchema.index({ "location.coordinates": "2dsphere" });
+bookingSchema.index({ "pickupLocation.coordinates": "2dsphere" });
+bookingSchema.index({ "dropoffLocation.coordinates": "2dsphere" });
 
-
-module.exports = mongoose.model('Booking', bookingSchema)
-   
-  
+module.exports = mongoose.model("Booking", bookingSchema);

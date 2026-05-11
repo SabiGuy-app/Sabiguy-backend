@@ -53,7 +53,7 @@
 
               <p style="margin:0 0 16px; font-size:15.5px; line-height:1.8; color:#374151;">
                 {% if roleNormalized == "provider" %}
-                Hi <strong style="color:#1a6b35;">{{ firstName }}</strong>, you're officially a SabiGuy! Welcome to <strong>SabiGuy</strong> — the platform that helps you reach more customers and grow your business.
+                Hi <strong style="color:#1a6b35;">{{ firstName }}</strong>, you're officially a SabiGuy! Welcome to <strong>SabiGuy</strong> — the platform that helps you reach more customers and grow your business. Before you can start accepting bookings, you'll need to complete KYC verification.
                 {% else %}
                 Hi <strong style="color:#1a6b35;">{{ firstName }}</strong>, we're excited to have you join <strong>SabiGuy</strong> — the platform that connects people who need services with trusted professionals ready to deliver.
                 {% endif %}
@@ -61,7 +61,7 @@
 
               <p style="margin:0 0 26px; font-size:15.5px; line-height:1.8; color:#374151;">
                 {% if roleNormalized == "provider" %}
-                Your email is verified and your account is live. Here are a few things to do next:
+                To get started and unlock full access to bookings and earnings, here's what you need to do:
                 {% else %}
                 Your email is verified and your account is live. Here's what you can start doing right now:
                 {% endif %}
@@ -71,7 +71,20 @@
               <div style="border-top:2px solid #f0f0f0; margin-bottom:26px;"></div>
 
               {% if roleNormalized == "provider" %}
-              <!-- Feature 1: Complete Your Profile -->
+              <!-- Feature 1: KYC Verification -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+                <tr>
+                  <td width="52" valign="top">
+                    <div style="width:42px; height:42px; background:#fef2f2; border:1.5px solid #fecaca; border-radius:10px; text-align:center; line-height:42px; font-size:20px;">🔐</div>
+                  </td>
+                  <td style="padding-left:14px; vertical-align:middle;">
+                    <strong style="display:block; font-size:15px; color:#1a1a1a; margin-bottom:3px;">Complete KYC Verification <span style="color:#dc2626;">*Required</span></strong>
+                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">Submit your identity documents so we can verify your account. This is mandatory before you can receive bookings.</span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Feature 2: Complete Your Profile -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
                 <tr>
                   <td width="52" valign="top">
@@ -79,12 +92,12 @@
                   </td>
                   <td style="padding-left:14px; vertical-align:middle;">
                     <strong style="display:block; font-size:15px; color:#1a1a1a; margin-bottom:3px;">Complete Your Profile</strong>
-                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">Complete the verification process so customers can trust and choose you quickly.</span>
+                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">Add a profile picture and upload required images</span>
                   </td>
                 </tr>
               </table>
 
-              <!-- Feature 2: Add Services -->
+              <!-- Feature 3: Add Services -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
                 <tr>
                   <td width="52" valign="top">
@@ -92,7 +105,7 @@
                   </td>
                   <td style="padding-left:14px; vertical-align:middle;">
                     <strong style="display:block; font-size:15px; color:#1a1a1a; margin-bottom:3px;">Add Your Services</strong>
-                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">List what you offer, set your pricing, and get discovered faster.</span>
+                    <span style="font-size:13.5px; color:#6b7280; line-height:1.6;">List what you offer, set your pricing, and get discovered. (Available after KYC verification)</span>
                   </td>
                 </tr>
               </table>
@@ -124,13 +137,25 @@
               </table>
               {% endif %}
 
+              <!-- KYC Reminder for Providers -->
+              {% if roleNormalized == "provider" %}
+              <div style="background:linear-gradient(135deg, #fef3c7 0%, #fef08a 100%); border:1.5px solid #fbbf24; border-radius:12px; padding:20px 22px; margin-bottom:24px;">
+                <p style="margin:0; font-size:14px; line-height:1.8; color:#78350f;">
+                  <strong style="display:block; margin-bottom:8px; font-size:15px; color:#92400e;">⚠️ Important: KYC Verification Required</strong>
+                  Your account is created, but you'll need to complete KYC (Know Your Customer) verification to unlock full platform access. Once verified, you can toggle on your availability, start receiving bookings, and begin earning.
+                </p>
+              </div>
+              {% endif %}
+
               <!-- CTA Button -->
+              {% if roleNormalized != "provider" %}
               <div style="text-align:center; margin:10px 0 4px;">
                 <a href="{{ appUrl or ctaUrl }}"
                    style="display:inline-block; background:#f47920; color:#ffffff; text-decoration:none; font-size:15.5px; font-weight:700; letter-spacing:0.4px; padding:15px 44px; border-radius:8px;">
                   {{ ctaText or "Explore SabiGuy" }} &rarr;
                 </a>
               </div>
+              {% endif %}
 
             </td>
           </tr>
@@ -143,9 +168,10 @@
               </p>
               <ul style="margin:0; padding-left:18px; font-size:13.5px; color:#374151; line-height:2.1;">
                 {% if roleNormalized == "provider" %}
-                <li>Turn on availability to receive bookings faster.</li>
-                <li>Respond quickly to improve your ranking.</li>
-                <li>Ask customers to rate you after a job.</li>
+                <li><strong>KYC verification</strong> is your first priority — it unlocks everything.</li>
+                <li>Once verified, turn on availability to receive booking notifications.</li>
+                <li>Respond quickly to customer requests to improve your ranking.</li>
+                <li>Ask customers to rate you after each completed job.</li>
                 {% else %}
                 <li>Complete your profile to build trust with providers.</li>
                 <li>Browse services and book in under 2 minutes.</li>
