@@ -5,13 +5,16 @@ const express = require("express");
 const app = express();
 const morgan = require("morgan");
 
-app.set('trust proxy', true);
+app.set("trust proxy", true);
 
 const connectToDB = require("./utils/db");
 const http = require("http");
 const socketIO = require("socket.io");
+const redis = require("redis");
+const { createAdapter } = require("@socket.io/redis-adapter");
 const { swaggerUi, swaggerSpec } = require("./src/config/swagger");
 const notificationService = require("./src/services/notification.service");
+// const notificationService = require ("./cron/notificationService")
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -27,7 +30,7 @@ const io = socketIO(server, {
       "http://localhost:3001",
       "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
-      "https://www.sabiguy.com"
+      "https://www.sabiguy.com",
     ],
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -38,6 +41,47 @@ const io = socketIO(server, {
   transports: ["websocket", "polling"],
 });
 
+// Setup Redis adapter for Socket.io
+const initRedisAdapter = async () => {
+  const redisHost = process.env.REDIS_HOST;
+  const redisPort = Number(process.env.REDIS_PORT || 6379);
+
+  if (!redisHost) {
+    console.warn(
+      "⚠️ REDIS_HOST is not set. Socket.IO will run without the Redis adapter.",
+    );
+    return;
+  }
+
+  const pubClient = redis.createClient({
+    socket: {
+      host: redisHost,
+      port: redisPort,
+    },
+  });
+  const subClient = pubClient.duplicate();
+
+  pubClient.on("error", (error) => {
+    console.error("Redis pub client error:", error.message);
+  });
+
+  subClient.on("error", (error) => {
+    console.error("Redis sub client error:", error.message);
+  });
+
+  try {
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log("✅ Redis adapter connected to Socket.IO");
+  } catch (error) {
+    console.warn(
+      `⚠️ Redis unavailable. Socket.IO will continue without clustering support: ${error.message}`,
+    );
+  }
+};
+
+initRedisAdapter();
+
 app.use(
   cors({
     origin: [
@@ -45,7 +89,7 @@ app.use(
       "http://localhost:3001",
       "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
-      "https://www.sabiguy.com"
+      "https://www.sabiguy.com",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -108,6 +152,9 @@ app.get(["/api-docs", "/api-docs/"], (req, res) => {
 });
 
 notificationService.setSocketIO(io);
+
+// Make Socket.io instance available to routes (for broadcasting from cron)
+app.set("io", io);
 
 io.use(async (socket, next) => {
   try {
@@ -183,7 +230,9 @@ io.on("connection", (socket) => {
       }
       const chatRoom = `booking:${bookingId}`;
       socket.join(chatRoom);
-      console.log(`💬 ${socket.userType} ${socket.userId} joined chat: ${chatRoom}`);
+      console.log(
+        `💬 ${socket.userType} ${socket.userId} joined chat: ${chatRoom}`,
+      );
       socket.to(chatRoom).emit("user_joined_chat", {
         userId: socket.userId,
         userType: socket.userType,
@@ -266,7 +315,9 @@ io.on("connection", (socket) => {
     const { bookingId } = data;
     const chatRoom = `booking:${bookingId}`;
     socket.leave(chatRoom);
-    console.log(`👋 ${socket.userType} ${socket.userId} left chat: ${chatRoom}`);
+    console.log(
+      `👋 ${socket.userType} ${socket.userId} left chat: ${chatRoom}`,
+    );
     socket.to(chatRoom).emit("user_left_chat", {
       userId: socket.userId,
     });

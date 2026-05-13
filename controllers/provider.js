@@ -1384,7 +1384,7 @@ if (!updatedBooking) {
         type: "booking_completed",
         title: "✅ Service Completed",
         message:
-          "Your service has been completed. Please accept the service completion and leave a review.",
+          "Your service has been completed. You have 12 hours to confirm or dispute it, just let us know if anything isn't right. After that, we'll auto-approve and release their payment. Thanks for being with us!",
         bookingId: booking._id,
         providerName: provider?.fullName,
       });
