@@ -83,6 +83,7 @@ fcmToken: {
             "booking_status_updated",
             "booking_taken",
             "counter_offer",
+            "booking_completed_awaiting_acceptance",
           ],
         },
       },

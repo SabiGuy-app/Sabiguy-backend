@@ -240,6 +240,8 @@ const bookingSchema = new mongoose.Schema(
     selectedAt: Date,
     startedAt: Date,
     completedAt: Date,
+    lastNotifiedAt: { type: Date },
+
 
     // Attachments
     attachments: [String],

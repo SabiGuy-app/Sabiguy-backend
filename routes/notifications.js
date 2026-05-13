@@ -77,11 +77,7 @@ const notificationController = require("../controllers/notifications");
  *       500:
  *         description: Server error
  */
-router.get(
-  "/",
-  authMiddleware,
-  notificationController.getNotifications,
-);
+router.get("/", authMiddleware, notificationController.getNotifications);
 
 /**
  * @swagger
@@ -329,5 +325,61 @@ router.patch(
   authMiddleware,
   notificationController.updateNotificationPreferences,
 );
+
+/**
+ * Internal endpoint for cron service to broadcast notifications via Socket.io
+ * This endpoint receives notifications from the cron process and emits them to connected Socket.io clients
+ */
+router.post("/broadcast", (req, res) => {
+  try {
+    // Security: Verify the request is from an internal process
+    const authHeader = req.headers.authorization;
+    const internalSecret = process.env.INTERNAL_API_SECRET || "internal-secret";
+
+    if (
+      authHeader !== `Bearer ${internalSecret}` &&
+      process.env.NODE_ENV === "production"
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { room, notification } = req.body;
+
+    if (!room || !notification) {
+      return res.status(400).json({
+        success: false,
+        message: "room and notification are required",
+      });
+    }
+
+    // Access Socket.io instance from app locals (set in index.js)
+    const io = req.app.get("io");
+
+    if (!io) {
+      return res.status(500).json({
+        success: false,
+        message: "Socket.io not available",
+      });
+    }
+
+    // Emit notification to the specified room
+    io.to(room).emit("new_notification", notification);
+    console.log(`✅ Notification broadcasted to room: ${room}`);
+
+    res.json({
+      success: true,
+      message: "Notification broadcasted",
+    });
+  } catch (error) {
+    console.error("Broadcast error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
 
 module.exports = router;
