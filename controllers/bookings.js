@@ -23,6 +23,7 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "funds_released",
   "cancelled",
   "payment_pending",
+  "disputed"
 ]; // Bookings that count towards provider activity
 const DELETABLE_BOOKING_STATUSES = [
   "pending_providers",
@@ -1122,19 +1123,34 @@ class BookingController {
 
       // 🔔 Notify provider about the dispute
       try {
-        await notificationService.notifyProvider(providerId, {
-          type: "booking_disputed",
-          title: "⚠️ Dispute Raised",
-          message: `A customer has raised a dispute regarding the ${booking.serviceType} booking. Our team will review and contact you shortly.`,
-          bookingId: booking._id,
-          userId,
-          reason: reason,
-          additionalInfo: {
-            reason: reason,
-            service: booking.serviceType,
-            note: "Our team will investigate this matter and send you feedback within 48 hours.",
-          },
-        });
+        await Promise.all([
+          notificationService.notifyProvider(providerId, {
+            type: "booking_disputed",
+            title: "⚠️ Dispute Raised",
+            message: `A customer has raised a dispute regarding the ${booking.serviceType} booking. Our team will review and contact you shortly.`,
+            bookingId: booking._id,
+            userId,
+            reason,
+            additionalInfo: {
+              reason,
+              service: booking.serviceType,
+              note: "Our team will investigate this matter and send you feedback within 48 hours.",
+            },
+          }),
+          notificationService.notifyUser(userId, {
+            type: "booking_disputed",
+            title: "⚠️ Dispute Submitted",
+            message: `Your dispute for the ${booking.serviceType} booking has been submitted successfully. Our team will review it and contact you shortly.`,
+            bookingId: booking._id,
+            providerId,
+            reason,
+            additionalInfo: {
+              reason,
+              service: booking.serviceType,
+              note: "Our team will investigate this matter and send you feedback within 48 hours.",
+            },
+          }),
+        ]);
       } catch (notificationErr) {
         console.error(
           `❌ Failed to notify provider about dispute:`,
