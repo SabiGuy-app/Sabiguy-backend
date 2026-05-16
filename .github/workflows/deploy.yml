@@ -218,4 +218,4 @@ jobs:
               --env-file /home/${{ secrets.PRODUCTION_EC2_USERNAME }}/.env \
               ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
 
-         #testing     
+         
