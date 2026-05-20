@@ -44,8 +44,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    outputs:
-      image_uri: ${{ steps.build-image.outputs.image_uri }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,13 +57,17 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push docker image
-        id: build-image
-        run: |
-          IMAGE_URI=${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
-          docker build -t $IMAGE_URI .
-          docker push $IMAGE_URI
-          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   build-production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -73,8 +75,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    outputs:
-      image_uri: ${{ steps.build-image.outputs.image_uri }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,20 +88,24 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build and push docker image
-        id: build-image
-        run: |
-          IMAGE_URI=${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
-          docker build -t $IMAGE_URI .
-          docker push $IMAGE_URI
-          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-staging:
     needs: build-staging
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Write env file to EC2
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.STAGING_EC2_HOST }}
@@ -137,17 +141,10 @@ jobs:
             GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
             ENVEOF
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.STAGING_EC2_HOST }}
-          username: ${{ secrets.STAGING_EC2_USERNAME }}
-          key: ${{ secrets.STAGING_EC2_SSH_KEY }}
-          script: |
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
-            docker system prune -af
+            docker image rm ${{ secrets.STAGING_ECR_REPOSITORY }} || true
             docker pull ${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
             docker run -d \
               --name ${{ env.CONTAINER_NAME }} \
@@ -166,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Write env file to EC2
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.PRODUCTION_EC2_HOST }}
@@ -202,17 +199,10 @@ jobs:
             GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
             ENVEOF
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PRODUCTION_EC2_HOST }}
-          username: ${{ secrets.PRODUCTION_EC2_USERNAME }}
-          key: ${{ secrets.PRODUCTION_EC2_SSH_KEY }}
-          script: |
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
-            docker system prune -af
+            docker image rm ${{ secrets.PRODUCTION_ECR_REPOSITORY }} || true
             docker pull ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
             docker run -d \
               --name ${{ env.CONTAINER_NAME }} \
