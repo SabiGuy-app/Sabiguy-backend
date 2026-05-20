@@ -5,6 +5,11 @@ on:
       - main
       - dev
       - 'hotfix/**'
+    paths-ignore:
+      - 'terraform/**'
+      - '**.tf'
+      - '**.tfvars'
+      - '.terraform.lock.hcl'
   pull_request:
     branches:
       - main
@@ -17,7 +22,7 @@ env:
 jobs:
   check-dev-sync:
     # Skip this check if the PR is coming from a hotfix branch.
-    # Hotfix branches are emergencies, they bypass dev and go straight to main.
+    # Hotfix branches are emergencies — they bypass dev and go straight to main.
     # Every other branch (feature, chore, etc.) still must come from dev.
     if: |
       github.event_name == 'pull_request' &&
@@ -209,5 +214,3 @@ jobs:
               -p 3000:3000 \
               --env-file /home/${{ secrets.PRODUCTION_EC2_USERNAME }}/.env \
               ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
-
-              #testing
