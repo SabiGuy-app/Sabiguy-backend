@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - dev
+      - 'hotfix/**'
     paths-ignore:
       - 'terraform/**'
       - '**.tf'
@@ -20,13 +21,19 @@ env:
 
 jobs:
   check-dev-sync:
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    # Skip this check if the PR is coming from a hotfix branch.
+    # Hotfix branches are emergencies — they bypass dev and go straight to main.
+    # Every other branch (feature, chore, etc.) still must come from dev.
+    if: |
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'main' &&
+      !startsWith(github.head_ref, 'hotfix/')
     runs-on: ubuntu-latest
     steps:
       - name: Ensure PR is from dev branch only
         run: |
           if [ "${{ github.head_ref }}" != "dev" ]; then
-            echo "Only the dev branch can be merged into main"
+            echo "Only the dev branch (or a hotfix/* branch) can be merged into main"
             exit 1
           fi
 
@@ -217,5 +224,3 @@ jobs:
               -p 3000:3000 \
               --env-file /home/${{ secrets.PRODUCTION_EC2_USERNAME }}/.env \
               ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
-
-         
