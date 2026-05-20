@@ -139,7 +139,7 @@ jobs:
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
-            docker system prune -af
+            docker images --format "{{.Repository}}:{{.Tag}}" | grep sabiguy-staging-backend | xargs -r docker rmi || true
             docker pull ${{ secrets.STAGING_ECR_REPOSITORY }}:${{ github.sha }}
             docker run -d \
               --name ${{ env.CONTAINER_NAME }} \
@@ -197,7 +197,7 @@ jobs:
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 914471710952.dkr.ecr.us-east-1.amazonaws.com
             docker stop ${{ env.CONTAINER_NAME }} || true
             docker rm ${{ env.CONTAINER_NAME }} || true
-            docker system prune -af
+            docker images --format "{{.Repository}}:{{.Tag}}" | grep sabiguy-production-backend | xargs -r docker rmi || true
             docker pull ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
             docker run -d \
               --name ${{ env.CONTAINER_NAME }} \
