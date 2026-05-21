@@ -193,11 +193,14 @@ class WalletController {
       await booking.save();
     }
 
-    const totalAmount = parseFloat(
-      booking.totalAmount || booking.agreedPrice || booking.budget,
+    const totalAmount = Number(
+      booking.pricingBreakdown?.riderPaysFinal ??
+        booking.calculatedPrice ??
+        booking.totalAmount ??
+        booking.agreedPrice,
     );
 
-    if (isNaN(totalAmount) || totalAmount <= 0) {
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
       return res.status(400).json({
         success: false,
         message: "Invalid booking amount",
@@ -216,11 +219,6 @@ class WalletController {
       booking.providerId,  
       totalAmount,         
       bookingId,          
-      {                   
-        serviceCharge: totalAmount,
-        platformFee: 0,
-        total: totalAmount,
-      },
       NotificationService  
     );
 

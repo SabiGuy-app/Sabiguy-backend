@@ -1,8 +1,8 @@
 const mongoose = require ('mongoose');
 
 const serviceUserSchema = new mongoose.Schema ({
-    email: { type: String, unique: true, sparse: true },
-    phoneNumber: { type: String, unique: true, sparse: true },
+    email: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
+    phoneNumber: { type: String, unique: true, sparse: true, trim: true },
     password: { type: String, required: false},
     createdAt: { type: Date, default: Date.now},
     isActive: { type: Boolean, default: true },
@@ -56,7 +56,19 @@ fcmToken: {
       type: Boolean,
       default: false
     },
-
+ currentLocation: {
+  type: {
+    type: String,
+    enum: ['Point'],
+    default: 'Point'
+  },
+  coordinates: {
+    type: [Number],  // [longitude, latitude]
+    index: '2dsphere'
+  },
+  address: String  // Optional
+},
+  
     notificationPreferences: {
       bookings: {
         push: { type: Boolean, default: true },
@@ -71,6 +83,7 @@ fcmToken: {
             "booking_status_updated",
             "booking_taken",
             "counter_offer",
+            "booking_completed_awaiting_acceptance",
           ],
         },
       },

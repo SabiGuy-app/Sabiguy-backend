@@ -5,6 +5,7 @@ const {
   getAllUsers,
   getUserByEmail,
   getUserById,
+  updateUserLocation
 } = require ('../controllers/users')
 const authMiddleware = require ('../middleware/authMiddleware');
 
@@ -282,5 +283,43 @@ router.get("/email/:email",  getUserByEmail);
  *         description: User not found
  */
 router.get("/:id",  getUserById);
+
+/**
+ * @swagger
+ * /api/v1/users/location:
+ *   put:
+ *     summary: Update user location
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - latitude
+ *               - longitude
+ *               - address
+ *             properties:
+ *               address:
+ *                 type: text
+ *                 example: Ikeja, Lagos
+ *               latitude:
+ *                 type: number
+ *                 example: 6.5244
+ *               longitude:
+ *                 type: number
+ *                 example: 3.3792
+ *     responses:
+ *       200:
+ *         description: Location updated successfully
+ *       400:
+ *         description: Latitude and longitude required
+ *       500:
+ *         description: Server error
+ */
+router.put('/location', authMiddleware, updateUserLocation);
 
 module.exports = router

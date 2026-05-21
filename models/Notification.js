@@ -24,14 +24,17 @@ const notificationSchema = new mongoose.Schema({
       'booking_cancelled',
       'job_started',
       'payment_received',
-       'payment_sent',
+      'payment_sent',
       'booking_completed',
       'message_received',
       'test',
       'counter_offer',
       'job_completed_confirmed',
       'new_message',
-      'booking_status_updated'
+      'booking_status_updated',
+      'booking_disputed',
+      'booking_auto_completed',
+      'booking_completed_awaiting_acceptance'
     ]
   },
   title: {

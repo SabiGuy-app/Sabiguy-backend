@@ -76,7 +76,10 @@ const transactionSchema = new mongoose.Schema(
     breakdown: {
       agreedPrice: Number, // Amount for provider
       serviceFee: Number, // Platform fee
+      providerCommission: Number, // Platform commission from provider
+      providerReceives: Number, // Net amount provider receives
       totalAmount: Number, // Total paid by user
+      platformEarns: Number, // Total platform earnings
     },
 
     // Related entities
@@ -91,9 +94,9 @@ const transactionSchema = new mongoose.Schema(
         type: String,
         enum: ["paystack", "internal", "bank_transfer"],
       },
-      reference: {
-        type: String,
-      },
+     
+  reference: { type: String, sparse: true, unique: true },
+      
       response: mongoose.Schema.Types.Mixed,
     },
 

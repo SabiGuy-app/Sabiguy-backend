@@ -1,25 +1,36 @@
+const dotenv = require("dotenv");
+dotenv.config();
+
 const express = require("express");
 const app = express();
-const dotenv = require("dotenv");
+const morgan = require("morgan");
+
+app.set("trust proxy", true);
+
 const connectToDB = require("./utils/db");
 const http = require("http");
 const socketIO = require("socket.io");
+const redis = require("redis");
+const { createAdapter } = require("@socket.io/redis-adapter");
 const { swaggerUi, swaggerSpec } = require("./src/config/swagger");
 const notificationService = require("./src/services/notification.service");
+// const notificationService = require ("./cron/notificationService")
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(morgan("dev"));
 
 const cors = require("cors");
 const server = http.createServer(app);
-dotenv.config();
 
 const io = socketIO(server, {
   cors: {
     origin: [
       "http://localhost:5173",
       "http://localhost:3001",
-      "https://sabiguy-frontend.vercel.app",
+      "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
+      "https://www.sabiguy.com",
     ],
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -29,17 +40,59 @@ const io = socketIO(server, {
   pingInterval: 25000,
   transports: ["websocket", "polling"],
 });
+
+// Setup Redis adapter for Socket.io
+const initRedisAdapter = async () => {
+  const redisHost = process.env.REDIS_HOST;
+  const redisPort = Number(process.env.REDIS_PORT || 6379);
+
+  if (!redisHost) {
+    console.warn(
+      "⚠️ REDIS_HOST is not set. Socket.IO will run without the Redis adapter.",
+    );
+    return;
+  }
+
+  const pubClient = redis.createClient({
+    socket: {
+      host: redisHost,
+      port: redisPort,
+    },
+  });
+  const subClient = pubClient.duplicate();
+
+  pubClient.on("error", (error) => {
+    console.error("Redis pub client error:", error.message);
+  });
+
+  subClient.on("error", (error) => {
+    console.error("Redis sub client error:", error.message);
+  });
+
+  try {
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log("✅ Redis adapter connected to Socket.IO");
+  } catch (error) {
+    console.warn(
+      `⚠️ Redis unavailable. Socket.IO will continue without clustering support: ${error.message}`,
+    );
+  }
+};
+
+initRedisAdapter();
+
 app.use(
   cors({
     origin: [
       "http://localhost:5173",
       "http://localhost:3001",
-      "https://sabiguy-frontend.vercel.app",
+      "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
+      "https://www.sabiguy.com",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
-
     credentials: true,
   }),
 );
@@ -60,32 +113,57 @@ const routes = [
   { path: "/support-chatbot", file: "./routes/supportChatbot" },
   { path: "/admin", file: "./routes/admin" },
 ];
+
 app.use(cors());
 
 routes.forEach((route) => {
   app.use(`/api/v1${route.path}`, require(route.file));
 });
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {}));
-
-app.get("/api-docs.json", (req, res) => {
+app.get("/api-docs/swagger.json", (req, res) => {
   res.setHeader("Content-Type", "application/json");
-  res.send(swaggerSpec);
+  res.json(swaggerSpec);
+});
+
+app.get(["/api-docs", "/api-docs/"], (req, res) => {
+  const apiBaseUrl = process.env.API_BASE_URL;
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>SabiGuy API</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css">
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"></script>
+<script>
+  SwaggerUIBundle({
+    url: "${apiBaseUrl}/api-docs/swagger.json",
+    dom_id: '#swagger-ui',
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+    layout: "StandaloneLayout"
+  })
+</script>
+</body>
+</html>`);
 });
 
 notificationService.setSocketIO(io);
 
+// Make Socket.io instance available to routes (for broadcasting from cron)
+app.set("io", io);
+
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth.token;
-
     if (!token) {
       return next(new Error("Authentication error: Token required"));
     }
-
     const jwt = require("jsonwebtoken");
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     socket.userId = decoded.id;
     socket.userType = decoded.role;
     next();
@@ -98,7 +176,6 @@ io.on("connection", (socket) => {
   console.log(` Client connected: ${socket.id}`);
   console.log(`   User: ${socket.userId} (${socket.userType})`);
 
-  // Join user-specific room
   const room = `${socket.userType}:${socket.userId}`;
   socket.join(room);
   console.log(`   Joined room: ${room}`);
@@ -112,33 +189,27 @@ io.on("connection", (socket) => {
   socket.on("update_location", async (data) => {
     try {
       if (socket.userType !== "provider") return;
-
       const { latitude, longitude } = data;
-
-      // Update provider location in database
       const Provider = require("./models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
         "currentLocation.coordinates": [longitude, latitude],
         lastLocationUpdate: new Date(),
       });
-
       console.log(`📍 Provider ${socket.userId} location updated`);
     } catch (error) {
       console.error("Update location error:", error.message);
     }
   });
+
   socket.on("set_availability", async (data) => {
     try {
       if (socket.userType !== "provider") return;
-
       const { isAvailable } = data;
-
       const Provider = require("./models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
         "availability.isAvailable": isAvailable,
         isOnline: true,
       });
-
       socket.emit("availability_updated", { isAvailable });
       console.log(`🟢 Provider ${socket.userId} availability: ${isAvailable}`);
     } catch (error) {
@@ -146,39 +217,27 @@ io.on("connection", (socket) => {
     }
   });
 
-  /**
-   * Join a booking chat room
-   * Automatically validates if user can access based on booking status
-   */
   socket.on("join_chat", async (data) => {
     try {
       const { bookingId } = data;
       const chatService = require("./src/services/chat.service");
-
-      // Check if user can access this chat
       const access = await chatService.canAccessChat(bookingId, socket.userId);
-
       if (!access.allowed) {
         socket.emit("error", {
           message: "Cannot access this chat - booking not in progress",
         });
         return;
       }
-
       const chatRoom = `booking:${bookingId}`;
       socket.join(chatRoom);
-
       console.log(
         `💬 ${socket.userType} ${socket.userId} joined chat: ${chatRoom}`,
       );
-
-      // Notify the other party
       socket.to(chatRoom).emit("user_joined_chat", {
         userId: socket.userId,
         userType: socket.userType,
         bookingId,
       });
-
       socket.emit("chat_joined", {
         bookingId,
         room: chatRoom,
@@ -193,20 +252,15 @@ io.on("connection", (socket) => {
   socket.on("send_message", async (data) => {
     try {
       const { bookingId, message, messageType, attachments } = data;
-
       const chatService = require("./src/services/chat.service");
       const userModel = socket.userType === "provider" ? "Provider" : "Buyer";
-
       const result = await chatService.sendMessage(
         bookingId,
         socket.userId,
         userModel,
         { message, messageType, attachments },
       );
-
       const chatRoom = `booking:${bookingId}`;
-
-      // Broadcast to all in the room
       io.to(chatRoom).emit("new_message", {
         bookingId,
         message: result.message,
@@ -215,19 +269,16 @@ io.on("connection", (socket) => {
           type: socket.userType,
         },
       });
-
       console.log(`📨 Message sent in ${chatRoom}`);
     } catch (error) {
       console.error("Send message error:", error);
       socket.emit("error", { message: error.message });
     }
   });
-  // Handle typing indicators (for chat feature)
+
   socket.on("typing", (data) => {
     const { bookingId, isTyping } = data;
     const chatRoom = `booking:${bookingId}`;
-
-    // Notify the other party
     socket.to(chatRoom).emit("user_typing", {
       userId: socket.userId,
       userType: socket.userType,
@@ -238,10 +289,8 @@ io.on("connection", (socket) => {
   socket.on("mark_read", async (data) => {
     try {
       const { bookingId } = data;
-
       const chatService = require("./src/services/chat.service");
       await chatService.markAsRead(bookingId, socket.userId);
-
       const chatRoom = `booking:${bookingId}`;
       socket.to(chatRoom).emit("messages_read", {
         userId: socket.userId,
@@ -265,23 +314,18 @@ io.on("connection", (socket) => {
   socket.on("leave_chat", (data) => {
     const { bookingId } = data;
     const chatRoom = `booking:${bookingId}`;
-
     socket.leave(chatRoom);
     console.log(
       `👋 ${socket.userType} ${socket.userId} left chat: ${chatRoom}`,
     );
-
     socket.to(chatRoom).emit("user_left_chat", {
       userId: socket.userId,
     });
   });
 
-  // Handle disconnect
   socket.on("disconnect", async () => {
     console.log(`❌ Client disconnected: ${socket.id}`);
     console.log(`   User: ${socket.userId}`);
-
-    // Update provider online status
     if (socket.userType === "provider") {
       try {
         const Provider = require("./models/ServiceProvider");
@@ -296,7 +340,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle errors
   socket.on("error", (error) => {
     console.error("Socket error:", error);
   });

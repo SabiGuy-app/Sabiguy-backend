@@ -6,13 +6,54 @@ const Buyer = require("../../models/ServiceUser.js");
 const notificationService = require("../services/notification.service.js");
 const Transaction = require("../../models/Transaction.js");
 const WalletService = require("../services/wallet.service.js");
-const pricingService = require("../services/pricing.service.js");
 
 class paymentService {
   constructor() {
     this.paystackBaseURL = "https://api.paystack.co";
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
-    this.platformFeePercentage = 10;
+  }
+
+  resolvePaymentBreakdown(booking) {
+    const pricingBreakdown = booking?.pricingBreakdown ?? {};
+    const subtotal = Number(
+      pricingBreakdown.subtotal ??
+        booking?.agreedPrice ??
+        booking?.calculatedPrice ??
+        booking?.budget ??
+        0,
+    );
+    const userPlatformFee = Number(
+      pricingBreakdown.platformFee ?? booking?.serviceFee ?? 0,
+    );
+    const providerPlatformFee = Number(
+      pricingBreakdown.driverCommission ?? booking?.providerCommission ?? 0,
+    );
+    const providerReceives = Number(
+      pricingBreakdown.driverReceives ??
+        booking?.driverReceives ??
+        booking?.providerReceives ??
+        Math.max(subtotal - providerPlatformFee, 0),
+    );
+    const totalPlatformFee = Number(
+      pricingBreakdown.platformEarns ??
+        booking?.platformEarns ??
+        userPlatformFee + providerPlatformFee,
+    );
+    const riderPays = Number(
+      pricingBreakdown.riderPaysFinal ??
+        booking?.totalAmount ??
+        booking?.calculatedPrice ??
+        subtotal + userPlatformFee,
+    );
+
+    return {
+      agreedPrice: subtotal,
+      serviceFee: userPlatformFee,
+      providerCommission: providerPlatformFee,
+      providerReceives,
+      platformEarns: totalPlatformFee,
+      totalAmount: riderPays,
+    };
   }
 
   async initializePayment(bookingId, userId, pickupNote = null) {
@@ -30,19 +71,30 @@ class paymentService {
         throw new Error("Unauthorized: This is not your booking");
       }
 
-       if (booking.status === "paid_escrow") {
+      if (booking.status === "paid_escrow") {
         throw new Error("Booking already paid for");
       }
 
-      if (booking.status !== "provider_selected") {
+      if (
+        booking.status !== "provider_selected" &&
+        booking.status !== "provider_accepted" &&
+        booking.status !== "payment_pending"
+
+      ) {
         throw new Error("Booking must have a selected provider before payment");
       }
 
+      const paymentBreakdown = this.resolvePaymentBreakdown(booking);
+      const agreedPrice = paymentBreakdown.agreedPrice;
+      const totalAmount = paymentBreakdown.totalAmount;
+      const serviceFee = paymentBreakdown.serviceFee;
+      const providerCommission = paymentBreakdown.providerCommission;
+      const providerReceives = paymentBreakdown.providerReceives;
+      const platformEarns = paymentBreakdown.platformEarns;
 
-      const agreedPrice = booking.agreedPrice || booking.budget;
-      const breakdown = pricingService.calculatePricingBreakdown(agreedPrice);
-      const serviceFee = breakdown.userPays - agreedPrice;
-      const totalAmount = breakdown.userPays;
+      if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+        throw new Error("Missing final payment amount on booking");
+      }
 
       if (pickupNote) {
         booking.pickupNote = String(pickupNote).trim();
@@ -51,8 +103,9 @@ class paymentService {
       // Update booking with payment details
       booking.agreedPrice = agreedPrice;
       booking.serviceFee = serviceFee;
-      booking.providerCommission = breakdown.platformEarns - serviceFee;
-      booking.platformEarns = breakdown.platformEarns;
+      booking.providerCommission = providerCommission;
+      booking.providerReceives = providerReceives;
+      booking.platformEarns = platformEarns;
       booking.totalAmount = totalAmount;
 
       const paystackResponse = await axios.post(
@@ -67,13 +120,14 @@ class paymentService {
             bookingId: booking._id.toString(),
             buyerId: userId,
             providerId: booking.providerId?._id.toString(),
-            serviceType: booking.serviceType,
-            pickupNote: booking.pickupNote || null,
-            agreedPrice,
-            serviceFee,
-            totalAmount,
-            providerCommission: breakdown.platformEarns - serviceFee,
-            platformEarns: breakdown.platformEarns,
+          serviceType: booking.serviceType,
+          pickupNote: booking.pickupNote || null,
+          agreedPrice,
+          serviceFee,
+          totalAmount,
+          providerCommission,
+          providerReceives,
+          platformEarns,
             custom_fields: [
               {
                 display_name: "Booking ID",
@@ -109,7 +163,8 @@ class paymentService {
       booking.payment = {
         paystackRef: paystackResponse.data.data.reference,
         escrowStatus: "pending",
-        escrowAmount: agreedPrice,
+        escrowAmount: totalAmount,
+        providerReceives,
       };
       booking.status = "payment_pending";
       await booking.save();
@@ -128,12 +183,23 @@ class paymentService {
         amount: totalAmount,
         breakdown: {
           agreedPrice,
+          subtotal: agreedPrice,
+          grossEarnings: agreedPrice,
+          riderPays: totalAmount,
           serviceFee,
+          userPlatformFee: serviceFee,
+          providerCommission,
+          providerPlatformFee: providerCommission,
+          providerReceives,
+          driverReceives: booking.driverReceives ?? null,
+          platformEarns,
+          totalPlatformFee: platformEarns,
           totalAmount,
         },
         metadata: {
-          platformEarns: breakdown.platformEarns,
-          providerCommission: breakdown.platformEarns - serviceFee,
+          platformEarns,
+          providerCommission,
+          providerReceives,
         },
         bookingId: booking._id,
         gateway: {
@@ -151,6 +217,9 @@ class paymentService {
         totalAmount,
         agreedPrice,
         serviceFee,
+        providerCommission,
+        providerReceives,
+        platformEarns,
       };
     } catch (error) {
       console.error("Initialize payment error:", error);
@@ -239,23 +308,24 @@ class paymentService {
         notificationService,
       );
 
-      // Notify provider that payment is secured
-      if (booking.providerId) {
-        await notificationService.notifyProvider(booking.providerId._id, {
-          type: "payment_received",
-          title: "💰 Payment Secured",
-          message: `Payment for your ${booking.serviceType} booking is now in escrow. Complete the service to receive payment.`,
-          bookingId: booking._id,
-        });
-      }
+      // Notify provider that payment is Your payment is secured. Agreed price: NGN4,300. Service fee: NGN0. Total amount: NGN4,300.
 
-      // Notify user
-      await notificationService.notifyUser(booking.userId._id, {
-        type: "payment_received",
-        title: "✅ Payment Successful",
-        message: `Your payment is secured. Provider can now start the service.`,
-        bookingId: booking._id,
-      });
+      // if (booking.providerId) {
+      //   await notificationService.notifyProvider(booking.providerId._id, {
+      //     type: "payment_received",
+      //     title: "💰 Payment Secured",
+      //     message: `Payment for your ${booking.serviceType} booking is now in escrow. Complete the service to receive payment.`,
+      //     bookingId: booking._id,
+      //   });
+      // }
+
+      // // Notify user
+      // await notificationService.notifyUser(booking.userId._id, {
+      //   type: "payment_received",
+      //   title: "✅ Payment Successful",
+      //   message: `Your payment is secured. Provider can now start the service.`,
+      //   bookingId: booking._id,
+      // });
 
       return {
         success: true,
@@ -280,10 +350,13 @@ class paymentService {
       }
 
       if (booking.userId._id.toString() !== userId.toString()) {
-        throw new Error("Unauthorized");
+        throw new Error("Unauthorized: Only the buyer can release escrow");
       }
       if (booking.status === "funds_released") {
-        throw new Error("Payment already released from escrow");
+        return {
+          success: true,
+          message: "Payment already released from escrow",
+        };
       }
       if (booking.status !== "user_accepted_completion") {
         throw new Error(
@@ -292,7 +365,10 @@ class paymentService {
       }
 
       if (booking.payment.escrowStatus !== "held") {
-        throw new Error("No funds in escrow for this booking");
+        return {
+          success: true,
+          message: "No funds in escrow or already released",
+        };
       }
 
       const provider = await Provider.findById(booking.providerId._id);
@@ -300,13 +376,15 @@ class paymentService {
         throw new Error("Provider record missing");
       }
 
-      const commission = pricingService.calculateProviderCommission(
-        booking.payment.escrowAmount,
-      );
-      const providerPayout = Math.max(
-        0,
-        booking.payment.escrowAmount - commission,
-      );
+      const providerPayout =
+        booking.driverReceives ??
+        booking.payment?.providerReceives ??
+        booking.providerReceives;
+      const commission = booking.providerCommission;
+
+      if (!Number.isFinite(providerPayout) || !Number.isFinite(commission)) {
+        throw new Error("Missing pricing breakdown on booking");
+      }
 
       if (commission > 0) {
         await WalletService.recordPlatformFee(
@@ -316,12 +394,24 @@ class paymentService {
         );
       }
 
-      const escrowTransaction = await WalletService.releaseEscrow(
-        booking.providerId._id,
-        providerPayout,
-        booking._id,
-        notificationService,
-      );
+      // Check if escrow release transaction already exists to prevent duplicates
+      const existingTx = await Transaction.findOne({
+        bookingId: booking._id,
+        type: "escrow_release",
+        status: "completed",
+      });
+
+      let escrowTransaction = existingTx;
+      if (!existingTx) {
+        // Move funds from pending to available in provider's wallet
+        escrowTransaction = await WalletService.releaseEscrow(
+          booking.providerId._id,
+          providerPayout,
+          booking._id,
+          notificationService,
+        );
+        console.log("✅ Escrow release transaction created and wallet updated");
+      }
       console.log("✅ Escrow released to provider wallet");
 
       // Update booking
@@ -332,12 +422,14 @@ class paymentService {
       console.log("✅ Booking updated to funds_released");
 
       // Notify provider
-      await notificationService.notifyProvider(booking.providerId._id, {
-        type: "funds_released",
-        title: "💰 Payment Released",
-        message: `₦${providerPayout.toLocaleString()} has been added to your wallet for booking #${booking._id}`,
-        bookingId: booking._id,
-      });
+      if (booking.providerId) {
+        await notificationService.notifyProvider(booking.providerId._id, {
+          type: "funds_released",
+          title: "💰 Payment Released",
+          message: `₦${providerPayout.toLocaleString()} has been added to your wallet for booking #${booking._id}`,
+          bookingId: booking._id,
+        });
+      }
 
       return {
         success: true,

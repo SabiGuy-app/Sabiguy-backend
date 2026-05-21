@@ -1,10 +1,10 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const BookingController = require ('../controllers/bookings')
-const authMiddleware = require ('../middleware/authMiddleware');
-const onlyRole = require ('../middleware/roleMiddleware.js')
+const BookingController = require("../controllers/bookings");
+const authMiddleware = require("../middleware/authMiddleware");
+const onlyRole = require("../middleware/roleMiddleware.js");
 
-/** 
+/**
  *  @swagger
  * /api/v1/bookings:
  *   post:
@@ -121,7 +121,12 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBooking);
+router.post(
+  "/",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.createBooking,
+);
 
 /**
  * @swagger
@@ -137,7 +142,7 @@ router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBook
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending_providers, awaiting_provider_acceptance, provider_selected, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
+ *           enum: [pending_providers, awaiting_provider_acceptance, provider_selected, provider_accepted, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
  *         description: Filter by booking status
  *         example: pending_providers
  *       - in: query
@@ -289,7 +294,7 @@ router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBook
  *                             example: https://example.com/avatar.jpg
  *                       status:
  *                         type: string
- *                         enum: [pending_providers, awaiting_provider_acceptance, provider_selected, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
+ *                         enum: [pending_providers, awaiting_provider_acceptance, provider_selected, provider_accepted, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
  *                         example: completed
  *                       totalAmount:
  *                         type: number
@@ -388,8 +393,7 @@ router.post('/', authMiddleware, onlyRole('buyer'), BookingController.createBook
  *                   type: string
  *                   example: Database connection failed
  */
-router.get('/', authMiddleware, BookingController.getAllBookings);
-
+router.get("/", authMiddleware, BookingController.getAllBookings);
 
 /**
  * @swagger
@@ -442,7 +446,112 @@ router.get('/', authMiddleware, BookingController.getAllBookings);
  *       500:
  *         description: Server error
  */
-router.get('/user', authMiddleware, onlyRole('buyer'), BookingController.getUserBookings);
+router.get(
+  "/user",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.getUserBookings,
+);
+
+/**
+ * @swagger
+ * /api/v1/bookings/user/{userId}:
+ *   get:
+ *     summary: Get bookings by user ID
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The MongoDB user ID
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional booking status filter
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Bookings retrieved successfully
+ *       400:
+ *         description: Invalid user ID format
+ *       403:
+ *         description: Admin access only
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/user/:userId",
+  authMiddleware,
+  onlyRole("admin"),
+  BookingController.getBookingsByUserId,
+);
+
+/**
+ * @swagger
+ * /api/v1/bookings/provider/{providerId}:
+ *   get:
+ *     summary: Get bookings by provider ID
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: providerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The MongoDB provider ID
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional booking status filter
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Bookings retrieved successfully
+ *       400:
+ *         description: Invalid provider ID format
+ *       403:
+ *         description: Admin access only
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/provider/:providerId",
+  authMiddleware,
+  onlyRole("admin"),
+  BookingController.getBookingsByProviderId,
+);
 
 /**
  * @swagger
@@ -480,8 +589,7 @@ router.get('/user', authMiddleware, onlyRole('buyer'), BookingController.getUser
  *       500:
  *         description: Server error
  */
-router.get('/:id', authMiddleware, BookingController.getBookingById);
-
+router.get("/:id", authMiddleware, BookingController.getBookingById);
 
 /**
  * @swagger
@@ -521,7 +629,12 @@ router.get('/:id', authMiddleware, BookingController.getBookingById);
  *       500:
  *         description: Server error
  */
-router.put('/:id/select-provider', authMiddleware, onlyRole('buyer'), BookingController.selectProvider);
+router.put(
+  "/:id/select-provider",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.selectProvider,
+);
 
 /**
  * @swagger
@@ -559,8 +672,46 @@ router.put('/:id/select-provider', authMiddleware, onlyRole('buyer'), BookingCon
  *       500:
  *         description: Server error
  */
-router.patch('/:id/cancel', authMiddleware, BookingController.cancelBooking);
+router.patch("/:id/cancel", authMiddleware, BookingController.cancelBooking);
 
+/**
+ * @swagger
+ * /api/v1/bookings/{id}:
+ *   delete:
+ *     summary: Delete a booking and related records
+ *     description: Permanently delete a booking owned by the authenticated buyer and remove related chat and booking notifications.
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     responses:
+ *       200:
+ *         description: Booking deleted successfully
+ *       400:
+ *         description: Invalid booking ID
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Booking not found
+ *       409:
+ *         description: Booking cannot be deleted in its current state
+ *       500:
+ *         description: Server error
+ */
+router.delete(
+  "/:id",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.deleteBooking,
+);
 
 /**
  * @swagger
@@ -629,7 +780,81 @@ router.patch('/:id/cancel', authMiddleware, BookingController.cancelBooking);
  *         description: Server error
  */
 
-router.patch('/:id/accept-completion', authMiddleware, onlyRole('buyer'), BookingController.acceptJobCompleted);
+router.patch(
+  "/:id/accept-completion",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.acceptJobCompleted,
+);
+
+/**
+ * @swagger
+ * /api/v1/bookings/{id}/dispute:
+ *   patch:
+ *     summary: Raise a dispute for a completed booking
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Reason for the dispute
+ *                 example: "Service was not completed as agreed"
+ *     responses:
+ *       200:
+ *         description: Dispute raised successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Dispute raised successfully. Our team will review and contact both parties."
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bookingId:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       example: "disputed"
+ *                     disputeRaisedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     reason:
+ *                       type: string
+ *       400:
+ *         description: Invalid input or booking not eligible for dispute
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
+router.patch(
+  "/:id/dispute",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.disputeJobCompleted,
+);
 
 /**
  * @swagger
@@ -680,8 +905,11 @@ router.patch('/:id/accept-completion', authMiddleware, onlyRole('buyer'), Bookin
  *       500:
  *         description: Server error
  */
-
-router.put('/allow-system', authMiddleware, onlyRole('buyer'), BookingController.allowSystem);
-
+router.put(
+  "/allow-system",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.allowSystem,
+);
 
 module.exports = router;

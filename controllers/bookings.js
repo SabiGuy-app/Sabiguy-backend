@@ -1,6 +1,8 @@
 const Booking = require("../models/Bookings");
 const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
+const Chat = require("../models/Chat");
+const Notification = require("../models/Notification");
 const mongoose = require("mongoose");
 const geolocationService = require("../src/services/geolocation.service");
 const notificationService = require("../src/services/notification.service");
@@ -8,17 +10,197 @@ const pricingService = require("../src/services/pricing.service");
 const paymentService = require("../src/services/payment.service");
 const WalletService = require("../src/services/wallet.service");
 
+const PROVIDER_RADIUS = {
+  Bike: 4, // km -- ~10-15 mins Lagos traffic
+  Car: 9, // km -- ~15-20 mins Lagos traffic
+  default: 7,
+};
+const MAX_PROVIDERS_RETURNED = 6;
+const STALE_LOCATION_MINUTES = 10;
+const ELIGIBLE_ACTIVE_STATUSES = [
+  "completed",
+  "enroute_to_dropoff",
+  "funds_released",
+  "cancelled",
+  "payment_pending",
+  "disputed"
+]; // Bookings that count towards provider activity
+const DELETABLE_BOOKING_STATUSES = [
+  "pending_providers",
+  "awaiting_provider_acceptance",
+  "provider_selected",
+  "payment_pending",
+  "cancelled",
+];
+
 class BookingController {
   constructor() {
     this.createBooking = this.createBooking.bind(this);
     this.findNearbyProviders = this.findNearbyProviders.bind(this);
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
+    this.getAllBookings = this.getAllBookings.bind(this);
+    this.getUserBookings = this.getUserBookings.bind(this);
+    this.getBookingsByUserId = this.getBookingsByUserId.bind(this);
+    this.getBookingsByProviderId = this.getBookingsByProviderId.bind(this);
+    this.getBookingById = this.getBookingById.bind(this);
     this.notifyProvidersForFastestFinger =
-    this.notifyProvidersForFastestFinger.bind(this);
+      this.notifyProvidersForFastestFinger.bind(this);
     this.calculateDistance = this.calculateDistance.bind(this);
     this.mockGeocode = this.mockGeocode.bind(this);
     this.geocodeWithFallback = this.geocodeWithFallback.bind(this);
     this.getDirectionsWithFallback = this.getDirectionsWithFallback.bind(this);
+  }
+
+  formatBookingPricing(booking) {
+    if (!booking) return null;
+
+    const breakdown = booking.pricingBreakdown ?? null;
+    const subtotal =
+      breakdown?.subtotal ??
+      booking.agreedPrice ??
+      booking.totalAmount ??
+      booking.budget ??
+      null;
+    const userPlatformFee =
+      breakdown?.platformFee ?? booking.serviceFee ?? null;
+    const providerPlatformFee =
+      breakdown?.driverCommission ?? booking.providerCommission ?? null;
+    const totalPlatformFee =
+      breakdown?.platformEarns ?? booking.platformEarns ?? null;
+    const providerNet =
+      breakdown?.driverReceives ??
+      booking.driverReceives ??
+      booking.providerReceives ??
+      null;
+    const riderPays =
+      breakdown?.riderPaysFinal ??
+      booking.calculatedPrice ??
+      booking.totalAmount ??
+      booking.agreedPrice ??
+      booking.budget ??
+      null;
+
+    const directPricing = {
+      riderPays,
+      subtotal,
+      grossEarnings: subtotal,
+      userPlatformFee,
+      providerPlatformFee,
+      totalPlatformFee,
+      providerReceives: providerNet,
+      driverReceives: providerNet,
+      paymentBreakdown: {
+        subtotal,
+        grossEarnings: subtotal,
+        riderPays,
+        userPlatformFee,
+        providerPlatformFee,
+        totalPlatformFee,
+        providerReceives: providerNet,
+      },
+      breakdown,
+      meta: booking.pricingMeta ?? null,
+    };
+
+    const hasDirectPricing =
+      directPricing.riderPays !== null ||
+      directPricing.driverReceives !== null ||
+      directPricing.platformEarns !== null ||
+      directPricing.breakdown !== null ||
+      directPricing.meta !== null;
+
+    if (hasDirectPricing) {
+      return directPricing;
+    }
+
+    const providerPricingOptions = Array.isArray(booking.providerPricingOptions)
+      ? booking.providerPricingOptions
+      : [];
+
+    if (providerPricingOptions.length) {
+      const firstEstimate = providerPricingOptions[0] || null;
+
+      return {
+        riderPays: firstEstimate?.riderPays ?? null,
+        providerReceives: firstEstimate?.providerReceives ?? null,
+        paymentBreakdown: {
+          subtotal: firstEstimate?.subtotal ?? null,
+          grossEarnings: firstEstimate?.grossEarnings ?? null,
+          riderPays: firstEstimate?.riderPays ?? null,
+          userPlatformFee: firstEstimate?.userPlatformFee ?? null,
+          providerPlatformFee: firstEstimate?.providerPlatformFee ?? null,
+          totalPlatformFee: firstEstimate?.totalPlatformFee ?? null,
+          providerReceives: firstEstimate?.providerReceives ?? null,
+        },
+        breakdown: firstEstimate?.breakdown ?? null,
+        meta: firstEstimate?.meta ?? null,
+        suggestedProviderPricing: providerPricingOptions,
+      };
+    }
+
+    const providerDistances = Array.isArray(booking.providerDistances)
+      ? booking.providerDistances
+      : [];
+    const isTransportBooking =
+      this.isTransportLogistics(booking.serviceType, booking.subCategory) &&
+      booking.distance?.value !== undefined &&
+      booking.estimatedDuration?.value !== undefined;
+
+    if (providerDistances.length && isTransportBooking) {
+      const isBike =
+        String(booking.modeOfDelivery || "").toLowerCase() === "bike";
+      const suggestedProviderPricing = providerDistances.map((provider) => {
+        const totalDistanceKm =
+          Number(booking.distance?.value || 0) +
+          Number(provider.distanceFromPickup || 0);
+        const totalDurationMinutes =
+          Number(booking.estimatedDuration?.value || 0) +
+          Number(provider.providerETAMinutes || 0);
+
+        const pricing = pricingService.calculateTransportPrice(
+          totalDistanceKm,
+          booking.subCategory,
+          booking.serviceType,
+          totalDurationMinutes,
+          provider.vehicleProductionYear,
+          isBike,
+        );
+
+        return {
+          providerId: provider.providerId,
+          riderPays: pricing.calculatedPrice,
+          providerReceives:
+            pricing.breakdown?.driverReceives ?? pricing.driverReceives ?? null,
+          paymentBreakdown: {
+            subtotal: pricing.breakdown?.subtotal ?? null,
+            grossEarnings: pricing.breakdown?.subtotal ?? null,
+            riderPays: pricing.calculatedPrice,
+            userPlatformFee: pricing.breakdown?.platformFee ?? null,
+            providerPlatformFee: pricing.breakdown?.driverCommission ?? null,
+            totalPlatformFee: pricing.breakdown?.platformEarns ?? null,
+            providerReceives:
+              pricing.breakdown?.driverReceives ??
+              pricing.driverReceives ??
+              null,
+          },
+          breakdown: pricing.breakdown,
+          meta: pricing.meta,
+        };
+      });
+
+      const firstEstimate = suggestedProviderPricing[0] || null;
+
+      return {
+        riderPays: firstEstimate?.riderPays ?? null,
+        providerReceives: firstEstimate?.providerReceives ?? null,
+        paymentBreakdown: firstEstimate?.paymentBreakdown ?? null,
+        breakdown: firstEstimate?.breakdown ?? null,
+        meta: firstEstimate?.meta ?? null,
+        suggestedProviderPricing,
+      };
+    }
+
+    return directPricing;
   }
 
   async createBooking(req, res) {
@@ -51,11 +233,18 @@ class BookingController {
         if (normalized.includes("bike")) return "Bike";
         return String(value).trim();
       };
+      const formatPricing = (pricing) => ({
+        riderPays: pricing.calculatedPrice,
+        driverReceives: pricing.driverReceives,
+        platformEarns: pricing.platformEarns,
+        breakdown: pricing.breakdown,
+        meta: pricing.meta,
+      });
       const modeOfDelivery = normalizeModeOfDelivery(rawModeOfDelivery);
 
       /* -----------------------------
-         1️⃣ Validation
-      ------------------------------*/
+       1️⃣ Validation
+    ------------------------------*/
       const isTransport = this.isTransportLogistics(serviceType, subCategory);
 
       if (!serviceType || !scheduleType) {
@@ -88,7 +277,6 @@ class BookingController {
         });
       }
 
-      // Validate that pickup and dropoff are different for transport
       if (isTransport && pickupAddress === dropoffAddress) {
         return res.status(400).json({
           success: false,
@@ -97,8 +285,8 @@ class BookingController {
       }
 
       /* -----------------------------
-         2️⃣ Geocode addresses with fallback
-      ------------------------------*/
+       2️⃣ Geocode + build bookingData
+    ------------------------------*/
       let bookingData = {
         userId,
         serviceType,
@@ -117,9 +305,10 @@ class BookingController {
 
       let searchCoordinates;
       let transportEstimates = null;
+      let rideDistanceKm = 0;
+      let rideDurationMinutes = 0;
 
       if (isTransport) {
-        // Geocode both pickup and dropoff with fallback
         const [pickupGeo, dropoffGeo] = await Promise.all([
           this.geocodeWithFallback(pickupAddress),
           this.geocodeWithFallback(dropoffAddress),
@@ -141,20 +330,21 @@ class BookingController {
           },
         };
 
-        // Get directions with fallback
         const directions = await this.getDirectionsWithFallback(
           [pickupGeo.longitude, pickupGeo.latitude],
           [dropoffGeo.longitude, dropoffGeo.latitude],
         );
 
+        // Assign to scoped variables — used throughout the rest of the function
+        rideDistanceKm = parseFloat(directions.distance.value);
+        rideDurationMinutes =
+          Number(directions?.duration?.value) || Math.ceil(rideDistanceKm * 2);
+
         bookingData.distance = {
-          value: parseFloat(directions.distance.value),
+          value: rideDistanceKm,
           unit: "km",
         };
 
-        const durationMinutes =
-          Number(directions?.duration?.value) ||
-          Math.ceil(parseFloat(directions.distance.value) * 2);
         const etaBaseTime = scheduleDate
           ? new Date(scheduleDate)
           : startDate
@@ -164,35 +354,25 @@ class BookingController {
 
         transportEstimates = {
           estimatedDuration: {
-            value: durationMinutes,
+            value: rideDurationMinutes,
             unit: directions?.duration?.unit || "minutes",
             isEstimate: Boolean(directions?.isEstimate),
           },
           estimatedArrivalAt: hasValidEtaBaseTime
-            ? new Date(etaBaseTime.getTime() + durationMinutes * 60 * 1000)
+            ? new Date(etaBaseTime.getTime() + rideDurationMinutes * 60 * 1000)
             : null,
         };
+
         bookingData.estimatedDuration = transportEstimates.estimatedDuration;
         bookingData.estimatedArrivalAt = transportEstimates.estimatedArrivalAt;
 
         console.log("📦 Transport Booking Distance:", bookingData.distance);
-
-        // Calculate price based on distance
-        const calculatedPrice = pricingService.calculateTransportPrice(
-          parseFloat(directions.distance.value),
-          subCategory,
-          serviceType,
-        );
-
-        bookingData.calculatedPrice = calculatedPrice;
-        bookingData.agreedPrice = calculatedPrice;
 
         searchCoordinates = {
           latitude: pickupGeo.latitude,
           longitude: pickupGeo.longitude,
         };
       } else {
-        // Regular service - single location with fallback
         const geo = await this.geocodeWithFallback(address);
 
         bookingData.location = {
@@ -204,6 +384,7 @@ class BookingController {
         };
 
         bookingData.agreedPrice = budget;
+        bookingData.totalAmount = budget;
 
         searchCoordinates = {
           latitude: geo.latitude,
@@ -212,20 +393,20 @@ class BookingController {
       }
 
       /* -----------------------------
-         3️⃣ Set initial status
-      ------------------------------*/
+       3️⃣ Set initial status
+    ------------------------------*/
       bookingData.status = isTransport
         ? "awaiting_provider_acceptance"
         : "pending_providers";
 
       /* -----------------------------
-         4️⃣ Create booking
-      ------------------------------*/
+       4️⃣ Create booking
+    ------------------------------*/
       const booking = await Booking.create(bookingData);
 
       /* -----------------------------
-         4️⃣b Check user allowSystem flag (for transport only)
-      ------------------------------*/
+       4️⃣b Check user allowSystem flag
+    ------------------------------*/
       let userAllowSystem = false;
       if (isTransport) {
         const user = await Buyer.findById(userId).select("allowSystem").lean();
@@ -234,14 +415,13 @@ class BookingController {
       }
 
       /* -----------------------------
-         5️⃣ Find nearby providers
-      ------------------------------*/
+       5️⃣ Find nearby providers
+    ------------------------------*/
       const nearbyProviders = await this.findNearbyProviders(
         searchCoordinates,
         serviceType,
         subCategory,
-        10, // 10km radius
-        isTransport ? modeOfDelivery : null, // Pass modeOfDelivery for transport
+        isTransport ? modeOfDelivery : null,
       );
 
       if (!nearbyProviders.length) {
@@ -264,36 +444,126 @@ class BookingController {
       }
 
       /* -----------------------------
-         6️⃣ Transport/Logistics Flow
-      ------------------------------*/
+       5️⃣b Enrich providers with per-provider pricing + ETA
+    ------------------------------*/
+      const enrichedProviders = nearbyProviders.map((p) => {
+        const isBike = p.services?.some((j) => j.title === "motorbike_rider");
+
+        const totalDistanceKm = rideDistanceKm + p.distanceFromPickup;
+        const totalDurationMinutes = rideDurationMinutes + p.providerETA.value;
+
+        const pricing = pricingService.calculateTransportPrice(
+          totalDistanceKm,
+          subCategory,
+          serviceType,
+          totalDurationMinutes,
+          p.vehicleProductionYear,
+          isBike,
+        );
+
+        return {
+          id: p.id,
+          fullName: p.fullName,
+          email: p.email,
+          profilePicture: p.profilePicture,
+          rating: p.rating,
+          completedJobs: p.completedJobs,
+          startingPrice: p.startingPrice,
+          services: p.services,
+          distanceFromPickup: p.distanceFromPickup,
+          locationFresh: p.locationFresh,
+          providerETA: p.providerETA,
+          vehicleProductionYear: p.vehicleProductionYear,
+          rideDuration: {
+            value: rideDurationMinutes,
+            unit: "minutes",
+          },
+          bookingDuration: {
+            value: totalDurationMinutes,
+            unit: "minutes",
+            breakdown: {
+              providerToPickup: p.providerETA.value,
+              pickupToDropoff: rideDurationMinutes,
+            },
+          },
+          estimatedCompletionAt: new Date(
+            Date.now() + totalDurationMinutes * 60 * 1000,
+          ),
+          pricing: {
+            riderPays: pricing.calculatedPrice,
+            driverReceives: pricing.driverReceives,
+            platformEarns: pricing.platformEarns,
+            breakdown: pricing.breakdown,
+            meta: pricing.meta,
+          },
+        };
+      });
+
+      const providerPricingOptions = enrichedProviders.map((p) => ({
+        providerId: p.id,
+        riderPays: p.pricing.riderPays,
+        driverReceives: p.pricing.driverReceives,
+        platformEarns: p.pricing.platformEarns,
+        breakdown: p.pricing.breakdown,
+        meta: p.pricing.meta,
+      }));
+
+      // Store provider distances for later use in confirmProvider
+      booking.providerDistances = enrichedProviders.map((p) => ({
+        providerId: p.id,
+        distanceFromPickup: p.distanceFromPickup,
+        providerETAMinutes: p.providerETA.value,
+        vehicleProductionYear: p.vehicleProductionYear,
+      }));
+      booking.providerPricingOptions = providerPricingOptions;
+
+      /* -----------------------------
+       6️⃣ Transport flow
+    ------------------------------*/
       if (isTransport) {
-        // Check user preference
         if (userAllowSystem) {
-          // ⚡ Fastest Finger Method: Notify all providers
-          booking.notifiedProviders = nearbyProviders.map((p) => p._id);
+          // ⚡ Fastest finger — single fixed price, notify all providers
+          const pricing = pricingService.calculateTransportPrice(
+            rideDistanceKm,
+            subCategory,
+            serviceType,
+            rideDurationMinutes,
+            null, // no specific provider — uses averaged car category
+            modeOfDelivery === "Bike",
+          );
+
+          booking.calculatedPrice = pricing.calculatedPrice;
+          booking.agreedPrice = pricing.calculatedPrice;
+          booking.totalAmount = pricing.calculatedPrice;
+          booking.driverReceives = pricing.driverReceives;
+          booking.platformEarns = pricing.platformEarns;
+          booking.pricingBreakdown = pricing.breakdown;
+          booking.pricingMeta = pricing.meta;
+          booking.selectedAt = new Date();
+          booking.notifiedProviders = enrichedProviders.map((p) => p.id);
           booking.status = "awaiting_provider_acceptance";
           await booking.save();
 
-          // Notify providers asynchronously
-          this.notifyProvidersForFastestFinger(booking, nearbyProviders);
+          this.notifyProvidersForFastestFinger(booking, enrichedProviders);
 
           return res.status(201).json({
             success: true,
-            message: "Booking created. Providers notified.",
+            message: "Booking created. Looking for a provider near you.",
             data: {
               booking,
-              notifiedProvidersCount: nearbyProviders.length,
+              notifiedProvidersCount: enrichedProviders.length,
               calculatedPrice: booking.calculatedPrice,
+              pricing: formatPricing(pricing),
               distance: booking.distance,
-              estimatedDuration: transportEstimates?.estimatedDuration,
-              estimatedArrivalAt: transportEstimates?.estimatedArrivalAt,
+              estimatedDuration: transportEstimates.estimatedDuration,
+              estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
               flowType: "fastest_finger",
             },
           });
         } else {
-          // User Selection Method: Suggest providers for user to choose
-          booking.suggestedProviders = nearbyProviders.map((p) => p._id);
-          booking.status = "pending_providers"; // Same status as regular services
+          // 👤 User selection — return enriched providers with individual pricing
+          booking.suggestedProviders = enrichedProviders.map((p) => p.id);
+          booking.status = "awaiting_provider_acceptance";
           await booking.save();
 
           return res.status(201).json({
@@ -301,20 +571,11 @@ class BookingController {
             message: "Booking created successfully",
             data: {
               booking,
-              providers: nearbyProviders.map((p) => ({
-                id: p._id,
-                fullName: p.fullName,
-                email: p.email,
-                rating: p.rating,
-                completedJobs: p.completedJobs,
-                distance: p.distance,
-                profilePicture: p.profilePicture,
-                startingPrice: p.startingPrice,
-                services: p.job,
-              })),
+              providers: enrichedProviders,
+              pricing: this.formatBookingPricing(booking),
               distance: booking.distance,
-              estimatedDuration: transportEstimates?.estimatedDuration,
-              estimatedArrivalAt: transportEstimates?.estimatedArrivalAt,
+              estimatedDuration: transportEstimates.estimatedDuration,
+              estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
               flowType: "user_selection",
             },
           });
@@ -322,9 +583,9 @@ class BookingController {
       }
 
       /* -----------------------------
-         7️⃣ Regular Services Flow (User selects provider)
-      ------------------------------*/
-      booking.suggestedProviders = nearbyProviders.map((p) => p._id);
+       7️⃣ Regular services flow
+    ------------------------------*/
+      booking.suggestedProviders = enrichedProviders.map((p) => p.id);
       await booking.save();
 
       return res.status(201).json({
@@ -332,17 +593,7 @@ class BookingController {
         message: "Booking created successfully",
         data: {
           booking,
-          providers: nearbyProviders.map((p) => ({
-            id: p._id,
-            fullName: p.fullName,
-            email: p.email,
-            rating: p.rating,
-            completedJobs: p.completedJobs,
-            distance: p.distance,
-            profilePicture: p.profilePicture,
-            startingPrice: p.startingPrice,
-            services: p.job,
-          })),
+          providers: enrichedProviders,
         },
       });
     } catch (error) {
@@ -419,141 +670,152 @@ class BookingController {
     }
   }
 
-  /* -----------------------------
-     Find Nearby Providers
-  ------------------------------*/
   async findNearbyProviders(
     coordinates,
     serviceType,
     subCategory,
-    radiusInKm = 50,
     modeOfDelivery = null,
   ) {
     try {
-      console.log("🔍 Finding providers with:", {
-        coordinates,
-        serviceType,
-        subCategory,
-        radiusInKm,
-        modeOfDelivery,
-      });
-
-      // Map modeOfDelivery to job title
       const modeOfDeliveryMap = {
         car: "car_driver",
         bike: "motorbike_rider",
-        bicycle: "Bicycle courier",
-        walking: "Running errands",
-        truck: "Truck driver",
+        bicycle: "bicycle_courier",
+        walking: "running_errands",
+        truck: "truck_driver",
       };
 
-      const query = {
-        "availability.isAvailable": true,
-      };
+      const radiusKm = modeOfDelivery
+        ? (PROVIDER_RADIUS[modeOfDelivery] ?? PROVIDER_RADIUS.default)
+        : PROVIDER_RADIUS.default;
 
-      // If modeOfDelivery is provided (transport), filter ONLY by job title
-      if (modeOfDelivery) {
-        const jobTitleToFilter =
-          modeOfDeliveryMap[modeOfDelivery.toLowerCase()];
-        if (jobTitleToFilter) {
-          query.job = {
+      // Stale location cutoff
+      const staleThreshold = new Date(
+        Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
+      );
+
+      const jobQuery = modeOfDelivery
+        ? {
             $elemMatch: {
-              title: jobTitleToFilter,
+              title: modeOfDeliveryMap[modeOfDelivery.toLowerCase()],
             },
-          };
-          console.log(
-            `📦 Transport mode "${modeOfDelivery}" mapped to job title: "${jobTitleToFilter}"`,
-          );
-        }
-      } else {
-        // For regular services, filter by service type and optionally by subCategory
-        query.job = {
-          $elemMatch: {
-            service: serviceType,
-          },
-        };
+          }
+        : subCategory
+          ? { $elemMatch: { service: serviceType, title: subCategory } }
+          : { $elemMatch: { service: serviceType } };
 
-        if (subCategory) {
-          query["job"].$elemMatch.title = subCategory;
-        }
-      }
-
-      let providers;
-
-      // Check if providers have geospatial data
-      const hasGeoData = await Provider.countDocuments({
+      const baseQuery = {
+        "availability.isAvailable": true,
         "currentLocation.coordinates": { $exists: true, $ne: [] },
+        lastLocationUpdate: { $gte: staleThreshold }, // Fresh location only
+        job: jobQuery,
+      };
+
+      // ── Geo query ──────────────────────────────────────────────────────────────
+      let rawProviders = await Provider.aggregate([
+        {
+          $geoNear: {
+            near: {
+              type: "Point",
+              coordinates: [coordinates.longitude, coordinates.latitude],
+            },
+            distanceField: "distanceFromPickup", // meters
+            maxDistance: radiusKm * 1000,
+            spherical: true,
+            query: baseQuery,
+          },
+        },
+        {
+          $project: {
+            fullName: 1,
+            email: 1,
+            profilePicture: 1,
+            job: 1,
+            rating: 1,
+            completedJobs: 1,
+            startingPrice: 1,
+            currentLocation: 1,
+            lastLocationUpdate: 1,
+            distanceFromPickup: 1,
+            vehicleProductionYear: 1,
+          },
+        },
+        { $limit: 30 }, // fetch more, filter down after booking check
+      ]);
+
+      if (!rawProviders.length) return [];
+
+      // ── Filter out providers with disqualifying active bookings ────────────────
+      const providerIds = rawProviders.map((p) => p._id);
+
+      // Find any provider who has an active booking NOT in the eligible set
+      const disqualified = await Booking.distinct("providerId", {
+        providerId: { $in: providerIds },
+        status: { $nin: ELIGIBLE_ACTIVE_STATUSES },
       });
 
-      console.log("📍 Providers with geo data:", hasGeoData);
+      const disqualifiedSet = new Set(disqualified.map(String));
 
-      if (hasGeoData > 0) {
-        // Try $geoNear if providers have location data
-        try {
-          providers = await Provider.aggregate([
-            {
-              $geoNear: {
-                near: {
-                  type: "Point",
-                  coordinates: [coordinates.longitude, coordinates.latitude],
-                },
-                distanceField: "distance",
-                maxDistance: radiusInKm * 1000, // Convert km to meters
-                spherical: true,
-                query: query,
-              },
+      rawProviders = rawProviders.filter(
+        (p) => !disqualifiedSet.has(String(p._id)),
+      );
+
+      // ── Build per-provider ETA + distances ─────────────────────────────────────
+      const providers = rawProviders
+        .map((p) => {
+          const distanceFromPickupKm = parseFloat(
+            (p.distanceFromPickup / 1000).toFixed(2),
+          );
+
+          // ETA: estimate provider travel time to pickup
+          // Bike avg ~15 km/h in Lagos traffic, Car avg ~20 km/h
+          const avgSpeedKmh =
+            modeOfDelivery?.toLowerCase() === "bike" ? 15 : 20;
+          const providerETAMinutes = Math.ceil(
+            (distanceFromPickupKm / avgSpeedKmh) * 60,
+          );
+
+          const isStale =
+            !p.lastLocationUpdate ||
+            new Date(p.lastLocationUpdate) < staleThreshold;
+
+          return {
+            id: p._id,
+            fullName: p.fullName,
+            email: p.email,
+            profilePicture: p.profilePicture,
+            rating: p.rating,
+            completedJobs: p.completedJobs,
+            startingPrice: p.startingPrice,
+            services: p.job,
+            distanceFromPickup: distanceFromPickupKm, // km
+            providerETA: {
+              value: providerETAMinutes,
+              unit: "minutes",
             },
-            {
-              $project: {
-                fullName: 1,
-                email: 1,
-                profilePicture: 1,
-                job: 1,
-                rating: 1,
-                completedJobs: 1,
-                distance: 1,
-              },
-            },
-            { $sort: { "rating.average": -1, completedJobs: -1 } },
-            { $limit: 20 },
-          ]);
+            locationFresh: !isStale,
+            _raw: p, // used internally, stripped before response
+          };
+        })
+        // Sort: fresh location first, then by proximity, then rating as tiebreak
+        .sort((a, b) => {
+          if (a.locationFresh !== b.locationFresh)
+            return a.locationFresh ? -1 : 1;
+          if (a.distanceFromPickup !== b.distanceFromPickup)
+            return a.distanceFromPickup - b.distanceFromPickup;
+          return (b.rating?.average ?? 0) - (a.rating?.average ?? 0);
+        })
+        .slice(0, MAX_PROVIDERS_RETURNED);
 
-          console.log("✅ GeoNear succeeded, found:", providers.length);
-        } catch (geoError) {
-          console.log("⚠️ GeoNear failed:", geoError.message);
-          providers = null; // Force fallback
-        }
-      }
-
-      /* ========== FALLBACK QUERY DISABLED FOR TESTING ==========
-      // Fallback to regular query if geoNear didn't work
-      if (!providers || providers.length === 0) {
-        console.log("🔄 Using fallback query without geolocation...");
-
-        providers = await Provider.find(query)
-          .select("fullName email profilePicture job rating completedJobs")
-          .sort({ "rating.average": -1, completedJobs: -1 })
-          .limit(20)
-          .lean();
-
-        console.log("✅ Regular query found:", providers.length);
-
-        // Add mock distance
-        providers = providers.map((p) => ({
-          ...p,
-          distance: Math.random() * radiusInKm, // Random distance within radius
-        }));
-      }
-      ========== END FALLBACK QUERY DISABLED ========== */
-
-      console.log("🎯 Final providers returned:", providers.length);
+      console.log(
+        `✅ ${providers.length} eligible providers within ${radiusKm}km (${modeOfDelivery ?? serviceType})`,
+      );
       return providers;
     } catch (error) {
-      console.error("❌ Find nearby providers error:", error);
+      console.error("❌ findNearbyProviders error:", error);
       return [];
     }
   }
-
   /* -----------------------------
      Helper Methods
   ------------------------------*/
@@ -632,20 +894,32 @@ class BookingController {
   }
 
   async notifyProvidersForFastestFinger(booking, providers) {
-    providers.forEach((provider) => {
-      notificationService.notifyProvider(provider._id, {
-        type: "new_booking_request",
-        title: "🔔 New Booking Request",
-        message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || "N/A"} km away`,
-        bookingId: booking._id,
-        scheduleDate: booking.scheduleDate,
-        serviceType: booking.serviceType,
-        pickupAddress: booking.pickupLocation?.address,
-        dropoffAddress: booking.dropoffLocation?.address,
-        distance: booking.distance?.value,
-        calculatedPrice: booking.calculatedPrice,
-        urgency: "high",
-      });
+    // Notify all providers in parallel, don't block response
+    Promise.all(
+      providers.map((provider) =>
+        notificationService
+          .notifyProvider(provider.id, {
+            type: "new_booking_request",
+            title: "🔔 New Booking Request",
+            message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || "N/A"} km away`,
+            bookingId: booking._id,
+            scheduleDate: booking.scheduleDate,
+            serviceType: booking.serviceType,
+            pickupAddress: booking.pickupLocation?.address,
+            dropoffAddress: booking.dropoffLocation?.address,
+            distance: booking.distance?.value,
+            calculatedPrice: booking.calculatedPrice,
+            urgency: "high",
+          })
+          .catch((err) => {
+            console.error(
+              `❌ Failed to notify provider ${provider.id}:`,
+              err.message,
+            );
+          }),
+      ),
+    ).catch((err) => {
+      console.error("❌ Error notifying providers:", err.message);
     });
   }
   async acceptJobCompleted(req, res) {
@@ -653,8 +927,13 @@ class BookingController {
       const bookingId = req.params.id;
       const userId = req.user.id;
       const { score, review, tipAmount } = req.body;
+      const numericScore =
+        score !== undefined && score !== null ? Number(score) : undefined;
 
-      if (score && (score < 1 || score > 5)) {
+      if (
+        numericScore !== undefined &&
+        (!Number.isFinite(numericScore) || numericScore < 1 || numericScore > 5)
+      ) {
         return res.status(400).json({
           success: false,
           message: "Rating score must be between 1 and 5",
@@ -673,16 +952,31 @@ class BookingController {
 
       const booking = await Booking.findOne({
         _id: bookingId,
-        status: "completed",
+        status: {
+          $in: ["completed", "user_accepted_completion", "funds_released"],
+        },
         userId,
-      });
+      })
+        .populate("providerId", "fullName rating reviews")
+        .populate("userId", "fullName profilePicture");
 
       if (!booking) {
-        return res.status(409).json({
+        return res.status(400).json({
           success: false,
           message: "Booking not marked completed by provider",
         });
       }
+
+      if (
+        ["user_accepted_completion", "funds_released"].includes(booking.status)
+      ) {
+        return res.status(409).json({
+          success: false,
+          message: "Job completion already accepted",
+        });
+      }
+
+      const providerId = booking.providerId?._id || booking.providerId;
 
       if (tipAmount !== undefined && booking.tipAmount) {
         return res.status(409).json({
@@ -693,9 +987,9 @@ class BookingController {
 
       booking.status = "user_accepted_completion";
 
-      if (score || review) {
+      if (numericScore !== undefined || review) {
         booking.rating = {
-          score,
+          score: numericScore,
           review,
           ratedAt: new Date(),
         };
@@ -703,11 +997,54 @@ class BookingController {
 
       await booking.save();
 
+      if (providerId && numericScore !== undefined) {
+        const providerDoc =
+          await Provider.findById(providerId).select("rating reviews");
+
+        if (providerDoc) {
+          const currentAverage = providerDoc.rating?.average || 0;
+          const currentCount = providerDoc.rating?.count || 0;
+          const nextCount = currentCount + 1;
+          const nextAverage =
+            (currentAverage * currentCount + numericScore) / nextCount;
+
+          providerDoc.rating.average = Math.round(nextAverage * 100) / 100;
+          providerDoc.rating.count = nextCount;
+
+          providerDoc.reviews.push({
+            bookingId: booking._id,
+            userId: booking.userId?._id || booking.userId,
+            userName: booking.userId?.fullName,
+            userAvatar: booking.userId?.profilePicture,
+            score: numericScore,
+            review,
+            serviceType: booking.serviceType,
+            ratedAt: new Date(),
+          });
+
+          await providerDoc.save();
+        }
+      }
+
+      // 💰 Release escrow to provider
+      let escrowReleased = false;
+      try {
+        await paymentService.releaseEscrow(bookingId, userId);
+        escrowReleased = true;
+        console.log(`✅ Escrow released for booking ${bookingId}`);
+      } catch (escrowErr) {
+        console.error(
+          `❌ Failed to release escrow for booking ${bookingId}:`,
+          escrowErr.message,
+        );
+        // Don't fail the entire request if escrow release fails
+      }
+
       let tipResult = null;
       if (tipAmount !== undefined) {
         tipResult = await WalletService.tipProviderFromWallet(
           userId,
-          booking.providerId._id,
+          providerId,
           tipAmount,
           booking._id,
           notificationService,
@@ -717,7 +1054,7 @@ class BookingController {
 
       await booking.save();
 
-      await notificationService.notifyUser(booking.providerId._id, {
+      await notificationService.notifyUser(providerId, {
         type: "job_completed_confirmed",
         title: "✅ Job Completion Confirmed",
         message: `Your customer confirmed completion of the ${booking.serviceType} service.`,
@@ -730,6 +1067,7 @@ class BookingController {
         message: "Job completed accepted successfully",
         data: {
           booking,
+          escrowReleased,
           tip: tipResult ? tipResult.transaction : null,
         },
       });
@@ -743,7 +1081,106 @@ class BookingController {
     }
   }
 
-  // User selects a provider (for non-transport services)
+  async disputeJobCompleted(req, res) {
+    try {
+      const bookingId = req.params.id;
+      const userId = req.user.id;
+      const { reason } = req.body;
+
+      if (!reason || String(reason).trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "reason is required",
+        });
+      }
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        status: {
+          $in: ["completed", "user_accepted_completion", "funds_released"],
+        },
+        userId,
+      })
+        .populate("providerId", "fullName email")
+        .populate("userId", "fullName profilePicture");
+
+      if (!booking) {
+        return res.status(400).json({
+          success: false,
+          message: "Booking not found or not eligible for dispute",
+        });
+      }
+
+      const providerId = booking.providerId?._id || booking.providerId;
+
+      // Mark booking as disputed
+      booking.status = "disputed";
+      booking.disputeRaisedAt = new Date();
+      booking.disputeRaisedBy = userId;
+      booking.disputeReason = reason;
+
+      await booking.save();
+
+      // 🔔 Notify provider about the dispute
+      try {
+        await Promise.all([
+          notificationService.notifyProvider(providerId, {
+            type: "booking_disputed",
+            title: "⚠️ Dispute Raised",
+            message: `A customer has raised a dispute regarding the ${booking.serviceType} booking. Our team will review and contact you shortly.`,
+            bookingId: booking._id,
+            userId,
+            reason,
+            additionalInfo: {
+              reason,
+              service: booking.serviceType,
+              note: "Our team will investigate this matter and send you feedback within 48 hours.",
+            },
+          }),
+          notificationService.notifyUser(userId, {
+            type: "booking_disputed",
+            title: "⚠️ Dispute Submitted",
+            message: `Your dispute for the ${booking.serviceType} booking has been submitted successfully. Our team will review it and contact you shortly.`,
+            bookingId: booking._id,
+            providerId,
+            reason,
+            additionalInfo: {
+              reason,
+              service: booking.serviceType,
+              note: "Our team will investigate this matter and send you feedback within 48 hours.",
+            },
+          }),
+        ]);
+      } catch (notificationErr) {
+        console.error(
+          `❌ Failed to notify provider about dispute:`,
+          notificationErr,
+        );
+        // Don't fail the entire request if notification fails
+      }
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Dispute raised successfully. Our team will review and contact both parties.",
+        data: {
+          bookingId: booking._id,
+          status: booking.status,
+          disputeRaisedAt: booking.disputeRaisedAt,
+          reason: booking.disputeReason,
+          note: "Our support team will investigate this matter and send feedback within 48 hours.",
+        },
+      });
+    } catch (error) {
+      console.error("Dispute job completion error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to raise dispute",
+        error: error.message,
+      });
+    }
+  }
+
   async selectProvider(req, res) {
     try {
       const bookingId = req.params.id;
@@ -781,11 +1218,72 @@ class BookingController {
         });
       }
 
-      booking.providerId = providerId;
-      booking.status = "provider_selected";
-      booking.selectedAt = new Date();
+      const provider = await Provider.findById(providerId).select(
+        "vehicleProductionYear job",
+      );
 
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
+
+      const selectedPricing =
+        Array.isArray(booking.providerPricingOptions) &&
+        booking.providerPricingOptions.find(
+          (p) => String(p.providerId) === String(providerId),
+        );
+
+      let finalPricing = selectedPricing || null;
+
+      if (!finalPricing) {
+        const isBike = provider.job?.some((j) => j.title === "motorbike_rider");
+
+        const providerMeta = booking.providerDistances.find(
+          (p) => String(p.providerId) === String(providerId),
+        );
+
+        if (!providerMeta) {
+          return res.status(400).json({
+            success: false,
+            message: "Pricing snapshot for this provider is unavailable",
+          });
+        }
+
+        const totalDistanceKm =
+          booking.distance.value + providerMeta.distanceFromPickup;
+        const totalDurationMinutes =
+          booking.estimatedDuration.value + providerMeta.providerETAMinutes;
+
+        finalPricing = pricingService.calculateTransportPrice(
+          totalDistanceKm,
+          booking.subCategory,
+          booking.serviceType,
+          totalDurationMinutes,
+          provider.vehicleProductionYear,
+          isBike,
+        );
+      }
+
+      booking.providerId = providerId;
+      booking.calculatedPrice =
+        finalPricing.calculatedPrice ?? finalPricing.riderPays ?? null;
+      booking.agreedPrice = booking.calculatedPrice;
+      booking.totalAmount = booking.calculatedPrice;
+      booking.driverReceives = finalPricing.driverReceives ?? null;
+      booking.platformEarns = finalPricing.platformEarns ?? null;
+      booking.pricingBreakdown = finalPricing.breakdown ?? null;
+      booking.pricingMeta = finalPricing.meta ?? null;
+      booking.selectedAt = new Date();
+      booking.status = "awaiting_provider_acceptance";
       await booking.save();
+
+      // booking.providerId = providerId;
+      // booking.status = "provider_selected";
+      // booking.selectedAt = new Date();
+
+      // await booking.save();
 
       // Notify provider
       notificationService.notifyProvider(providerId, {
@@ -875,6 +1373,133 @@ class BookingController {
     }
   }
 
+  async deleteBooking(req, res) {
+    try {
+      const bookingId = req.params.id;
+      const userId = req.user.id;
+
+      if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid booking ID format",
+        });
+      }
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        userId,
+      });
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: "Booking not found",
+        });
+      }
+
+      if (!DELETABLE_BOOKING_STATUSES.includes(booking.status)) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Booking cannot be deleted in its current state. Cancel it first or contact support.",
+        });
+      }
+
+      const bookingObjectId = booking._id;
+
+      const [deletedNotifications, deletedChat] = await Promise.all([
+        Notification.deleteMany({
+          "data.bookingId": {
+            $in: [bookingObjectId, bookingObjectId.toString()],
+          },
+        }),
+        Chat.deleteOne({ bookingId: bookingObjectId }),
+      ]);
+
+      const deletedBooking = await Booking.deleteOne({
+        _id: bookingObjectId,
+        userId,
+      });
+
+      if (!deletedBooking.deletedCount) {
+        throw new Error("Booking delete failed");
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Booking and related chats/notifications deleted successfully",
+        data: {
+          bookingId: bookingObjectId,
+          deletedRelatedRecords: {
+            notificationsDeleted: deletedNotifications.deletedCount || 0,
+            chatDeleted: Boolean(deletedChat.deletedCount),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Delete booking error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete booking",
+        error: error.message,
+      });
+    }
+  }
+
+  /* Helper: Parse human-readable dates */
+  parseDate(dateString) {
+    if (!dateString) return null;
+
+    const lower = String(dateString).toLowerCase().trim();
+    const now = new Date();
+
+    switch (lower) {
+      case "today":
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      case "yesterday":
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        return new Date(
+          yesterday.getFullYear(),
+          yesterday.getMonth(),
+          yesterday.getDate(),
+        );
+      case "last-week":
+      case "lastweek":
+      case "last_week":
+        const lastWeek = new Date(now);
+        lastWeek.setDate(lastWeek.getDate() - 7);
+        return new Date(
+          lastWeek.getFullYear(),
+          lastWeek.getMonth(),
+          lastWeek.getDate(),
+        );
+      case "last-month":
+      case "lastmonth":
+      case "last_month":
+        const lastMonth = new Date(now);
+        lastMonth.setMonth(lastMonth.getMonth() - 1);
+        return new Date(
+          lastMonth.getFullYear(),
+          lastMonth.getMonth(),
+          lastMonth.getDate(),
+        );
+      case "last-3-months":
+      case "last3months":
+        const last3Months = new Date(now);
+        last3Months.setMonth(last3Months.getMonth() - 3);
+        return new Date(
+          last3Months.getFullYear(),
+          last3Months.getMonth(),
+          last3Months.getDate(),
+        );
+      default:
+        // Try parsing as ISO date or standard date string
+        const parsed = new Date(dateString);
+        return !isNaN(parsed.getTime()) ? parsed : null;
+    }
+  }
+
   async getAllBookings(req, res) {
     try {
       const {
@@ -885,8 +1510,11 @@ class BookingController {
         subCategory,
         search,
         modeOfDelivery,
+        maxDistanceKm,
+        minDistanceKm,
         startDate,
         endDate,
+        timeWindow, // e.g., "30m", "1h", "2h", "24h"
         page = 1,
         limit = 10,
         sortBy = "createdAt",
@@ -904,6 +1532,34 @@ class BookingController {
       if (serviceType) query.serviceType = serviceType;
       if (subCategory) query.subCategory = subCategory;
       if (modeOfDelivery) query.modeOfDelivery = modeOfDelivery;
+
+      if (maxDistanceKm !== undefined || minDistanceKm !== undefined) {
+        query["distance.value"] = {};
+
+        if (maxDistanceKm !== undefined) {
+          const parsedMaxDistanceKm = Number(maxDistanceKm);
+          if (!Number.isFinite(parsedMaxDistanceKm)) {
+            return res.status(400).json({
+              success: false,
+              message: "maxDistanceKm must be a valid number",
+            });
+          }
+
+          query["distance.value"].$lte = parsedMaxDistanceKm;
+        }
+
+        if (minDistanceKm !== undefined) {
+          const parsedMinDistanceKm = Number(minDistanceKm);
+          if (!Number.isFinite(parsedMinDistanceKm)) {
+            return res.status(400).json({
+              success: false,
+              message: "minDistanceKm must be a valid number",
+            });
+          }
+
+          query["distance.value"].$gte = parsedMinDistanceKm;
+        }
+      }
 
       // Filter by provider
       if (providerId) {
@@ -935,14 +1591,60 @@ class BookingController {
         ];
       }
 
-      // Filter by date range
-      if (startDate || endDate) {
+      // Filter by time window (relative from now)
+      // Examples: "30m", "1h", "2h", "24h"
+      if (timeWindow) {
+        const timeWindowMatch = timeWindow.match(/^(\d+)\s*(m|h|d)$/i);
+        if (timeWindowMatch) {
+          const amount = parseInt(timeWindowMatch[1]);
+          const unit = timeWindowMatch[2].toLowerCase();
+          let minutesBack = 0;
+
+          switch (unit) {
+            case "m":
+              minutesBack = amount;
+              break;
+            case "h":
+              minutesBack = amount * 60;
+              break;
+            case "d":
+              minutesBack = amount * 24 * 60;
+              break;
+            default:
+              minutesBack = amount;
+          }
+
+          const timeAgo = new Date(Date.now() - minutesBack * 60 * 1000);
+          query.createdAt = { $gte: timeAgo };
+        }
+      }
+      // Filter by explicit date range (takes precedence over timeWindow)
+      else if (startDate || endDate) {
         query.createdAt = {};
         if (startDate) {
-          query.createdAt.$gte = new Date(startDate);
+          const parsedStart = this.parseDate(startDate);
+          if (parsedStart) {
+            query.createdAt.$gte = parsedStart;
+          }
         }
         if (endDate) {
-          query.createdAt.$lte = new Date(endDate);
+          const parsedEnd = this.parseDate(endDate);
+          if (parsedEnd) {
+            // If endDate is "today", include the entire day
+            const isToday = String(endDate).toLowerCase().trim() === "today";
+            if (isToday) {
+              const nextDay = new Date(parsedEnd);
+              nextDay.setDate(nextDay.getDate() + 1);
+              query.createdAt.$lt = nextDay;
+            } else {
+              query.createdAt.$lte = new Date(
+                parsedEnd.getTime() +
+                  23 * 60 * 60 * 1000 +
+                  59 * 60 * 1000 +
+                  59 * 1000,
+              );
+            }
+          }
         }
       }
 
@@ -953,11 +1655,19 @@ class BookingController {
       // Execute query with pagination
       const bookings = await Booking.find(query)
         .populate("userId", "fullName email phoneNumber profilePicture")
-        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures")
+        .populate(
+          "providerId",
+          "fullName profilePicture phoneNumber email workVisuals.pictures",
+        )
         .sort(sortConfig)
         .limit(limit * 1)
         .skip((page - 1) * limit)
         .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: this.formatBookingPricing(booking),
+      }));
 
       // Get total count for pagination
       const count = await Booking.countDocuments(query);
@@ -975,7 +1685,7 @@ class BookingController {
 
       return res.status(200).json({
         success: true,
-        data: bookings,
+        data: bookingsWithPricing,
         pagination: {
           total: count,
           totalPages: Math.ceil(count / limit),
@@ -1017,7 +1727,10 @@ class BookingController {
 
       return res.status(200).json({
         success: true,
-        data: { booking },
+        data: {
+          booking,
+          pricing: this.formatBookingPricing(booking),
+        },
       });
     } catch (error) {
       console.error("Get booking error:", error);
@@ -1040,16 +1753,26 @@ class BookingController {
       }
 
       const bookings = await Booking.find(query)
-        .populate("providerId", "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate")
+        .populate("userId", "fullName email phoneNumber profilePicture")
+        .populate(
+          "providerId",
+          "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
+        )
         .sort({ createdAt: -1 })
         .limit(limit * 1)
-        .skip((page - 1) * limit);
+        .skip((page - 1) * limit)
+        .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: this.formatBookingPricing(booking),
+      }));
 
       const count = await Booking.countDocuments(query);
 
       return res.status(200).json({
         success: true,
-        data: bookings,
+        data: bookingsWithPricing,
         totalPages: Math.ceil(count / limit),
         currentPage: parseInt(page),
         total: count,
@@ -1059,6 +1782,110 @@ class BookingController {
       return res.status(500).json({
         success: false,
         message: "Error fetching bookings",
+        error: error.message,
+      });
+    }
+  }
+
+  async getBookingsByUserId(req, res) {
+    try {
+      const { userId } = req.params;
+      const { status, page = 1, limit = 10 } = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid user ID format",
+        });
+      }
+
+      const query = { userId };
+      if (status) {
+        query.status = status;
+      }
+
+      const bookings = await Booking.find(query)
+        .populate("userId", "fullName email phoneNumber profilePicture")
+        .populate(
+          "providerId",
+          "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
+        )
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: this.formatBookingPricing(booking),
+      }));
+
+      const count = await Booking.countDocuments(query);
+
+      return res.status(200).json({
+        success: true,
+        data: bookingsWithPricing,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page),
+        total: count,
+      });
+    } catch (error) {
+      console.error("Get bookings by userId error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching bookings by userId",
+        error: error.message,
+      });
+    }
+  }
+
+  async getBookingsByProviderId(req, res) {
+    try {
+      const { providerId } = req.params;
+      const { status, page = 1, limit = 10 } = req.query;
+
+      if (!mongoose.Types.ObjectId.isValid(providerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid provider ID format",
+        });
+      }
+
+      const query = { providerId };
+      if (status) {
+        query.status = status;
+      }
+
+      const bookings = await Booking.find(query)
+        .populate("userId", "fullName email phoneNumber profilePicture")
+        .populate(
+          "providerId",
+          "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
+        )
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: this.formatBookingPricing(booking),
+      }));
+
+      const count = await Booking.countDocuments(query);
+
+      return res.status(200).json({
+        success: true,
+        data: bookingsWithPricing,
+        totalPages: Math.ceil(count / limit),
+        currentPage: parseInt(page),
+        total: count,
+      });
+    } catch (error) {
+      console.error("Get bookings by providerId error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching bookings by providerId",
         error: error.message,
       });
     }

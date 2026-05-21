@@ -18,7 +18,9 @@ const adminAuthLimiter = rateLimit({
   limit: 100,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { message: "Too many authentication requests, please try again later." },
+  message: {
+    message: "Too many authentication requests, please try again later.",
+  },
 });
 
 const adminVerifyKycLimiter = rateLimit({
@@ -26,7 +28,9 @@ const adminVerifyKycLimiter = rateLimit({
   limit: 50,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { message: "Too many KYC verification requests, please try again later." },
+  message: {
+    message: "Too many KYC verification requests, please try again later.",
+  },
 });
 
 /**
@@ -41,7 +45,7 @@ const adminVerifyKycLimiter = rateLimit({
  * /api/v1/admin/create:
  *   post:
  *     summary: Create admin account
- *     tags: [Admin]
+ *     tags: [Admins]
  *     requestBody:
  *       required: true
  *       content:
@@ -82,7 +86,7 @@ router.post(
  * /api/v1/admin/login:
  *   post:
  *     summary: Admin login
- *     tags: [Admin]
+ *     tags: [Admins]
  *     requestBody:
  *       required: true
  *       content:
@@ -114,7 +118,7 @@ router.post("/login", adminAuthLimiter, AdminController.loginAdmin);
  * /api/v1/admin/dashboard/stats:
  *   get:
  *     summary: Get admin dashboard statistics
- *     tags: [Admin]
+ *     tags: [Admins]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -133,10 +137,77 @@ router.get(
 
 /**
  * @swagger
+ * /api/v1/admin/platform-fee-report:
+ *   get:
+ *     summary: Get platform fee report for dashboard
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional booking status filter
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Platform fee report retrieved successfully
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/platform-fee-report",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getPlatformFeeReport,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/platform-balance:
+ *   get:
+ *     summary: Get platform wallet balance
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Platform balance retrieved successfully
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/platform-balance",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getPlatformBalance,
+);
+
+/**
+ * @swagger
  * /api/v1/admin/users/{userType}/{userId}/deactivate:
  *   patch:
  *     summary: Deactivate or activate a user
- *     tags: [Admin]
+ *     tags: [Admins]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -182,7 +253,7 @@ router.patch(
  * /api/v1/admin/users/{userType}/{userId}:
  *   delete:
  *     summary: Soft or hard delete a user
- *     tags: [Admin]
+ *     tags: [Admins]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -225,7 +296,7 @@ router.delete(
  * /api/v1/admin/providers/{providerId}/kyc/verify:
  *   patch:
  *     summary: Verify provider KYC
- *     tags: [Admin]
+ *     tags: [Admins]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -260,6 +331,55 @@ router.patch(
   onlyRole("admin"),
   adminVerifyKycLimiter,
   AdminController.verifyKyc,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/providers/{providerId}/kyc/dispute:
+ *   patch:
+ *     summary: Reject/dispute provider KYC
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: providerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Provider ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "Documents do not match identity requirements"
+ *               note:
+ *                 type: string
+ *                 example: "Please resubmit with clearer images"
+ *     responses:
+ *       200:
+ *         description: KYC disputed successfully
+ *       400:
+ *         description: Missing required fields
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Provider not found
+ */
+router.patch(
+  "/providers/:providerId/kyc/dispute",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  adminVerifyKycLimiter,
+  AdminController.disputeKyc,
 );
 
 module.exports = router;

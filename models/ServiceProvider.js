@@ -1,10 +1,17 @@
-const mongoose = require ('mongoose');
+const mongoose = require("mongoose");
 
-const serviceProviderSchema = new mongoose.Schema({
-    email: { type: String, unique: true, sparse: true },
-    phoneNumber: { type: String, unique: true, sparse: true },
-    password: { type: String, required: false},
-    createdAt: { type: Date, default: Date.now},
+const serviceProviderSchema = new mongoose.Schema(
+  {
+    email: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+    },
+    phoneNumber: { type: String, unique: true, sparse: true, trim: true },
+    password: { type: String, required: false },
+    createdAt: { type: Date, default: Date.now },
     isActive: { type: Boolean, default: true },
     deactivatedAt: { type: Date, default: null },
     isDeleted: { type: Boolean, default: false },
@@ -19,20 +26,20 @@ const serviceProviderSchema = new mongoose.Schema({
     resetOtpExpires: { type: Date },
     lastResetOtpSentAt: { type: Date, default: null },
     emailVerificationExpires: { type: Date },
-    fullName: { type: String},
+    fullName: { type: String },
     profilePicture: {
-  type: String,
-  default: null,
-},
+      type: String,
+      default: null,
+    },
 
     role: {
-  type: String,
-  enum: ["provider"],
-  default: "provider",
-},
+      type: String,
+      enum: ["provider"],
+      default: "provider",
+    },
     // lastName: { type: String},
-    dateOfBirth:{ type: String},
-    gender: { type: String},
+    dateOfBirth: { type: String },
+    gender: { type: String },
     city: { type: String },
     address: { type: String },
     accountType: { type: String },
@@ -47,157 +54,189 @@ const serviceProviderSchema = new mongoose.Schema({
     BusinessName: { type: String },
     regNumber: { type: String },
     BusinessAddress: { type: String },
-    cacFile: { type: String},
-    driverLicenseNumber: { type: String},
-    vehicleProviderYear: { type: String },
-    job:[
-         {
-         service: { type: String } ,
-         title: { type: String } ,
-         tagLine: { type: String },
-         startingPrice: {type: String},
+    cacFile: { type: String },
+    driverLicenseNumber: { type: String },
+    vehicleProductionYear: { type: String },
+    job: [
+      {
+        service: { type: String },
+        title: { type: String },
+        tagLine: { type: String },
+        startingPrice: { type: String },
+      },
+    ],
 
-        }
-      ],
-    
-    service:[
-         {
-         serviceName: { type: String } ,
-         pricingModel: { type: String } ,
-         price: { type: String } 
-        },
+    service: [
+      {
+        serviceName: { type: String },
+        pricingModel: { type: String },
+        price: { type: String },
+      },
     ],
     workVisuals: [
-  {
-    pictures: [{ type: String }],
-    videos: [{ type: String }]
-  }
-],
-vehicleColor: { type: String },
-vehicleRegNo: { type: String },
-vehicleName: { type: String },
-fcmToken: {
-    type: String,
-    select: false 
-  },
-  device: {
-    type: {
+      {
+        pictures: [{ type: String }],
+        videos: [{ type: String }],
+      },
+    ],
+    vehicleColor: { type: String },
+    vehicleRegNo: { type: String },
+    vehicleName: { type: String },
+    fcmToken: {
       type: String,
-      enum: ['ios', 'android', 'web', 'unknown']
+      select: false,
     },
-    id: String,
-    updatedAt: Date
-  },
-  radius: { type: Number },  
-  allowAnywhere: { type: Boolean, default: false },
+    device: {
+      type: {
+        type: String,
+        enum: ["ios", "android", "web", "unknown"],
+      },
+      id: String,
+      updatedAt: Date,
+    },
+    radius: { type: Number },
+    allowAnywhere: { type: Boolean, default: false },
 
-    files: [{ type: mongoose.Schema.Types.ObjectId, ref: 'File' }],
+    files: [{ type: mongoose.Schema.Types.ObjectId, ref: "File" }],
 
     currentLocation: {
-  type: {
-    type: String,
-    enum: ['Point'],
-    default: 'Point'
-  },
-  coordinates: {
-    type: [Number],  // [longitude, latitude]
-    index: '2dsphere'
-  },
-  address: String  // Optional
-},
-  
-  availability: {
-    isAvailable: {
-      type: Boolean,
-      default: false
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        index: "2dsphere",
+      },
+      address: String, // Optional
     },
-    lastUpdated: Date
-  },
 
-  notificationPreferences: {
-    bookings: {
-      push: { type: Boolean, default: true },
-      email: { type: Boolean, default: true },
-      types: {
-        type: [String],
-        default: [
-          "new_booking_request",
-          "provider_accepted",
-          "booking_selected",
-          "booking_cancelled",
-          "booking_status_updated",
-          "booking_taken",
-          "counter_offer",
-        ],
+    lastLocationUpdate: {
+      type: Date,
+      default: Date.now,
+    },
+
+    availability: {
+      isAvailable: {
+        type: Boolean,
+        default: false,
+      },
+      lastUpdated: Date,
+    },
+
+    notificationPreferences: {
+      bookings: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: {
+          type: [String],
+          default: [
+            "new_booking_request",
+            "provider_accepted",
+            "booking_selected",
+            "booking_cancelled",
+            "booking_status_updated",
+            "booking_taken",
+            "counter_offer",
+            "booking_completed_awaiting_acceptance",
+          ],
+        },
+      },
+      jobCompleted: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: {
+          type: [String],
+          default: [
+            "job_started",
+            "booking_completed",
+            "job_completed_confirmed",
+          ],
+        },
+      },
+      chatMessages: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: false },
+        types: { type: [String], default: ["new_message", "message_received"] },
+      },
+      walletPayments: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: {
+          type: [String],
+          default: [
+            "wallet_funded",
+            "wallet_payment",
+            "payment_received",
+            "payment_sent",
+          ],
+        },
+      },
+      promotions: {
+        push: { type: Boolean, default: false },
+        email: { type: Boolean, default: false },
+        types: { type: [String], default: ["test"] },
       },
     },
-    jobCompleted: {
-      push: { type: Boolean, default: true },
-      email: { type: Boolean, default: true },
-      types: {
-        type: [String],
-        default: ["job_started", "booking_completed", "job_completed_confirmed"],
+
+    // Pricing
+
+    // Ratings
+    rating: {
+      average: {
+        type: Number,
+        default: 0,
+      },
+      count: {
+        type: Number,
+        default: 0,
       },
     },
-    chatMessages: {
-      push: { type: Boolean, default: true },
-      email: { type: Boolean, default: false },
-      types: { type: [String], default: ["new_message", "message_received"] },
-    },
-    walletPayments: {
-      push: { type: Boolean, default: true },
-      email: { type: Boolean, default: true },
-      types: {
-        type: [String],
-        default: [
-          "wallet_funded",
-          "wallet_payment",
-          "payment_received",
-          "payment_sent",
-        ],
+    reviews: [
+      {
+        bookingId: { type: mongoose.Schema.Types.ObjectId, ref: "Booking" },
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "ServiceUser" },
+        userName: { type: String },
+        userAvatar: { type: String },
+        score: { type: Number },
+        review: { type: String },
+        serviceType: { type: String },
+        ratedAt: { type: Date, default: Date.now },
       },
-    },
-    promotions: {
-      push: { type: Boolean, default: false },
-      email: { type: Boolean, default: false },
-      types: { type: [String], default: ["test"] },
-    },
-  },
-  
-  // Pricing
-  
-  // Ratings
-  rating: {
-    average: {
+    ],
+
+    paystackRecipientCode: String,
+
+    completedJobs: {
       type: Number,
-      default: 0
+      default: 0,
     },
-    count: {
-      type: Number,
-      default: 0
-    }
+    kycCompleted: { type: Boolean, default: false },
+    kycVerified: { type: Boolean, default: false },
+    kycVerifiedAt: { type: Date, default: null },
+    kycVerifiedBy: {
+      id: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+      email: { type: String },
+      fullName: { type: String },
+    },
+    kycVerificationNote: { type: String },
+    kycRejected: { type: Boolean, default: false },
+    kycRejectedAt: { type: Date, default: null },
+    kycRejectedBy: {
+      id: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+      email: { type: String },
+      fullName: { type: String },
+    },
+    kycRejectionReason: { type: String },
+    kycRejectionNote: { type: String },
+    kycLevel: { type: Number, default: 0 },
   },
-
-    paystackRecipientCode: String, 
-
-  
-  completedJobs: {
-    type: Number,
-    default: 0
+  {
+    timestamps: true,
   },
-  kycCompleted: { type: Boolean, default: false },
-  kycVerified: { type: Boolean, default: false },
-  kycVerifiedAt: { type: Date, default: null },
-  kycVerifiedBy: {
-    id: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
-    email: { type: String },
-    fullName: { type: String },
-  },
-  kycVerificationNote: { type: String },
-  kycLevel: { type: Number, default: 0 },
-}, {
-  timestamps: true
-});
+);
 
-module.exports =  mongoose.model ("Provider", serviceProviderSchema);
+serviceProviderSchema.index({ currentLocation: "2dsphere" });
 
+module.exports = mongoose.model("Provider", serviceProviderSchema);

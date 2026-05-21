@@ -15,6 +15,8 @@ const DEFAULT_PREFERENCES = {
       "booking_status_updated",
       "booking_taken",
       "counter_offer",
+      "booking_completed_awaiting_acceptance",
+      "booking_auto_completed"
     ],
   },
   jobCompleted: {
@@ -239,7 +241,9 @@ class notificationController {
         success: true,
         data: {
           notificationPreferences:
-            user.notificationPreferences || DEFAULT_PREFERENCES,
+            notificationService.mergeNotificationPreferences(
+              user.notificationPreferences,
+            ),
         },
       });
     } catch (error) {
@@ -276,13 +280,15 @@ class notificationController {
         });
       }
 
-      const current = user.notificationPreferences || DEFAULT_PREFERENCES;
+      const current = notificationService.mergeNotificationPreferences(
+        user.notificationPreferences,
+      );
       const merged = { ...current };
 
       Object.keys(DEFAULT_PREFERENCES).forEach((key) => {
         if (!notificationPreferences[key]) return;
         const incoming = notificationPreferences[key];
-        const base = current[key] || DEFAULT_PREFERENCES[key];
+        const base = current[key];
 
         merged[key] = {
           push:

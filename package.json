@@ -6,7 +6,13 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop all",
+    "pm2:restart": "pm2 restart all",
+    "pm2:kill": "pm2 kill",
+    "pm2:logs": "pm2 logs",
+    "pm2:status": "pm2 status"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +21,7 @@
   "dependencies": {
     "@getbrevo/brevo": "^3.0.1",
     "@google/generative-ai": "^0.24.1",
+    "@socket.io/redis-adapter": "^8.3.0",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.7.0",
@@ -29,9 +36,13 @@
     "groq-sdk": "^0.37.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.0",
+    "morgan": "^1.10.1",
     "multer": "^2.0.2",
+    "node-cron": "^3.0.3",
     "nodemailer": "^7.0.9",
     "nunjucks": "^3.2.4",
+    "pm2": "^7.0.1",
+    "redis": "^5.12.1",
     "resend": "^6.4.2",
     "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",

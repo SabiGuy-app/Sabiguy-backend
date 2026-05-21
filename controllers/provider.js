@@ -3,6 +3,8 @@ const Booking = require("../models/Bookings");
 const notificationService = require("../src/services/notification.service");
 const paymentService = require("../src/services/payment.service");
 const jwt = require("jsonwebtoken");
+const geolocationService = require("../src/services/geolocation.service");
+const pricingService = require("../src/services/pricing.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
@@ -477,127 +479,388 @@ class ProviderController {
     }
   }
 
+  // async updateLocation(req, res) {
+  //   try {
+  //     const providerId = req.user.id;
+  //     const { latitude, longitude, address } = req.body;
+
+  //     if (!latitude || !longitude) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Latitude and longitude are required",
+  //       });
+  //     }
+
+  //     // Validate coordinates
+  //     if (
+  //       latitude < -90 ||
+  //       latitude > 90 ||
+  //       longitude < -180 ||
+  //       longitude > 180
+  //     ) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Invalid coordinates",
+  //       });
+  //     }
+
+  //     // Get existing provider to check if geocoding is needed
+  //     const existingProvider = await Provider.findById(providerId);
+  //     if (!existingProvider) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         message: "Provider not found",
+  //       });
+  //     }
+
+  //     let finalAddress = address || existingProvider.currentLocation?.address;
+  //     const shouldReverseGeocode = !finalAddress;
+
+  //     // Smart reverse geocoding: Only call if coordinates moved significantly
+  //     if (shouldReverseGeocode) {
+  //       try {
+  //         const oldCoords = existingProvider.currentLocation?.coordinates || [
+  //           0, 0,
+  //         ];
+  //         const [oldLng, oldLat] = oldCoords;
+
+  //         // Calculate distance moved using Haversine formula
+  //         const R = 6371; // Earth's radius in km
+  //         const dLat = ((latitude - oldLat) * Math.PI) / 180;
+  //         const dLon = ((longitude - oldLng) * Math.PI) / 180;
+  //         const a =
+  //           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+  //           Math.cos((oldLat * Math.PI) / 180) *
+  //             Math.cos((latitude * Math.PI) / 180) *
+  //             Math.sin(dLon / 2) *
+  //             Math.sin(dLon / 2);
+  //         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  //         const distanceMoved = R * c;
+
+  //         // Only reverse geocode if moved more than 500 meters or first time (no old coords)
+  //         if (distanceMoved > 0.5 || (oldLat === 0 && oldLng === 0)) {
+  //           console.log(
+  //             `🔄 Reverse geocoding (moved ${distanceMoved.toFixed(2)}km)`,
+  //           );
+  //           const geoData = await geolocationService.reverseGeocode(
+  //             longitude,
+  //             latitude,
+  //           );
+  //           finalAddress = geoData.formattedAddress;
+  //         } else {
+  //           // Reuse cached address
+  //           console.log(
+  //             `📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`,
+  //           );
+  //           finalAddress = existingProvider.currentLocation?.address;
+  //         }
+  //       } catch (geoError) {
+  //         console.warn(
+  //           "Reverse geocoding failed, using fallback:",
+  //           geoError.message,
+  //         );
+  //         finalAddress =
+  //           existingProvider.currentLocation?.address ||
+  //           `${latitude}, ${longitude}`;
+  //       }
+  //     }
+
+  //     const provider = await Provider.findByIdAndUpdate(
+  //       providerId,
+  //       {
+  //         $set: {
+  //           "currentLocation.type": "Point",
+  //           "currentLocation.coordinates": [longitude, latitude], // [lng, lat]
+  //           "currentLocation.address": finalAddress,
+  //           lastLocationUpdate: new Date(),
+  //         },
+  //       },
+  //       { new: true },
+  //     );
+
+  //     console.log(`📍 Location updated for ${provider.fullName}:`, {
+  //       coordinates: [longitude, latitude],
+  //       address: finalAddress,
+  //     });
+
+  //     return res.status(200).json({
+  //       success: true,
+  //       message: "Location updated successfully",
+  //       data: {
+  //         currentLocation: provider.currentLocation,
+  //         lastLocationUpdate: provider.lastLocationUpdate,
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("Update location error:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: "Error updating location",
+  //       error: error.message,
+  //     });
+  //   }
+  // }
+
+  // async updateLocation (req, res) {
+  //   try {
+  //     const providerId = req.user.id;
+  //     const { latitude, longitude, address } = req.body;
+  
+  //     if (!latitude || !longitude) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Latitude and longitude are required",
+  //       });
+  //     }
+  
+  //     if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+  //       return res.status(400).json({
+  //         success: false,
+  //         message: "Invalid coordinates",
+  //       });
+  //     }
+  
+  //     const existingProvider = await Provider.findById(providerId);
+  //     if (!existingProvider) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         message: "Provider not found",
+  //       });
+  //     }
+  
+  //     // Helper to check if a string looks like raw coordinates (not a real address)
+  //     const isRawCoords = (addr) => addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
+  
+  //     const existingAddress = existingProvider.currentLocation?.address;
+  
+  //     // Use provided address only if it's a real address string, not raw coords
+  //     const hasValidProvidedAddress = address && !isRawCoords(address);
+  //     const hasValidCachedAddress = existingAddress && !isRawCoords(existingAddress);
+  
+  //     let finalAddress = null;
+  //     let shouldReverseGeocode = true;
+  
+  //     if (hasValidProvidedAddress) {
+  //       // Caller provided a real address — trust it
+  //       finalAddress = address;
+  //       shouldReverseGeocode = false;
+  //     } else if (hasValidCachedAddress) {
+  //       // Check if moved significantly before deciding to re-geocode
+  //       const oldCoords = existingProvider.currentLocation?.coordinates || [0, 0];
+  //       const [oldLng, oldLat] = oldCoords;
+  
+  //       const isFirstLocation = oldLat === 0 && oldLng === 0;
+  
+  //       if (!isFirstLocation) {
+  //         const R = 6371;
+  //         const dLat = ((latitude - oldLat) * Math.PI) / 180;
+  //         const dLon = ((longitude - oldLng) * Math.PI) / 180;
+  //         const a =
+  //           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+  //           Math.cos((oldLat * Math.PI) / 180) *
+  //             Math.cos((latitude * Math.PI) / 180) *
+  //             Math.sin(dLon / 2) *
+  //             Math.sin(dLon / 2);
+  //         const distanceMoved = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  
+  //         if (distanceMoved <= 0.0) {
+  //           // Hasn't moved much — reuse cached address
+  //           console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
+  //           finalAddress = existingAddress;
+  //           shouldReverseGeocode = false;
+  //         }
+  //       }
+  //     }
+  
+  //     // Reverse geocode if needed
+  //     if (shouldReverseGeocode) {
+  //       try {
+  //         console.log(`🔄 Reverse geocoding coordinates: ${latitude}, ${longitude}`);
+  //         const geoData = await geolocationService.reverseGeocode(longitude, latitude);
+  
+  //         // Make sure Mapbox returned a real address
+  //         if (geoData?.formattedAddress && !isRawCoords(geoData.formattedAddress)) {
+  //           finalAddress = geoData.formattedAddress;
+  //         } else {
+  //           console.warn("Mapbox returned empty or invalid address:", geoData);
+  //           finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
+  //         }
+  //       } catch (geoError) {
+  //         console.warn("Reverse geocoding failed:", geoError.message);
+  //         finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
+  //       }
+  //     }
+  
+  //     const provider = await Provider.findByIdAndUpdate(
+  //       providerId,
+  //       {
+  //         $set: {
+  //           "currentLocation.type": "Point",
+  //           "currentLocation.coordinates": [longitude, latitude],
+  //           "currentLocation.address": finalAddress,
+  //           lastLocationUpdate: new Date(),
+  //         },
+  //       },
+  //       { new: true }
+  //     );
+  
+  //     console.log(`📍 Location updated for provider ${provider.fullName}:`, {
+  //       coordinates: [longitude, latitude],
+  //       address: finalAddress,
+  //     });
+  
+  //     return res.status(200).json({
+  //       success: true,
+  //       message: "Location updated successfully",
+  //       data: {
+  //         currentLocation: provider.currentLocation,
+  //         lastLocationUpdate: provider.lastLocationUpdate,
+  //       },
+  //     });
+  //   } catch (error) {
+  //     console.error("Update location error:", error);
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: "Error updating location",
+  //       error: error.message,
+  //     });
+  //   }
+  // };
+
   async updateLocation(req, res) {
-    try {
-      const providerId = req.user.id;
-      const { latitude, longitude, address } = req.body;
+  try {
+    const providerId = req.user.id;
+    const { latitude, longitude, address } = req.body;
 
-      if (!latitude || !longitude) {
-        return res.status(400).json({
-          success: false,
-          message: "Latitude and longitude are required",
-        });
-      }
-
-      // Validate coordinates
-      if (
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid coordinates",
-        });
-      }
-
-      // Get existing provider to check if geocoding is needed
-      const existingProvider = await Provider.findById(providerId);
-      if (!existingProvider) {
-        return res.status(404).json({
-          success: false,
-          message: "Provider not found",
-        });
-      }
-
-      let finalAddress = address || existingProvider.currentLocation?.address;
-      const shouldReverseGeocode = !finalAddress;
-
-      // Smart reverse geocoding: Only call if coordinates moved significantly
-      if (shouldReverseGeocode) {
-        try {
-          const oldCoords = existingProvider.currentLocation?.coordinates || [
-            0, 0,
-          ];
-          const [oldLng, oldLat] = oldCoords;
-
-          // Calculate distance moved using Haversine formula
-          const R = 6371; // Earth's radius in km
-          const dLat = ((latitude - oldLat) * Math.PI) / 180;
-          const dLon = ((longitude - oldLng) * Math.PI) / 180;
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos((oldLat * Math.PI) / 180) *
-              Math.cos((latitude * Math.PI) / 180) *
-              Math.sin(dLon / 2) *
-              Math.sin(dLon / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distanceMoved = R * c;
-
-          // Only reverse geocode if moved more than 500 meters or first time (no old coords)
-          if (distanceMoved > 0.5 || (oldLat === 0 && oldLng === 0)) {
-            console.log(
-              `🔄 Reverse geocoding (moved ${distanceMoved.toFixed(2)}km)`,
-            );
-            const geoData = await geolocationService.reverseGeocode(
-              longitude,
-              latitude,
-            );
-            finalAddress = geoData.formattedAddress;
-          } else {
-            // Reuse cached address
-            console.log(
-              `📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`,
-            );
-            finalAddress = existingProvider.currentLocation?.address;
-          }
-        } catch (geoError) {
-          console.warn(
-            "Reverse geocoding failed, using fallback:",
-            geoError.message,
-          );
-          finalAddress =
-            existingProvider.currentLocation?.address ||
-            `${latitude}, ${longitude}`;
-        }
-      }
-
-      const provider = await Provider.findByIdAndUpdate(
-        providerId,
-        {
-          $set: {
-            "currentLocation.type": "Point",
-            "currentLocation.coordinates": [longitude, latitude], // [lng, lat]
-            "currentLocation.address": finalAddress,
-            lastLocationUpdate: new Date(),
-          },
-        },
-        { new: true },
-      );
-
-      console.log(`📍 Location updated for ${provider.fullName}:`, {
-        coordinates: [longitude, latitude],
-        address: finalAddress,
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Location updated successfully",
-        data: {
-          currentLocation: provider.currentLocation,
-          lastLocationUpdate: provider.lastLocationUpdate,
-        },
-      });
-    } catch (error) {
-      console.error("Update location error:", error);
-      return res.status(500).json({
+    if (!latitude || !longitude) {
+      return res.status(400).json({
         success: false,
-        message: "Error updating location",
-        error: error.message,
+        message: "Latitude and longitude are required",
       });
     }
+
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coordinates",
+      });
+    }
+
+    const existingProvider = await Provider.findById(providerId);
+    if (!existingProvider) {
+      return res.status(404).json({
+        success: false,
+        message: "Provider not found",
+      });
+    }
+
+    const isRawCoords = (addr) =>
+      addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
+
+    const existingAddress = existingProvider.currentLocation?.address;
+    const hasValidProvidedAddress = address && !isRawCoords(address);
+    const hasValidCachedAddress = existingAddress && !isRawCoords(existingAddress);
+
+    let finalAddress = null;
+    let shouldReverseGeocode = false; // default OFF — Mapbox Nigeria data is too poor
+
+    if (hasValidProvidedAddress) {
+      // App sent a real address (e.g. from device GPS + Google on frontend) — use it
+      finalAddress = address;
+
+    } else if (hasValidCachedAddress) {
+      // Check if moved more than 500m before bothering to re-geocode
+      const oldCoords = existingProvider.currentLocation?.coordinates || [0, 0];
+      const [oldLng, oldLat] = oldCoords;
+      const isFirstLocation = oldLat === 0 && oldLng === 0;
+
+      if (isFirstLocation) {
+        shouldReverseGeocode = true;
+      } else {
+        const R = 6371;
+        const dLat = ((latitude - oldLat) * Math.PI) / 180;
+        const dLon = ((longitude - oldLng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((oldLat * Math.PI) / 180) *
+            Math.cos((latitude * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        const distanceMoved = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        if (distanceMoved > 0.5) {
+          // Moved more than 500m — re-geocode only if app didn't send address
+          console.log(`📍 Moved ${distanceMoved.toFixed(2)}km — attempting re-geocode`);
+          shouldReverseGeocode = true;
+        } else {
+          // // Barely moved — reuse cached address
+          // console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
+          // finalAddress = existingAddress;
+        }
+      }
+    } else {
+      // No provided address, no valid cache — have to try geocoding
+      shouldReverseGeocode = true;
+    }
+
+    if (shouldReverseGeocode) {
+      try {
+        console.log(`🔄 Reverse geocoding: ${latitude}, ${longitude}`);
+        const geoData = await geolocationService.reverseGeocode(longitude, latitude);
+
+        if (geoData?.formattedAddress && !isRawCoords(geoData.formattedAddress)) {
+          finalAddress = geoData.formattedAddress;
+          console.log(`✅ Got address: ${finalAddress}`);
+        } else {
+          // Mapbox returned something vague — prefer cache over bad address
+          console.warn("⚠️ Mapbox returned vague address, preferring cache");
+          finalAddress = hasValidCachedAddress
+            ? existingAddress
+            : `${latitude}, ${longitude}`;
+        }
+      } catch (geoError) {
+        console.warn("Reverse geocoding failed:", geoError.message);
+        finalAddress = hasValidCachedAddress
+          ? existingAddress
+          : `${latitude}, ${longitude}`;
+      }
+    }
+
+    const provider = await Provider.findByIdAndUpdate(
+      providerId,
+      {
+        $set: {
+          "currentLocation.type": "Point",
+          "currentLocation.coordinates": [longitude, latitude],
+          "currentLocation.address": finalAddress,
+          lastLocationUpdate: new Date(),
+        },
+      },
+      { new: true },
+    );
+
+    console.log(`📍 Location updated for provider ${provider.fullName}:`, {
+      coordinates: [longitude, latitude],
+      address: finalAddress,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Location updated successfully",
+      data: {
+        currentLocation: provider.currentLocation,
+        lastLocationUpdate: provider.lastLocationUpdate,
+      },
+    });
+  } catch (error) {
+    console.error("Update location error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating location",
+      error: error.message,
+    });
   }
+}
 
   /**
    * Toggle availability
@@ -623,12 +886,12 @@ class ProviderController {
         });
       }
 
-      // if (!provider.kycVerified) {
-      //   return res.status(403).json({
-      //     success: false,
-      //     message: "KYC verification required to toggle availability",
-      //   });
-      // }
+      if (!provider.kycVerified) {
+        return res.status(403).json({
+          success: false,
+          message: "KYC verification required to toggle availability",
+        });
+      }
 
       provider.availability.isAvailable = isAvailable;
       provider.availability.lastUpdated = new Date();
@@ -667,13 +930,30 @@ class ProviderController {
 
         .sort({ createdAt: -1 })
         .limit(limit * 1)
-        .skip((page - 1) * limit);
+        .skip((page - 1) * limit)
+        .lean();
+
+      const bookingsWithPricing = bookings.map((booking) => ({
+        ...booking,
+        pricing: {
+          riderPays:
+            booking.calculatedPrice ??
+            booking.agreedPrice ??
+            booking.totalAmount ??
+            booking.budget ??
+            null,
+          driverReceives: booking.driverReceives ?? null,
+          platformEarns: booking.platformEarns ?? null,
+          breakdown: booking.pricingBreakdown ?? null,
+          meta: booking.pricingMeta ?? null,
+        },
+      }));
 
       const count = await Booking.countDocuments(query);
 
       return res.status(200).json({
         success: true,
-        data: bookings,
+        data: bookingsWithPricing,
         totalPages: Math.ceil(count / limit),
         currentPage: parseInt(page),
         total: count,
@@ -688,125 +968,163 @@ class ProviderController {
     }
   }
 
-  // async getBookingDetails(req, res) {
-  //   try {
-  //     const providerId = req.user.providerId;
-  //     const { bookingId } = req.params;
-
-  //     const booking = await Booking.findOne({
-  //       _id: bookingId,
-  //       providerId
-  //     }).populate('userId', 'firstName lastName avatar phoneNumber email');
-
-  //     if (!booking) {
-  //       return res.status(404).json({
-  //         success: false,
-  //         message: 'Booking not found'
-  //       });
-  //     }
-
-  //     return res.status(200).json({
-  //       success: true,
-  //       data: booking
-  //     });
-  //   } catch (error) {
-  //     console.error('Get booking details error:', error);
-  //     return res.status(500).json({
-  //       success: false,
-  //       message: 'Error fetching booking details',
-  //       error: error.message
-  //     });
-  //   }
-  // }
-
   async acceptBooking(req, res) {
-    try {
-      const bookingId = req.params.id;
-      const provider = req.user;
-      const providerId = provider.id;
+  try {
+    const bookingId = req.params.id;
+    const provider = req.user;
+    const providerId = provider.id;
 
-      // 1️⃣ Fetch booking first (read-only)
-      const booking = await Booking.findById(bookingId);
+    // 1️⃣ Fetch booking
+    const booking = await Booking.findById(bookingId);
 
-      if (!booking) {
-        return res.status(404).json({
-          success: false,
-          message: "Booking not found",
-        });
-      }
-
-      // 2️⃣ Status check
-      if (
-        !["awaiting_provider_acceptance", "pending_providers"].includes(
-          booking.status,
-        )
-      ) {
-        return res.status(409).json({
-          success: false,
-          message: "Booking is no longer available",
-        });
-      }
-
-      // 3️⃣ Service match check (🔥 BEFORE update)
-      // const isServiceMatch = provider.job?.some(j =>
-      //   j.service === booking.serviceType &&
-      //   j.title === booking.subCategory
-      // );
-
-      // if (!isServiceMatch) {
-      //   return res.status(409).json({
-      //     success: false,
-      //     message: 'You cannot accept a service you do not offer'
-      //   });
-      // }
-
-      // 4️⃣ Atomic update (fastest finger wins)
-      const updatedBooking = await Booking.findOneAndUpdate(
-        {
-          _id: bookingId,
-          providerId: { $exists: false },
-        },
-        {
-          providerId,
-          status: "provider_selected",
-          acceptedAt: new Date(),
-        },
-        { new: true },
-      ).populate("userId", "firstName lastName fcmToken");
-
-      if (!updatedBooking) {
-        return res.status(409).json({
-          success: false,
-          message: "Booking already taken by another provider",
-        });
-      }
-
-      // 5️⃣ Notifications
-      await notificationService.notifyUser(updatedBooking.userId, {
-        type: "provider_accepted",
-        title: "Provider Accepted Your Booking",
-        message: `A provider has accepted your ${updatedBooking.serviceType} booking`,
-        bookingId: updatedBooking._id,
-        providerId,
-      });
-
-      notificationService.notifyBookingTaken(bookingId, providerId);
-
-      return res.status(200).json({
-        success: true,
-        message: "Booking accepted successfully",
-        data: updatedBooking,
-      });
-    } catch (error) {
-      console.error("Accept booking error:", error);
-      return res.status(500).json({
+    if (!booking) {
+      return res.status(404).json({
         success: false,
-        message: "Failed to accept booking",
-        error: error.message,
+        message: "Booking not found",
       });
     }
+
+    // 2️⃣ Status check
+    if (
+      !["awaiting_provider_acceptance", "pending_providers"].includes(
+        booking.status,
+      )
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: "Booking is no longer available",
+      });
+    }
+
+    // 3️⃣ Fetch provider's current location and vehicle data
+    const providerData = await Provider.findById(providerId)
+      .select("currentLocation vehicleProductionYear job lastLocationUpdate");
+
+    if (!providerData) {
+      return res.status(404).json({
+        success: false,
+        message: "Provider not found",
+      });
+    }
+
+    if (
+      !providerData.currentLocation?.coordinates?.length
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Your location is unavailable. Please enable location and try again.",
+      });
+    }
+
+    // 4️⃣ Calculate provider ETA from their current location to pickup
+    const isBike = providerData.job?.some(j => j.title === "motorbike_rider");
+    const avgSpeedKmh = isBike ? 15 : 20;
+
+    const [providerLng, providerLat] = providerData.currentLocation.coordinates;
+    const [pickupLng, pickupLat] = booking.pickupLocation.coordinates.coordinates;
+
+    const distanceFromPickupKm = geolocationService.calculateDistance(
+      providerLat, providerLng,
+      pickupLat, pickupLng,
+    );
+
+    const providerETAMinutes = Math.ceil((distanceFromPickupKm / avgSpeedKmh) * 60);
+    const totalDurationMinutes = providerETAMinutes + booking.estimatedDuration.value;
+
+const updatedBooking = await Booking.findOneAndUpdate(
+  {
+    _id: bookingId,
+    $or: [
+      { providerId: { $exists: false } },  // fastest finger — no one accepted yet
+      { providerId: providerId },           // user selection — rider already chose this provider
+    ],
+    status: { $in: ["awaiting_provider_acceptance", "pending_providers"] }, // re-check status atomically
+  },
+  {
+    providerId,
+    status: "provider_selected",
+
+    acceptedAt: new Date(),
+    distanceFromPickup: {
+      value: parseFloat(distanceFromPickupKm.toFixed(2)),
+      unit: "km",
+    },
+    providerETA: {
+      value: providerETAMinutes,
+      unit: "minutes",
+    },
+    bookingDuration: {
+      value: totalDurationMinutes,
+      unit: "minutes",
+      breakdown: {
+        providerToPickup: providerETAMinutes,
+        pickupToDropoff: booking.estimatedDuration.value,
+      },
+    },
+    estimatedCompletionAt: new Date(
+      Date.now() + totalDurationMinutes * 60 * 1000
+    ),
+  },
+  { new: true },
+).populate("userId", "firstName lastName fcmToken");
+
+if (!updatedBooking) {
+  // Distinguish between the two failure reasons for clearer errors
+  const freshBooking = await Booking.findById(bookingId).select("status providerId");
+
+  if (!freshBooking) {
+    return res.status(404).json({
+      success: false,
+      message: "Booking not found",
+    });
   }
 
+  if (freshBooking.status === "enroute_to_pickup") {
+    return res.status(409).json({
+      success: false,
+      message: "Booking already taken by another provider",
+    });
+  }
+
+  if (freshBooking.providerId && String(freshBooking.providerId) !== String(providerId)) {
+    return res.status(403).json({
+      success: false,
+      message: "This booking was assigned to a different provider",
+    });
+  }
+
+  return res.status(409).json({
+    success: false,
+    message: "Booking is no longer available",
+  });
+}
+    // 6️⃣ Notifications
+    await notificationService.notifyUser(updatedBooking.userId, {
+      type: "provider_accepted",
+      title: "Provider Accepted Your Booking",
+      message: `A provider is on their way to your pickup location`,
+      bookingId: updatedBooking._id,
+      providerId,
+      providerETA: providerETAMinutes,
+      estimatedCompletionAt: updatedBooking.estimatedCompletionAt,
+    });
+
+    notificationService.notifyBookingTaken(bookingId, providerId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking accepted successfully",
+      data: updatedBooking,
+    });
+  } catch (error) {
+    console.error("Accept booking error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to accept booking",
+      error: error.message,
+    });
+  }
+}
   async cancelBooking(req, res) {
     try {
       const providerId = req.user.id;
@@ -816,7 +1134,7 @@ class ProviderController {
       const booking = await Booking.findOne({
         _id: bookingId,
         providerId,
-        status: "pending",
+        status: "provider_selected",
       });
 
       if (!booking) {
@@ -940,8 +1258,8 @@ class ProviderController {
 
       await notificationService.notifyUser(booking.userId._id, {
         type: "job_started",
-        title: " Provider Starts Job",
-        message: `Provider has started your ${booking.serviceType} job`,
+        title: " Enroute to Pickup Location",
+        message: `${booking?.providerId?.fullName || "The rider"} is on their way to you!`,
         bookingId: booking._id,
         providerId,
       });
@@ -1060,12 +1378,15 @@ class ProviderController {
         $inc: { completedJobs: 1 },
       });
 
+      const provider = await Provider.findById(providerId).select("fullName");
+
       await notificationService.notifyUser(booking.userId, {
         type: "booking_completed",
         title: "✅ Service Completed",
         message:
-          "Your service has been completed. Please rate your experience.",
+          "Your service has been completed. You have 12 hours to confirm or dispute it, just let us know if anything isn't right. After that, we'll auto-approve and release their payment. Thanks for being with us!",
         bookingId: booking._id,
+        providerName: provider?.fullName,
       });
       return res.status(200).json({
         success: true,
@@ -1251,27 +1572,32 @@ class ProviderController {
 
   async getReviews(req, res) {
     try {
-      const providerId = req.user.providerId;
+      const providerId = req.user.providerId || req.user.id;
       const { page = 1, limit = 10 } = req.query;
 
-      const reviews = await Booking.find({
-        providerId,
-        "rating.score": { $exists: true },
-      })
-        .populate("userId", "firstName lastName avatar")
-        .select("rating serviceType createdAt")
-        .sort({ "rating.ratedAt": -1 })
-        .limit(limit * 1)
-        .skip((page - 1) * limit);
+      const provider = await Provider.findById(providerId)
+        .select("reviews rating")
+        .lean();
 
-      const count = await Booking.countDocuments({
-        providerId,
-        "rating.score": { $exists: true },
-      });
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
+
+      const allReviews = (provider.reviews || [])
+        .filter((item) => item && item.score !== undefined && item.score !== null)
+        .sort((a, b) => new Date(b.ratedAt || 0) - new Date(a.ratedAt || 0));
+
+      const startIndex = (page - 1) * limit;
+      const reviews = allReviews.slice(startIndex, startIndex + Number(limit));
+      const count = allReviews.length;
 
       return res.status(200).json({
         success: true,
         data: reviews,
+        rating: provider.rating,
         totalPages: Math.ceil(count / limit),
         currentPage: parseInt(page),
         total: count,

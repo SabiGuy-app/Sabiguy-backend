@@ -120,7 +120,7 @@ COMMON SCENARIOS:
 KNOWLEDGE BASE:
 
 **Pricing:**
-- Platform fee: 10% of service cost
+- Platform fee: 5% of service cost
 - Minimum booking: ₦2,000
 - Payment methods: Card, Bank Transfer, Wallet
 

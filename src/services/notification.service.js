@@ -5,26 +5,40 @@ const Notification = require("../../models/Notification");
 
 class NotificationService {
   constructor() {
-    // Initialize Firebase Admin SDK
-    if (!admin.apps.length) {
-      try {
-        admin.initializeApp({
-          credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-          }),
-        });
-        console.log(process.env.FIREBASE_PROJECT_ID);
-
-        console.log("✅ Firebase Admin initialized");
-      } catch (error) {
-        console.error("❌ Firebase initialization error:", error.message);
-      }
-    }
-
-    // Socket.IO instance will be set from server
     this.io = null;
+    this.firebaseInitialized = false;
+
+    if (!admin.apps.length) {
+      if (!process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+        console.error(
+          "❌ FIREBASE_SERVICE_ACCOUNT_KEY environment variable is not set",
+        );
+        console.error(
+          "⚠️ Push notifications will not work until Firebase credentials are configured",
+        );
+      } else {
+        try {
+          const serviceAccount = JSON.parse(
+            Buffer.from(
+              process.env.FIREBASE_SERVICE_ACCOUNT_KEY,
+              "base64",
+            ).toString("utf8"),
+          );
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+          });
+          this.firebaseInitialized = true;
+          console.log("✅ Firebase Admin initialized");
+        } catch (error) {
+          console.error("❌ Firebase initialization error:", error.message);
+          console.error(
+            "⚠️ Make sure FIREBASE_SERVICE_ACCOUNT_KEY is a valid base64-encoded JSON string",
+          );
+        }
+      }
+    } else {
+      this.firebaseInitialized = true;
+    }
   }
 
   getDefaultPreferences() {
@@ -40,6 +54,9 @@ class NotificationService {
           "booking_status_updated",
           "booking_taken",
           "counter_offer",
+          "booking_disputed",
+          "booking_completed_awaiting_acceptance",
+          "booking_auto_completed",
         ],
       },
       jobCompleted: {
@@ -79,6 +96,8 @@ class NotificationService {
       booking_status_updated: "bookings",
       booking_taken: "bookings",
       counter_offer: "bookings",
+      booking_disputed: "bookings",
+      booking_auto_completed: "bookings",
       job_started: "jobCompleted",
       booking_completed: "jobCompleted",
       job_completed_confirmed: "jobCompleted",
@@ -93,18 +112,38 @@ class NotificationService {
     return map[type] || "bookings";
   }
 
-  async getPreferences(recipientId, recipientModel) {
+  mergeNotificationPreferences(preferences) {
     const defaults = this.getDefaultPreferences();
+    const merged = {};
+
+    for (const key of Object.keys(defaults)) {
+      const base = defaults[key];
+      const incoming = preferences?.[key] || {};
+      const baseTypes = Array.isArray(base.types) ? base.types : [];
+      const incomingTypes = Array.isArray(incoming.types) ? incoming.types : [];
+
+      merged[key] = {
+        push: typeof incoming.push === "boolean" ? incoming.push : base.push,
+        email:
+          typeof incoming.email === "boolean" ? incoming.email : base.email,
+        types: Array.from(new Set([...baseTypes, ...incomingTypes])),
+      };
+    }
+
+    return merged;
+  }
+
+  async getPreferences(recipientId, recipientModel) {
     if (recipientModel === "Buyer") {
       const user = await Buyer.findById(recipientId).select(
         "notificationPreferences",
       );
-      return user?.notificationPreferences || defaults;
+      return this.mergeNotificationPreferences(user?.notificationPreferences);
     }
     const provider = await Provider.findById(recipientId).select(
       "notificationPreferences",
     );
-    return provider?.notificationPreferences || defaults;
+    return this.mergeNotificationPreferences(provider?.notificationPreferences);
   }
 
   shouldNotify(preferences, type) {
@@ -118,23 +157,36 @@ class NotificationService {
     return { allowInApp, allowPush: pushEnabled, allowEmail: emailEnabled };
   }
 
-  /**
-   * Set Socket.IO instance
-   */
+  resolveNotificationMessage(data) {
+    return data?.message || data?.body || "";
+  }
+
   setSocketIO(io) {
     this.io = io;
   }
 
-  /**
-   * Send notification to user
-   * @param {String} userId
-   * @param {Object} data - { type, title, message, bookingId, ... }
-   */
+  logNotificationError(operation, recipientId, recipientModel, error) {
+    console.error(
+      `[NotificationService] ${operation} failed for ${recipientModel}:${recipientId}`,
+      error,
+    );
+  }
+
   async notifyUser(userId, data) {
     try {
       const preferences = await this.getPreferences(userId, "Buyer");
       const decision = this.shouldNotify(preferences, data.type);
-      if (!decision.allowInApp && !decision.allowPush) return null;
+      if (!decision.allowInApp && !decision.allowPush) {
+        console.warn(
+          `[NotificationService] Skipping notifyUser for Buyer:${userId} due to notification preferences`,
+          {
+            type: data.type,
+            category: this.getTypeCategory(data.type),
+            preferences,
+          },
+        );
+        return null;
+      }
 
       const notification = decision.allowInApp
         ? await this.createNotification(userId, "Buyer", data)
@@ -142,32 +194,36 @@ class NotificationService {
 
       const room = `buyer:${userId}`;
 
-      // Real-time (Socket.IO)
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
       }
 
-      // Push (FCM)
       if (decision.allowPush) {
         await this.sendPushNotification(userId, "Buyer", data);
       }
 
       return notification;
     } catch (error) {
-      console.error("Notify user error:", error.message);
+      this.logNotificationError("notifyUser", userId, "Buyer", error);
+      throw error;
     }
   }
 
-  /**
-   * Send notification to provider
-   * @param {String} providerId
-   * @param {Object} data
-   */
   async notifyProvider(providerId, data) {
     try {
       const preferences = await this.getPreferences(providerId, "Provider");
       const decision = this.shouldNotify(preferences, data.type);
-      if (!decision.allowInApp && !decision.allowPush) return null;
+      if (!decision.allowInApp && !decision.allowPush) {
+        console.warn(
+          `[NotificationService] Skipping notifyProvider for Provider:${providerId} due to notification preferences`,
+          {
+            type: data.type,
+            category: this.getTypeCategory(data.type),
+            preferences,
+          },
+        );
+        return null;
+      }
 
       const notification = decision.allowInApp
         ? await this.createNotification(providerId, "Provider", data)
@@ -175,19 +231,23 @@ class NotificationService {
 
       const room = `provider:${providerId}`;
 
-      // Real-time (Socket.IO)
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
       }
 
-      // Push (FCM)
       if (decision.allowPush) {
         await this.sendPushNotification(providerId, "Provider", data);
       }
 
       return notification;
     } catch (error) {
-      console.error("Notify provider error:", error.message);
+      this.logNotificationError(
+        "notifyProvider",
+        providerId,
+        "Provider",
+        error,
+      );
+      throw error;
     }
   }
 
@@ -195,46 +255,47 @@ class NotificationService {
     try {
       const preferences = await this.getPreferences(userId, userModel);
       const decision = this.shouldNotify(preferences, data.type);
-      if (!decision.allowInApp && !decision.allowPush) return null;
+      if (!decision.allowInApp && !decision.allowPush) {
+        console.warn(
+          `[NotificationService] Skipping sendNotification for ${userModel}:${userId} due to notification preferences`,
+          {
+            type: data.type,
+            category: this.getTypeCategory(data.type),
+            preferences,
+          },
+        );
+        return null;
+      }
 
-      // Create notification in database
       const notification = decision.allowInApp
         ? await this.createNotification(userId, userModel, data)
         : null;
 
-      // Determine the correct room based on userModel
       const room = `${userModel.toLowerCase()}:${userId}`;
 
-      // Real-time notification via Socket.IO
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
         console.log(`📢 Real-time notification sent to room: ${room}`);
       }
 
-      // Push notification via FCM
       if (decision.allowPush) {
         await this.sendPushNotification(userId, userModel, data);
       }
 
       return notification;
     } catch (error) {
-      console.error("Send notification error:", error.message);
+      this.logNotificationError("sendNotification", userId, userModel, error);
       throw error;
     }
   }
 
-  /**
-   * Notify when booking is taken by another provider
-   */
   async notifyBookingTaken(bookingId, acceptedProviderId) {
     try {
-      // You'd get the list of notified providers from booking
       const Booking = require("../../models/Bookings");
       const booking = await Booking.findById(bookingId);
 
       if (!booking || !booking.notifiedProviders) return;
 
-      // Notify all other providers
       const otherProviders = booking.notifiedProviders.filter(
         (id) => id.toString() !== acceptedProviderId.toString(),
       );
@@ -253,10 +314,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * Create notification record in database
-   * @private
-   */
   async createNotification(recipientId, recipientModel, data) {
     try {
       const notification = await Notification.create({
@@ -264,7 +321,7 @@ class NotificationService {
         recipientModel,
         type: data.type,
         title: data.title || this.getDefaultTitle(data.type),
-        message: data.message,
+        message: this.resolveNotificationMessage(data),
         data: {
           bookingId: data.bookingId,
           ...data,
@@ -274,18 +331,25 @@ class NotificationService {
 
       return notification;
     } catch (error) {
-      console.error("Create notification error:", error.message);
-      return null;
+      this.logNotificationError(
+        "createNotification",
+        recipientId,
+        recipientModel,
+        error,
+      );
+      throw error;
     }
   }
 
-  /**
-   * Send push notification via Firebase Cloud Messaging
-   * @private
-   */
   async sendPushNotification(recipientId, recipientModel, data) {
     try {
-      // Get user/provider FCM token from database
+      if (!this.firebaseInitialized) {
+        console.warn(
+          `⚠️ Firebase not initialized. Push notification skipped for ${recipientModel}:${recipientId}`,
+        );
+        return;
+      }
+
       let fcmToken;
 
       if (recipientModel === "Buyer") {
@@ -306,7 +370,7 @@ class NotificationService {
         token: fcmToken,
         notification: {
           title: data.title || this.getDefaultTitle(data.type),
-          body: data.message,
+          body: this.resolveNotificationMessage(data),
         },
         data: {
           type: data.type,
@@ -335,22 +399,24 @@ class NotificationService {
         `✅ Push notification sent to ${recipientModel}:${recipientId}`,
       );
     } catch (error) {
-      console.error("Push notification error:", error.message);
+      this.logNotificationError(
+        "sendPushNotification",
+        recipientId,
+        recipientModel,
+        error,
+      );
 
-      // If token is invalid, remove it from database
       if (
         error.code === "messaging/invalid-registration-token" ||
         error.code === "messaging/registration-token-not-registered"
       ) {
         await this.removeInvalidFCMToken(recipientId, recipientModel);
       }
+
+      throw error;
     }
   }
 
-  /**
-   * Remove invalid FCM token
-   * @private
-   */
   async removeInvalidFCMToken(recipientId, recipientModel) {
     try {
       if (recipientModel === "Buyer") {
@@ -365,10 +431,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * Get default notification title based on type
-   * @private
-   */
   getDefaultTitle(type) {
     const titles = {
       new_booking_request: "🔔 New Booking Request",
@@ -378,14 +440,15 @@ class NotificationService {
       booking_cancelled: "❌ Booking Cancelled",
       payment_received: "💰 Payment Received",
       booking_completed: "✅ Booking Completed",
+      booking_disputed: "⚠️ Booking Disputed",
+      booking_auto_completed: " ⚠️ Booking Auto completed",
+      booking_completed_awaiting_acceptance:
+        "⚠️ Booking Completed - Awaiting Your Acceptance",
     };
 
     return titles[type] || "Notification";
   }
 
-  /**
-   * Mark notification as read
-   */
   async markAsRead(notificationId) {
     try {
       await Notification.findByIdAndUpdate(notificationId, {
