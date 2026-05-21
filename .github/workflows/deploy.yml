@@ -209,3 +209,5 @@ jobs:
               -p 3000:3000 \
               --env-file /home/${{ secrets.PRODUCTION_EC2_USERNAME }}/.env \
               ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
+
+              #testing
