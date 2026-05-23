@@ -114,8 +114,6 @@ const routes = [
   { path: "/admin", file: "./routes/admin" },
 ];
 
-app.use(cors());
-
 routes.forEach((route) => {
   app.use(`/api/v1${route.path}`, require(route.file));
 });
