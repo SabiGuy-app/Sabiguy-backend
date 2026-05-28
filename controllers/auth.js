@@ -70,6 +70,15 @@ const getRefreshTokenExpiryDate = (token) => {
   return new Date(decoded.exp * 1000);
 };
 
+const buildAuthUserPayload = (user) => ({
+  email: user.email,
+  _id: user._id,
+  role: user.role,
+  kycCompleted: Boolean(user.kycCompleted),
+  kycLevel: user.kycLevel ?? 0,
+  kycVerified: Boolean(user.kycVerified),
+});
+
 exports.googleSignUp = async (req, res) => {
   const { token } = req.body;
 
@@ -496,11 +505,7 @@ exports.googleLogIn = async (req, res) => {
       token: jwtToken,
       // accessToken: jwtToken,
       refreshToken,
-      user: {
-        email: user.email,
-        _id: user._id,
-        role: user.role,
-      },
+      user: buildAuthUserPayload(user),
     });
   } catch (err) {
     console.error("Google login failed:", err);
@@ -874,6 +879,7 @@ exports.login = async (req, res) => {
       // accessToken: token,
       refreshToken,
       id: user._id,
+      user: buildAuthUserPayload(user),
     });
   } catch (error) {
     console.error("Login error:", error);
