@@ -71,12 +71,107 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *                       type: number
  *                       example: 500
  *                       description: Platform fee (5%)
+ *                     discountApplied:
+ *                       type: boolean
+ *                       example: false
+ *                     discountAmount:
+ *                       type: number
+ *                       example: 0
+ *                     discountPercent:
+ *                       type: number
+ *                       example: 20
+ *                     promoEligibility:
+ *                       type: object
+ *                       properties:
+ *                         eligible:
+ *                           type: boolean
+ *                         used:
+ *                           type: integer
+ *                         remaining:
+ *                           type: integer
  *       400:
  *         description: Booking ID required or booking not ready for payment
  *       500:
  *         description: Payment initialization failed
  */
 router.post('/initialize', authMiddleware, paymentController.initializePayment);
+
+/**
+ * @swagger
+ * /api/v1/payment/promo-eligibility:
+ *   get:
+ *     summary: Check launch promo eligibility
+ *     description: Returns whether the authenticated buyer can still redeem the first-two-rides promo, and the estimated discount for an optional booking.
+ *     tags: [Payment]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: bookingId
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional booking ID to estimate promo value for that booking
+ *     responses:
+ *       200:
+ *         description: Promo eligibility retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Promo eligibility retrieved successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     userId:
+ *                       type: string
+ *                     bookingId:
+ *                       type: string
+ *                       nullable: true
+ *                     promo:
+ *                       type: object
+ *                       properties:
+ *                         code:
+ *                           type: string
+ *                           example: first_two_rides
+ *                         percent:
+ *                           type: number
+ *                           example: 20
+ *                         eligible:
+ *                           type: boolean
+ *                           example: true
+ *                         used:
+ *                           type: integer
+ *                           example: 0
+ *                         remaining:
+ *                           type: integer
+ *                           example: 2
+ *                         baseAmount:
+ *                           type: number
+ *                           example: 1500
+ *                         estimatedDiscountAmount:
+ *                           type: number
+ *                           example: 1500
+ *                         isNewUser:
+ *                           type: boolean
+ *                           example: true
+ *                         canApplyAtPayment:
+ *                           type: boolean
+ *                           example: true
+ *       404:
+ *         description: User or booking not found
+ *       400:
+ *         description: Invalid booking ID format
+ *       500:
+ *         description: Failed to retrieve promo eligibility
+ */
+router.get('/promo-eligibility', authMiddleware, paymentController.getPromoEligibility);
 
 /**
  * @swagger

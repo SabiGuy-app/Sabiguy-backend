@@ -1,7 +1,11 @@
 const paymentService = require ('../src/services/payment.service');
+const Buyer = require("../models/ServiceUser");
+const Booking = require("../models/Bookings");
+const mongoose = require("mongoose");
+const discountService = require("../src/services/discount.service");
 
 class PaymentController {
-    // Initialze payment
+  // Initialze payment
 
     async initializePayment(req, res) {
     try {
@@ -59,6 +63,104 @@ class PaymentController {
       return res.status(500).json({
         success: false,
         message: error.message || 'Payment verification failed'
+      });
+    }
+  }
+
+  /**
+   * Get promo eligibility for a buyer before payment
+   */
+  async getPromoEligibility(req, res) {
+    try {
+      const userId = req.user.id;
+      const { bookingId } = req.query;
+
+      const user = await Buyer.findById(userId).select(
+        "firstRideDiscountUsed isNewUser fullName email",
+      );
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      let booking = null;
+      let pricingBreakdown = {};
+
+      if (bookingId) {
+        if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid booking ID format",
+          });
+        }
+
+        booking = await Booking.findOne({
+          _id: bookingId,
+          userId,
+        }).select(
+          "agreedPrice calculatedPrice totalAmount budget pricingBreakdown serviceFee providerCommission providerReceives platformEarns",
+        );
+
+        if (!booking) {
+          return res.status(404).json({
+            success: false,
+            message: "Booking not found",
+          });
+        }
+
+        pricingBreakdown = booking.pricingBreakdown || {
+          subtotal:
+            booking.agreedPrice ??
+            booking.calculatedPrice ??
+            booking.totalAmount ??
+            booking.budget ??
+            0,
+          platformFee: booking.serviceFee ?? 0,
+          driverCommission: booking.providerCommission ?? 0,
+          driverReceives: booking.providerReceives ?? 0,
+          platformEarns: booking.platformEarns ?? 0,
+          riderPaysFinal:
+            booking.totalAmount ??
+            booking.calculatedPrice ??
+            booking.agreedPrice ??
+            booking.budget ??
+            0,
+        };
+      }
+
+      const promoPreview = discountService.previewLaunchPromoBreakdown({
+        user,
+        booking,
+        pricingBreakdown,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Promo eligibility retrieved successfully",
+        data: {
+          userId: user._id,
+          bookingId: booking?._id ?? null,
+          promo: {
+            code: promoPreview.launchPromo.code,
+            percent: promoPreview.launchPromo.percent,
+            eligible: promoPreview.launchPromo.eligible,
+            used: promoPreview.launchPromo.used,
+            remaining: promoPreview.launchPromo.remaining,
+            baseAmount: promoPreview.launchPromo.baseAmount,
+            estimatedDiscountAmount: promoPreview.launchPromo.baseAmount,
+            isNewUser: user.isNewUser,
+            canApplyAtPayment: promoPreview.launchPromo.eligible,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Get promo eligibility error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to retrieve promo eligibility",
       });
     }
   }
