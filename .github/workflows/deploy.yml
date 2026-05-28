@@ -70,6 +70,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    outputs:
+      image_uri: ${{ steps.build-image.outputs.image_uri }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -83,17 +85,13 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build and push docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        id: build-image
+        run: |
+          IMAGE_URI=${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
   deploy-staging:
     needs: build-staging
@@ -223,5 +221,3 @@ jobs:
               -p 3000:3000 \
               --env-file /home/${{ secrets.PRODUCTION_EC2_USERNAME }}/.env \
               ${{ secrets.PRODUCTION_ECR_REPOSITORY }}:${{ github.sha }}
-
-              #testing
