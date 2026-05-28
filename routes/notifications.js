@@ -29,7 +29,7 @@ const notificationController = require("../controllers/notifications");
  *         schema:
  *           type: string
  *           enum:
- *             - new_booking_request
+ *             - _request
  *             - provider_accepted
  *             - booking_selected
  *             - booking_taken

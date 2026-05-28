@@ -173,6 +173,10 @@ const bookingSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    applyFirstRideDiscount: {
+      type: Boolean,
+      default: false,
+    },
     totalAmount: Number,
 
     // Provider management
@@ -224,6 +228,15 @@ const bookingSchema = new mongoose.Schema(
       paystackRef: String,
       escrowAmount: Number,
       providerReceives: Number,
+      discount: {
+        code: String,
+        percent: Number,
+        amount: Number,
+        applied: Boolean,
+        reason: String,
+        usedBefore: Number,
+        remainingAfter: Number,
+      },
       escrowStatus: {
         type: String,
         enum: ["held", "pending", "released", "refunded"],
