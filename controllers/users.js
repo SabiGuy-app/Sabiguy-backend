@@ -238,6 +238,44 @@ exports.getUserById = async (req, res) => {
   }
 };
 
+exports.uploadUserNin = async (req, res) => {
+  try {
+    const buyerId = req.user.id;
+    const { ninSlip } = req.body;
+
+    if (!ninSlip) {
+      return res.status(400).json({
+        success: false,
+        message: "NIN slip is required",
+      });
+    }
+
+    const buyer = await Buyer.findByIdAndUpdate(req.user.id);
+
+    if (!buyer) {
+      return res.status(404).json({
+        success: false,
+        message: "Buyer not found",
+      });
+    }
+    buyer.ninSlip = ninSlip;
+    buyer.kycCompleted = true;
+
+    return res.status(200).json({
+      success: true,
+      message: "NIN uploaded successfully",
+      data: buyer,
+    });
+  } catch (error) {
+    console.error("Upload NIN error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error uploading NIN",
+      error: error.message,
+    });
+  }
+};
+
 exports.updateUserLocation = async (req, res) => {
   try {
     const buyerId = req.user.id;

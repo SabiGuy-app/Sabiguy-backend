@@ -8,6 +8,7 @@ const geolocationService = require("../src/services/geolocation.service");
 const notificationService = require("../src/services/notification.service");
 const pricingService = require("../src/services/pricing.service");
 const paymentService = require("../src/services/payment.service");
+const discountService = require("../src/services/discount.service");
 const WalletService = require("../src/services/wallet.service");
 
 const PROVIDER_RADIUS = {
@@ -45,10 +46,16 @@ class BookingController {
     this.getBookingById = this.getBookingById.bind(this);
     this.notifyProvidersForFastestFinger =
       this.notifyProvidersForFastestFinger.bind(this);
+    this.formatBookingPricing = this.formatBookingPricing.bind(this);
+    this.formatBookingPricingSummary =
+      this.formatBookingPricingSummary.bind(this);
+    this.prepareBookingResponse = this.prepareBookingResponse.bind(this);
+    this.selectProvider = this.selectProvider.bind(this);
     this.calculateDistance = this.calculateDistance.bind(this);
     this.mockGeocode = this.mockGeocode.bind(this);
     this.geocodeWithFallback = this.geocodeWithFallback.bind(this);
     this.getDirectionsWithFallback = this.getDirectionsWithFallback.bind(this);
+    this.parseDate = this.parseDate.bind(this);
   }
 
   formatBookingPricing(booking) {
@@ -89,6 +96,16 @@ class BookingController {
       totalPlatformFee,
       providerReceives: providerNet,
       driverReceives: providerNet,
+      discountAmount:
+        breakdown?.discountAmount ?? booking.payment?.discount?.amount ?? null,
+      discountApplied:
+        breakdown?.discountApplied ??
+        booking.payment?.discount?.applied ??
+        false,
+      discountPercent:
+        breakdown?.discountPercent ??
+        booking.payment?.discount?.percent ??
+        null,
       paymentBreakdown: {
         subtotal,
         grossEarnings: subtotal,
@@ -97,6 +114,16 @@ class BookingController {
         providerPlatformFee,
         totalPlatformFee,
         providerReceives: providerNet,
+        discountAmount:
+          breakdown?.discountAmount ?? booking.payment?.discount?.amount ?? null,
+        discountApplied:
+          breakdown?.discountApplied ??
+          booking.payment?.discount?.applied ??
+          false,
+        discountPercent:
+          breakdown?.discountPercent ??
+          booking.payment?.discount?.percent ??
+          null,
       },
       breakdown,
       meta: booking.pricingMeta ?? null,
@@ -203,6 +230,151 @@ class BookingController {
     return directPricing;
   }
 
+  formatBookingPricingSummary(booking) {
+    if (!booking) return null;
+
+    const pricingBreakdown = booking.pricingBreakdown ?? {};
+    const baseBreakdown = pricingBreakdown.breakdown ?? pricingBreakdown;
+    const pricingMeta = booking.pricingMeta ?? pricingBreakdown.meta ?? {};
+    const ratesUsed = pricingMeta.ratesUsed ?? pricingBreakdown?.meta?.ratesUsed ?? {};
+    const promo = pricingBreakdown.launchPromo ?? booking.payment?.discount ?? null;
+    const promoApplied = Boolean(
+      pricingBreakdown.discountApplied ?? promo?.applied ?? false,
+    );
+    const discountAmount = Number(
+      pricingBreakdown.discountAmount ?? promo?.amount ?? 0,
+    );
+    const originalTotalAmount = Number(
+      pricingBreakdown.originalTotalAmount ??
+        pricingBreakdown.riderPaysFinal ??
+        booking.calculatedPrice ??
+        booking.totalAmount ??
+        0,
+    );
+    const finalTotalAmount = Number(
+      pricingBreakdown.discountApplied
+        ? pricingBreakdown.discountedTotalAmount ??
+            booking.totalAmount ??
+            booking.calculatedPrice ??
+            originalTotalAmount
+        : booking.totalAmount ??
+          booking.calculatedPrice ??
+          pricingBreakdown.riderPaysFinal ??
+          originalTotalAmount,
+    );
+
+    return {
+      applyFirstRideDiscount: Boolean(booking.applyFirstRideDiscount ?? false),
+      promoApplied,
+      fare: {
+        baseFare: baseBreakdown.baseFare ?? null,
+        distanceCost: baseBreakdown.distanceCost ?? null,
+        timeCost: baseBreakdown.timeCost ?? null,
+        marketAdjustment: baseBreakdown.marketAdjustment ?? null,
+        subtotal: baseBreakdown.subtotal ?? null,
+      },
+      fees: {
+        userPlatformFee:
+          baseBreakdown.platformFee ??
+          pricingBreakdown.originalServiceFee ??
+          null,
+        driverCommission:
+          baseBreakdown.driverCommission ??
+          pricingBreakdown.originalProviderCommission ??
+          null,
+        providerPlatformFee:
+          baseBreakdown.driverCommission ??
+          pricingBreakdown.originalProviderCommission ??
+          null,
+        totalPlatformFee:
+          baseBreakdown.platformEarns ??
+          pricingBreakdown.originalPlatformEarns ??
+          null,
+        platformEarns:
+          baseBreakdown.platformEarns ??
+          pricingBreakdown.originalPlatformEarns ??
+          null,
+        providerReceives:
+          pricingBreakdown.providerReceives ?? booking.providerReceives ?? null,
+        driverReceives:
+          pricingBreakdown.driverReceives ?? booking.driverReceives ?? null,
+      },
+      promoFees: {
+        userPlatformFee: booking.serviceFee ?? null,
+        driverCommission: booking.providerCommission ?? null,
+        providerPlatformFee: booking.providerCommission ?? null,
+        totalPlatformFee: booking.platformEarns ?? null,
+        platformEarns: booking.platformEarns ?? null,
+      },
+      tax: {
+        amount:
+          baseBreakdown.tax ??
+          pricingBreakdown.tax ??
+          pricingBreakdown.taxAmount ??
+          null,
+        rate: ratesUsed.taxRate ?? null,
+      },
+      totals: {
+        beforeDiscount: originalTotalAmount,
+        discountAmount,
+        afterDiscount: finalTotalAmount,
+        riderPays: finalTotalAmount,
+        riderPaysBeforeTax: pricingBreakdown.riderPaysBeforeTax ?? null,
+        riderPaysFinal: pricingBreakdown.riderPaysFinal ?? finalTotalAmount,
+      },
+      promo: promoApplied
+        ? {
+            applied: true,
+            code: promo?.code ?? pricingBreakdown.discountCode ?? null,
+            percent: promo?.percent ?? pricingBreakdown.discountPercent ?? null,
+            reason: promo?.reason ?? pricingBreakdown.discountReason ?? null,
+            amount: discountAmount,
+            usedBefore:
+              pricingBreakdown.launchPromoSummary?.used ??
+              booking.payment?.discount?.usedBefore ??
+              null,
+            usedAfter:
+              pricingBreakdown.launchPromoSummary?.usedAfter ??
+              booking.payment?.discount?.usedAfter ??
+              null,
+            remainingAfter:
+              pricingBreakdown.launchPromoSummary?.remainingAfter ??
+              booking.payment?.discount?.remainingAfter ??
+              null,
+          }
+        : null,
+      meta: {
+        vehicleCategory: pricingMeta.vehicleCategory ?? null,
+        distanceKm: pricingMeta.distanceKm ?? null,
+        durationMinutes: pricingMeta.durationMinutes ?? null,
+        ratesUsed,
+      },
+    };
+  }
+
+  prepareBookingResponse(booking) {
+    if (!booking) return null;
+
+    const bookingObject =
+      typeof booking.toObject === "function"
+        ? booking.toObject({ versionKey: false })
+        : { ...booking };
+
+    bookingObject.applyFirstRideDiscount = Boolean(
+      bookingObject.applyFirstRideDiscount ??
+        bookingObject.pricingBreakdown?.discountApplied ??
+        bookingObject.payment?.discount?.applied ??
+        false,
+    );
+    bookingObject.pricing = this.formatBookingPricingSummary(bookingObject);
+    delete bookingObject.pricingBreakdown;
+    delete bookingObject.pricingMeta;
+    delete bookingObject.providerPricingOptions;
+    delete bookingObject.providerDistances;
+
+    return bookingObject;
+  }
+
   async createBooking(req, res) {
     try {
       const userId = req.user.id;
@@ -223,6 +395,7 @@ class BookingController {
         attachments,
         modeOfDelivery: modeOfDeliveryRaw,
         modeOfDelivey,
+        applyFirstRideDiscount: applyFirstRideDiscountRaw,
       } = req.body;
 
       const rawModeOfDelivery = modeOfDeliveryRaw ?? modeOfDelivey;
@@ -241,6 +414,10 @@ class BookingController {
         meta: pricing.meta,
       });
       const modeOfDelivery = normalizeModeOfDelivery(rawModeOfDelivery);
+      const applyFirstRideDiscount = Boolean(applyFirstRideDiscountRaw);
+      const buyer = await Buyer.findById(userId)
+        .select("firstRideDiscountUsed isNewUser")
+        .lean();
 
       /* -----------------------------
        1️⃣ Validation
@@ -301,6 +478,7 @@ class BookingController {
         budget,
         modeOfDelivery,
         attachments: attachments || [],
+        applyFirstRideDiscount,
       };
 
       let searchCoordinates;
@@ -425,11 +603,13 @@ class BookingController {
       );
 
       if (!nearbyProviders.length) {
+        const bookingResponse = this.prepareBookingResponse(booking);
         return res.status(201).json({
           success: true,
           message: "Booking created but no providers available nearby",
           data: {
-            booking,
+            booking: bookingResponse,
+            applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
             providers: [],
             ...(isTransport && transportEstimates
               ? {
@@ -532,28 +712,66 @@ class BookingController {
             modeOfDelivery === "Bike",
           );
 
-          booking.calculatedPrice = pricing.calculatedPrice;
-          booking.agreedPrice = pricing.calculatedPrice;
-          booking.totalAmount = pricing.calculatedPrice;
-          booking.driverReceives = pricing.driverReceives;
-          booking.platformEarns = pricing.platformEarns;
-          booking.pricingBreakdown = pricing.breakdown;
-          booking.pricingMeta = pricing.meta;
+          const launchPromo = discountService.buildLaunchPromoBreakdown({
+            user: buyer,
+            booking,
+            pricingBreakdown: pricing.breakdown,
+            applyDiscount: applyFirstRideDiscount,
+          });
+
+          booking.calculatedPrice = launchPromo.totalAmount;
+          booking.agreedPrice = launchPromo.agreedPrice;
+          booking.totalAmount = launchPromo.totalAmount;
+          booking.serviceFee = launchPromo.serviceFee;
+          booking.providerCommission = launchPromo.providerCommission;
+          booking.driverReceives = launchPromo.providerReceives;
+          booking.providerReceives = launchPromo.providerReceives;
+          booking.platformEarns = launchPromo.platformEarns;
+          booking.pricingBreakdown = {
+            breakdown: pricing.breakdown,
+            ...launchPromo,
+            launchPromo: launchPromo.launchPromo,
+            launchPromoSummary: launchPromo.launchPromoSummary,
+            riderPaysFinal: launchPromo.totalAmount,
+            meta: pricing.meta,
+          };
+          booking.pricingMeta = {
+            ...pricing.meta,
+            launchPromo: launchPromo.launchPromo,
+            launchPromoSummary: launchPromo.launchPromoSummary,
+          };
+          booking.payment = {
+            ...(booking.payment || {}),
+            discount: {
+              code: launchPromo.discountCode,
+              percent: launchPromo.discountPercent,
+              amount: launchPromo.discountAmount,
+              applied: launchPromo.discountApplied,
+              reason: launchPromo.discountReason,
+              usedBefore: launchPromo.launchPromoSummary.used,
+              usedAfter: launchPromo.launchPromoSummary.usedAfter,
+              remainingAfter: launchPromo.launchPromoSummary.remainingAfter,
+            },
+          };
+          booking.applyFirstRideDiscount = applyFirstRideDiscount;
           booking.selectedAt = new Date();
           booking.notifiedProviders = enrichedProviders.map((p) => p.id);
           booking.status = "awaiting_provider_acceptance";
           await booking.save();
 
           this.notifyProvidersForFastestFinger(booking, enrichedProviders);
+          const bookingResponse = this.prepareBookingResponse(booking);
 
           return res.status(201).json({
             success: true,
             message: "Booking created. Looking for a provider near you.",
             data: {
-              booking,
+              booking: bookingResponse,
+              applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
               notifiedProvidersCount: enrichedProviders.length,
               calculatedPrice: booking.calculatedPrice,
-              pricing: formatPricing(pricing),
+              pricing: bookingResponse.pricing,
+              originalPricing: formatPricing(pricing),
               distance: booking.distance,
               estimatedDuration: transportEstimates.estimatedDuration,
               estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
@@ -563,16 +781,19 @@ class BookingController {
         } else {
           // 👤 User selection — return enriched providers with individual pricing
           booking.suggestedProviders = enrichedProviders.map((p) => p.id);
+          booking.applyFirstRideDiscount = applyFirstRideDiscount;
           booking.status = "awaiting_provider_acceptance";
           await booking.save();
+          const bookingResponse = this.prepareBookingResponse(booking);
 
           return res.status(201).json({
             success: true,
             message: "Booking created successfully",
             data: {
-              booking,
+              booking: bookingResponse,
+              applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
               providers: enrichedProviders,
-              pricing: this.formatBookingPricing(booking),
+              pricing: bookingResponse.pricing,
               distance: booking.distance,
               estimatedDuration: transportEstimates.estimatedDuration,
               estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
@@ -586,13 +807,16 @@ class BookingController {
        7️⃣ Regular services flow
     ------------------------------*/
       booking.suggestedProviders = enrichedProviders.map((p) => p.id);
+      booking.applyFirstRideDiscount = applyFirstRideDiscount;
       await booking.save();
+      const bookingResponse = this.prepareBookingResponse(booking);
 
       return res.status(201).json({
         success: true,
         message: "Booking created successfully",
         data: {
-          booking,
+          booking: bookingResponse,
+          applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
           providers: enrichedProviders,
         },
       });
@@ -901,14 +1125,14 @@ class BookingController {
           .notifyProvider(provider.id, {
             type: "new_booking_request",
             title: "🔔 New Booking Request",
-            message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || "N/A"} km away`,
+            message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || "N/A"} km away. Please respond within 2 minutes to accept.`,
             bookingId: booking._id,
             scheduleDate: booking.scheduleDate,
             serviceType: booking.serviceType,
             pickupAddress: booking.pickupLocation?.address,
             dropoffAddress: booking.dropoffLocation?.address,
             distance: booking.distance?.value,
-            calculatedPrice: booking.calculatedPrice,
+            calculatedPrice: booking.driverReceives,
             urgency: "high",
           })
           .catch((err) => {
@@ -1267,14 +1491,47 @@ class BookingController {
       }
 
       booking.providerId = providerId;
-      booking.calculatedPrice =
-        finalPricing.calculatedPrice ?? finalPricing.riderPays ?? null;
-      booking.agreedPrice = booking.calculatedPrice;
-      booking.totalAmount = booking.calculatedPrice;
-      booking.driverReceives = finalPricing.driverReceives ?? null;
-      booking.platformEarns = finalPricing.platformEarns ?? null;
-      booking.pricingBreakdown = finalPricing.breakdown ?? null;
-      booking.pricingMeta = finalPricing.meta ?? null;
+      const launchPromo = discountService.buildLaunchPromoBreakdown({
+        user: await Buyer.findById(userId).select("firstRideDiscountUsed isNewUser").lean(),
+        booking,
+        pricingBreakdown: finalPricing.breakdown ?? {},
+        applyDiscount: Boolean(booking.applyFirstRideDiscount),
+      });
+
+      booking.calculatedPrice = launchPromo.totalAmount;
+      booking.agreedPrice = launchPromo.agreedPrice;
+      booking.totalAmount = launchPromo.totalAmount;
+      booking.serviceFee = launchPromo.serviceFee;
+      booking.providerCommission = launchPromo.providerCommission;
+      booking.driverReceives = launchPromo.providerReceives;
+      booking.providerReceives = launchPromo.providerReceives;
+      booking.platformEarns = launchPromo.platformEarns;
+      booking.pricingBreakdown = {
+        breakdown: finalPricing.breakdown ?? null,
+        ...launchPromo,
+        launchPromo: launchPromo.launchPromo,
+        launchPromoSummary: launchPromo.launchPromoSummary,
+        riderPaysFinal: launchPromo.totalAmount,
+        meta: finalPricing.meta ?? null,
+      };
+      booking.pricingMeta = {
+        ...(finalPricing.meta ?? {}),
+        launchPromo: launchPromo.launchPromo,
+        launchPromoSummary: launchPromo.launchPromoSummary,
+      };
+      booking.payment = {
+        ...(booking.payment || {}),
+        discount: {
+          code: launchPromo.discountCode,
+          percent: launchPromo.discountPercent,
+          amount: launchPromo.discountAmount,
+          applied: launchPromo.discountApplied,
+          reason: launchPromo.discountReason,
+          usedBefore: launchPromo.launchPromoSummary.used,
+          usedAfter: launchPromo.launchPromoSummary.usedAfter,
+          remainingAfter: launchPromo.launchPromoSummary.remainingAfter,
+        },
+      };
       booking.selectedAt = new Date();
       booking.status = "awaiting_provider_acceptance";
       await booking.save();
@@ -1289,17 +1546,25 @@ class BookingController {
       notificationService.notifyProvider(providerId, {
         type: "booking_selected",
         title: "🎉 You've Been Selected!",
-        message: `A customer has selected you for a ${booking.serviceType} booking`,
+        message: `A customer has selected you for a ${booking.serviceType} booking. Please review the details in Hire Alert and accept or ignore the job within 2 minutes.`,
         bookingId: booking._id,
         serviceType: booking.serviceType,
-        location: booking.location?.address,
-        budget: booking.budget,
+        pickupAddress: booking.pickupLocation?.address,
+        dropoffAddress: booking.dropoffLocation?.address,
+        budget: booking.driverReceives,
       });
+
+      const bookingResponse = this.prepareBookingResponse(booking);
 
       return res.status(200).json({
         success: true,
         message: "Provider selected successfully",
-        data: booking,
+        data: {
+          booking: bookingResponse,
+          applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
+          pricing: bookingResponse.pricing,
+          flowType: "user_selection",
+        },
       });
     } catch (error) {
       console.error("Select provider error:", error);
@@ -1327,6 +1592,7 @@ class BookingController {
             "awaiting_provider_acceptance",
             "provider_selected",
             "paid_escrow",
+            "payment_pending"
           ],
         },
       });
@@ -1665,8 +1931,7 @@ class BookingController {
         .lean();
 
       const bookingsWithPricing = bookings.map((booking) => ({
-        ...booking,
-        pricing: this.formatBookingPricing(booking),
+        ...this.prepareBookingResponse(booking),
       }));
 
       // Get total count for pagination
@@ -1725,11 +1990,14 @@ class BookingController {
         });
       }
 
+      const bookingResponse = this.prepareBookingResponse(booking);
+
       return res.status(200).json({
         success: true,
         data: {
-          booking,
-          pricing: this.formatBookingPricing(booking),
+          booking: bookingResponse,
+          applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
+          pricing: bookingResponse.pricing,
         },
       });
     } catch (error) {
@@ -1764,8 +2032,7 @@ class BookingController {
         .lean();
 
       const bookingsWithPricing = bookings.map((booking) => ({
-        ...booking,
-        pricing: this.formatBookingPricing(booking),
+        ...this.prepareBookingResponse(booking),
       }));
 
       const count = await Booking.countDocuments(query);
@@ -1816,8 +2083,7 @@ class BookingController {
         .lean();
 
       const bookingsWithPricing = bookings.map((booking) => ({
-        ...booking,
-        pricing: this.formatBookingPricing(booking),
+        ...this.prepareBookingResponse(booking),
       }));
 
       const count = await Booking.countDocuments(query);
@@ -1868,8 +2134,7 @@ class BookingController {
         .lean();
 
       const bookingsWithPricing = bookings.map((booking) => ({
-        ...booking,
-        pricing: this.formatBookingPricing(booking),
+        ...this.prepareBookingResponse(booking),
       }));
 
       const count = await Booking.countDocuments(query);

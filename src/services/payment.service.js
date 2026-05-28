@@ -15,32 +15,53 @@ class paymentService {
 
   resolvePaymentBreakdown(booking) {
     const pricingBreakdown = booking?.pricingBreakdown ?? {};
+    const baseBreakdown = pricingBreakdown.breakdown ?? pricingBreakdown;
     const subtotal = Number(
-      pricingBreakdown.subtotal ??
+      baseBreakdown.subtotal ??
         booking?.agreedPrice ??
         booking?.calculatedPrice ??
         booking?.budget ??
         0,
     );
     const userPlatformFee = Number(
-      pricingBreakdown.platformFee ?? booking?.serviceFee ?? 0,
+      baseBreakdown.platformFee ??
+        pricingBreakdown.originalServiceFee ??
+        booking?.serviceFee ??
+        0,
     );
     const providerPlatformFee = Number(
-      pricingBreakdown.driverCommission ?? booking?.providerCommission ?? 0,
+      baseBreakdown.driverCommission ??
+        pricingBreakdown.originalProviderCommission ??
+        booking?.providerCommission ??
+        0,
     );
     const providerReceives = Number(
-      pricingBreakdown.driverReceives ??
+      baseBreakdown.driverReceives ??
         booking?.driverReceives ??
         booking?.providerReceives ??
         Math.max(subtotal - providerPlatformFee, 0),
     );
+    const tax = Number(
+      baseBreakdown.tax ??
+        pricingBreakdown.tax ??
+        pricingBreakdown.taxAmount ??
+        booking?.tax ??
+        0,
+    );
     const totalPlatformFee = Number(
-      pricingBreakdown.platformEarns ??
+      baseBreakdown.platformEarns ??
+        pricingBreakdown.originalPlatformEarns ??
         booking?.platformEarns ??
         userPlatformFee + providerPlatformFee,
     );
     const riderPays = Number(
-      pricingBreakdown.riderPaysFinal ??
+      pricingBreakdown.discountApplied
+        ? pricingBreakdown.discountedTotalAmount ??
+          baseBreakdown.riderPaysFinal ??
+          booking?.totalAmount ??
+          booking?.calculatedPrice ??
+          subtotal + userPlatformFee
+        : baseBreakdown.riderPaysFinal ??
         booking?.totalAmount ??
         booking?.calculatedPrice ??
         subtotal + userPlatformFee,
@@ -52,11 +73,16 @@ class paymentService {
       providerCommission: providerPlatformFee,
       providerReceives,
       platformEarns: totalPlatformFee,
+      tax,
       totalAmount: riderPays,
     };
   }
 
-  async initializePayment(bookingId, userId, pickupNote = null) {
+  async initializePayment(
+    bookingId,
+    userId,
+    pickupNote = null,
+  ) {
     try {
       const booking = await Booking.findById(bookingId)
         .populate("userId", "email fullName")
@@ -84,7 +110,67 @@ class paymentService {
         throw new Error("Booking must have a selected provider before payment");
       }
 
-      const paymentBreakdown = this.resolvePaymentBreakdown(booking);
+      const paymentBreakdown = {
+        ...this.resolvePaymentBreakdown(booking),
+        ...(booking.pricingBreakdown || {}),
+        discountApplied: booking.payment?.discount?.applied ?? false,
+        discountAmount: booking.payment?.discount?.amount ?? 0,
+        discountPercent: booking.payment?.discount?.percent ?? 0,
+        discountCode: booking.payment?.discount?.code ?? null,
+        discountReason: booking.payment?.discount?.reason ?? null,
+        launchPromo:
+          booking.pricingBreakdown?.launchPromo ??
+          (booking.payment?.discount?.applied
+            ? {
+                code: booking.payment?.discount?.code ?? null,
+                percent: booking.payment?.discount?.percent ?? 0,
+                applied: true,
+                eligible: true,
+                used: booking.payment?.discount?.usedBefore ?? null,
+                remaining: booking.payment?.discount?.remainingAfter ?? null,
+                amount: booking.payment?.discount?.amount ?? 0,
+                baseAmount: booking.pricingBreakdown?.originalTotalAmount ?? null,
+                reason: booking.payment?.discount?.reason ?? null,
+              }
+            : null),
+        launchPromoSummary: {
+          used:
+            booking.payment?.discount?.usedBefore ??
+            booking.pricingBreakdown?.launchPromoSummary?.used ??
+            null,
+          usedAfter:
+            booking.payment?.discount?.usedAfter ??
+            booking.pricingBreakdown?.launchPromoSummary?.usedAfter ??
+            null,
+          remainingAfter:
+            booking.payment?.discount?.remainingAfter ??
+            booking.pricingBreakdown?.launchPromoSummary?.remainingAfter ??
+            null,
+        },
+        paymentBreakdown: booking.pricingBreakdown?.paymentBreakdown ?? {
+          subtotal: booking.pricingBreakdown?.subtotal ?? null,
+          grossEarnings: booking.pricingBreakdown?.grossEarnings ?? null,
+          riderPays: booking.totalAmount ?? null,
+          userPlatformFee: booking.serviceFee ?? null,
+          providerPlatformFee: booking.providerCommission ?? null,
+          totalPlatformFee: booking.platformEarns ?? null,
+          providerReceives: booking.providerReceives ?? null,
+        },
+        originalTotalAmount:
+          booking.pricingBreakdown?.originalTotalAmount ?? booking.totalAmount,
+        originalServiceFee:
+          booking.pricingBreakdown?.originalServiceFee ?? booking.serviceFee,
+        originalProviderCommission:
+          booking.pricingBreakdown?.originalProviderCommission ??
+          booking.providerCommission,
+        originalPlatformEarns:
+          booking.pricingBreakdown?.originalPlatformEarns ?? booking.platformEarns,
+        promoSubsidyAmount:
+          booking.pricingBreakdown?.promoSubsidyAmount ??
+          booking.payment?.discount?.amount ??
+          0,
+      };
+
       const agreedPrice = paymentBreakdown.agreedPrice;
       const totalAmount = paymentBreakdown.totalAmount;
       const serviceFee = paymentBreakdown.serviceFee;
@@ -107,6 +193,29 @@ class paymentService {
       booking.providerReceives = providerReceives;
       booking.platformEarns = platformEarns;
       booking.totalAmount = totalAmount;
+      booking.pricingBreakdown = {
+        ...(booking.pricingBreakdown || {}),
+        launchPromo: paymentBreakdown.launchPromo,
+        discountAmount: paymentBreakdown.discountAmount,
+        discountPercent: paymentBreakdown.discountPercent,
+        discountApplied: paymentBreakdown.discountApplied,
+        discountCode: paymentBreakdown.discountCode,
+        originalTotalAmount: paymentBreakdown.originalTotalAmount,
+        discountedTotalAmount: paymentBreakdown.totalAmount,
+      };
+      booking.payment = {
+        ...(booking.payment || {}),
+        discount: {
+          code: paymentBreakdown.discountCode,
+          percent: paymentBreakdown.discountPercent,
+          amount: paymentBreakdown.discountAmount,
+          applied: paymentBreakdown.discountApplied,
+          reason: paymentBreakdown.discountReason,
+          usedBefore: paymentBreakdown.launchPromoSummary.used,
+          usedAfter: paymentBreakdown.launchPromoSummary.usedAfter,
+          remainingAfter: paymentBreakdown.launchPromoSummary.remainingAfter,
+        },
+      };
 
       const paystackResponse = await axios.post(
         `${this.paystackBaseURL}/transaction/initialize`,
@@ -120,14 +229,20 @@ class paymentService {
             bookingId: booking._id.toString(),
             buyerId: userId,
             providerId: booking.providerId?._id.toString(),
-          serviceType: booking.serviceType,
-          pickupNote: booking.pickupNote || null,
-          agreedPrice,
-          serviceFee,
-          totalAmount,
-          providerCommission,
-          providerReceives,
-          platformEarns,
+            serviceType: booking.serviceType,
+            pickupNote: booking.pickupNote || null,
+            agreedPrice,
+            serviceFee,
+            totalAmount,
+            providerCommission,
+            providerReceives,
+            platformEarns,
+            tax: paymentBreakdown.tax ?? 0,
+            discountApplied: paymentBreakdown.discountApplied,
+            discountAmount: paymentBreakdown.discountAmount,
+            discountPercent: paymentBreakdown.discountPercent,
+            discountCode: paymentBreakdown.discountCode,
+            originalTotalAmount: paymentBreakdown.originalTotalAmount,
             custom_fields: [
               {
                 display_name: "Booking ID",
@@ -165,6 +280,16 @@ class paymentService {
         escrowStatus: "pending",
         escrowAmount: totalAmount,
         providerReceives,
+        discount: {
+          code: paymentBreakdown.discountCode,
+          percent: paymentBreakdown.discountPercent,
+          amount: paymentBreakdown.discountAmount,
+          applied: paymentBreakdown.discountApplied,
+          reason: paymentBreakdown.discountReason,
+          usedBefore: paymentBreakdown.launchPromoSummary.used,
+          usedAfter: paymentBreakdown.launchPromoSummary.usedAfter,
+          remainingAfter: paymentBreakdown.launchPromoSummary.remainingAfter,
+        },
       };
       booking.status = "payment_pending";
       await booking.save();
@@ -195,11 +320,25 @@ class paymentService {
           platformEarns,
           totalPlatformFee: platformEarns,
           totalAmount,
+          tax: paymentBreakdown.tax ?? 0,
+          discountApplied: paymentBreakdown.discountApplied,
+          discountAmount: paymentBreakdown.discountAmount,
+          discountPercent: paymentBreakdown.discountPercent,
+          discountCode: paymentBreakdown.discountCode,
+          originalTotalAmount: paymentBreakdown.originalTotalAmount,
+          originalServiceFee: paymentBreakdown.originalServiceFee,
+          originalProviderCommission: paymentBreakdown.originalProviderCommission,
+          originalPlatformEarns: paymentBreakdown.originalPlatformEarns,
+          promoSubsidyAmount: paymentBreakdown.promoSubsidyAmount,
         },
         metadata: {
           platformEarns,
           providerCommission,
           providerReceives,
+          discountApplied: paymentBreakdown.discountApplied,
+          discountAmount: paymentBreakdown.discountAmount,
+          discountPercent: paymentBreakdown.discountPercent,
+          discountCode: paymentBreakdown.discountCode,
         },
         bookingId: booking._id,
         gateway: {
@@ -220,6 +359,27 @@ class paymentService {
         providerCommission,
         providerReceives,
         platformEarns,
+        tax: paymentBreakdown.tax ?? 0,
+        discountApplied: paymentBreakdown.discountApplied,
+        discountAmount: paymentBreakdown.discountAmount,
+        discountPercent: paymentBreakdown.discountPercent,
+        discountCode: paymentBreakdown.discountCode,
+        originalTotalAmount: paymentBreakdown.originalTotalAmount,
+        paymentBreakdown: {
+          agreedPrice,
+          subtotal: agreedPrice,
+          serviceFee,
+          providerCommission,
+          providerReceives,
+          platformEarns,
+          tax: paymentBreakdown.tax ?? 0,
+          totalAmount,
+          discountApplied: paymentBreakdown.discountApplied,
+          discountAmount: paymentBreakdown.discountAmount,
+          discountPercent: paymentBreakdown.discountPercent,
+          discountCode: paymentBreakdown.discountCode,
+          originalTotalAmount: paymentBreakdown.originalTotalAmount,
+        },
       };
     } catch (error) {
       console.error("Initialize payment error:", error);
@@ -293,12 +453,23 @@ class paymentService {
           "payment.escrowStatus": "held",
           "payment.paidAt": new Date(),
           "payment.escrowAmount":
-            transaction.breakdown?.agreedPrice ?? booking.agreedPrice,
+            transaction.breakdown?.totalAmount ?? transaction.amount ?? 0,
         },
         { new: true },
       )
         .populate("userId", "fullName email")
         .populate("providerId", "userId");
+
+      if (booking?.payment?.discount?.applied) {
+        await Buyer.findByIdAndUpdate(booking.userId._id, {
+          $inc: { firstRideDiscountUsed: 1 },
+          $set: { isNewUser: false },
+        });
+      } else {
+        await Buyer.findByIdAndUpdate(booking.userId._id, {
+          $set: { isNewUser: false },
+        });
+      }
 
       await WalletService.recordPayment(
         updatedTransaction.from.userId,
