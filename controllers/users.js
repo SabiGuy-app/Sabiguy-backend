@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
 const geolocationService = require("../src/services/geolocation.service");
@@ -220,6 +221,14 @@ exports.getUserByEmail = async (req, res) => {
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user id",
+      });
+    }
+
     const buyer = await Buyer.findById(id).select("-password");
     const provider = await Provider.findById(id).select("-password");
 
@@ -250,7 +259,7 @@ exports.uploadUserNin = async (req, res) => {
       });
     }
 
-    const buyer = await Buyer.findByIdAndUpdate(req.user.id);
+    const buyer = await Buyer.findById(buyerId);
 
     if (!buyer) {
       return res.status(404).json({
@@ -258,8 +267,10 @@ exports.uploadUserNin = async (req, res) => {
         message: "Buyer not found",
       });
     }
+
     buyer.ninSlip = ninSlip;
     buyer.kycCompleted = true;
+    await buyer.save();
 
     return res.status(200).json({
       success: true,
