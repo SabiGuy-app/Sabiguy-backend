@@ -74,12 +74,8 @@ const transactionSchema = new mongoose.Schema(
 
     // Breakdown (for payments)
     breakdown: {
-      agreedPrice: Number, // Amount for provider
-      serviceFee: Number, // Platform fee
-      providerCommission: Number, // Platform commission from provider
-      providerReceives: Number, // Net amount provider receives
-      totalAmount: Number, // Total paid by user
-      platformEarns: Number, // Total platform earnings
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
 
     // Related entities

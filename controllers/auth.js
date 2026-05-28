@@ -562,7 +562,6 @@ exports.registerBuyer = async (req, res) => {
         fullName,
         phoneNumber: normalizedPhoneNumber || phoneNumber,
         role: "buyer", 
-
     })
 
     await newBuyer.save();
@@ -701,9 +700,8 @@ try {
     user.emailVerified = true;
     user.otp = null;
     user.otpExpiresAt = null;
-    if (userType === 'provider') {
-      user.kycLevel = 1;
-    }
+    user.kycLevel = 1;
+
     await user.save();
 
     let welcomeEmailSent = true;

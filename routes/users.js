@@ -5,6 +5,7 @@ const {
   getAllUsers,
   getUserByEmail,
   getUserById,
+  uploadUserNin,
   updateUserLocation
 } = require ('../controllers/users')
 const authMiddleware = require ('../middleware/authMiddleware');
@@ -237,6 +238,50 @@ router.get("/providers", getAllProviders);
  *                     type: object
  */
 router.get("/", getAllUsers);
+
+/**
+ * @swagger
+ * /api/v1/users/nin:
+ *   post:
+ *     summary: Upload user NIN slip
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ninSlip
+ *             properties:
+ *               ninSlip:
+ *                 type: string
+ *                 description: NIN slip or NIN document URL / identifier
+ *                 example: https://res.cloudinary.com/demo/image/upload/v1234567890/nin-slip.jpg
+ *     responses:
+ *       200:
+ *         description: NIN uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: NIN uploaded successfully
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.post("/nin", authMiddleware, uploadUserNin);
 
 /**
  * @swagger

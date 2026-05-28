@@ -40,6 +40,15 @@ class WalletController {
       }
       console.log("AUTH USER:", req.user);
 
+      const remainingDailyLimit =
+        await WalletService.getRemainingDailyWalletFundingLimit(userId);
+      if (Number(amount) > remainingDailyLimit) {
+        return res.status(400).json({
+          success: false,
+          message: `Daily wallet funding limit exceeded. You can fund up to NGN${remainingDailyLimit.toLocaleString()} more today.`,
+        });
+      }
+
       // Initialize Paystack payment for wallet funding
       const PaymentService = require("../src/services/payment.service.js");
       const paystackResponse = await axios.post(

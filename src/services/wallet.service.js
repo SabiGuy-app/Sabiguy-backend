@@ -1,12 +1,156 @@
 const Wallet = require("../../models/Wallet");
 const Transaction = require("../../models/Transaction");
 const Booking = require("../../models/Bookings");
+const Buyer = require("../../models/ServiceUser");
 const mongoose = require("mongoose");
+const discountService = require("./discount.service");
 
 class WalletService {
   constructor() {
     // Platform "account" for bookkeeping only
     this.PLATFORM_WALLET_ID = "000000000000000000000001";
+    this.WALLET_FUNDING_DAILY_LIMIT = 20000;
+  }
+
+  getLagosDayRange(date = new Date()) {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Lagos",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const parts = formatter.formatToParts(date).reduce((acc, part) => {
+      if (part.type !== "literal") acc[part.type] = part.value;
+      return acc;
+    }, {});
+    const year = Number(parts.year);
+    const month = Number(parts.month);
+    const day = Number(parts.day);
+    const start = new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - 60 * 60 * 1000);
+    const end = new Date(Date.UTC(year, month - 1, day + 1, 0, 0, 0) - 60 * 60 * 1000);
+    return { start, end };
+  }
+
+  async getUserDailyWalletFundingTotal(userId, date = new Date()) {
+    const { start, end } = this.getLagosDayRange(date);
+    const result = await Transaction.aggregate([
+      {
+        $match: {
+          type: "credit",
+          status: "completed",
+          "to.userId": new mongoose.Types.ObjectId(userId),
+          "metadata.purpose": "wallet_funding",
+          createdAt: { $gte: start, $lt: end },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    return Number(result?.[0]?.total ?? 0);
+  }
+
+  async getRemainingDailyWalletFundingLimit(userId, date = new Date()) {
+    const used = await this.getUserDailyWalletFundingTotal(userId, date);
+    return Math.max(this.WALLET_FUNDING_DAILY_LIMIT - used, 0);
+  }
+
+  async fundUserWallet(userId, amount, reference, notificationService = null) {
+    const fundingAmount = Number(amount);
+    if (!Number.isFinite(fundingAmount) || fundingAmount <= 0) {
+      throw new Error("Invalid wallet funding amount");
+    }
+
+    const remainingLimit = await this.getRemainingDailyWalletFundingLimit(
+      userId,
+    );
+    if (fundingAmount > remainingLimit) {
+      throw new Error(
+        `Daily wallet funding limit exceeded. You can fund up to NGN${remainingLimit.toLocaleString()} more today.`,
+      );
+    }
+
+    const buyerWallet = await this.getOrCreateWallet(userId, "Buyer");
+    const existingFundingTx = await Transaction.findOne({
+      reference,
+      type: "credit",
+      status: "completed",
+      "metadata.purpose": "wallet_funding",
+    }).select("_id");
+
+    if (existingFundingTx) {
+      return {
+        alreadyProcessed: true,
+        wallet: buyerWallet,
+      };
+    }
+
+    const buyerBalanceBefore = {
+      available: buyerWallet.balance.available,
+      pending: buyerWallet.balance.pending,
+      total: buyerWallet.balance.total,
+    };
+
+    await buyerWallet.credit(fundingAmount, "earning");
+
+    const buyerBalanceAfter = {
+      available: buyerWallet.balance.available,
+      pending: buyerWallet.balance.pending,
+      total: buyerWallet.balance.total,
+    };
+
+    const transaction = await Transaction.create({
+      reference,
+      type: "credit",
+      from: {
+        userId,
+        userModel: "Buyer",
+      },
+      to: {
+        userId,
+        userModel: "Buyer",
+        walletId: buyerWallet._id,
+      },
+      amount: fundingAmount,
+      balances: {
+        before: buyerBalanceBefore,
+        after: buyerBalanceAfter,
+      },
+      metadata: {
+        purpose: "wallet_funding",
+      },
+      status: "completed",
+      description: "Wallet funding",
+      completedAt: new Date(),
+    });
+
+    if (notificationService) {
+      try {
+        await notificationService.notifyUser(userId, {
+          type: "wallet_funded",
+          title: "Wallet Funded",
+          message: `Your wallet has been funded with NGN${fundingAmount.toLocaleString()}.`,
+          reference,
+          amount: fundingAmount,
+          availableBalance: buyerBalanceAfter.available,
+        });
+      } catch (notifyError) {
+        console.error(
+          "Failed to send wallet funding notification:",
+          notifyError.message,
+        );
+      }
+    }
+
+    return {
+      alreadyProcessed: false,
+      wallet: buyerWallet,
+      transaction,
+    };
   }
 
   normalizePaymentBreakdown(breakdown = {}) {
@@ -16,6 +160,23 @@ class WalletService {
     const providerReceives = Number(breakdown.providerReceives);
     const totalAmount = Number(breakdown.totalAmount);
     const platformEarns = Number(breakdown.platformEarns);
+    const tax = Number(breakdown.tax ?? 0);
+    const discountApplied = Boolean(breakdown.discountApplied);
+    const discountAmount = Number(breakdown.discountAmount ?? 0);
+    const discountPercent = Number(breakdown.discountPercent ?? 0);
+    const originalTotalAmount = Number(
+      breakdown.originalTotalAmount ?? totalAmount + discountAmount,
+    );
+    const originalServiceFee = Number(
+      breakdown.originalServiceFee ?? serviceFee,
+    );
+    const originalProviderCommission = Number(
+      breakdown.originalProviderCommission ?? providerCommission,
+    );
+    const originalPlatformEarns = Number(
+      breakdown.originalPlatformEarns ?? platformEarns,
+    );
+    const promoSubsidyAmount = Number(breakdown.promoSubsidyAmount ?? 0);
 
     if (
       !Number.isFinite(agreedPrice) ||
@@ -29,7 +190,8 @@ class WalletService {
       providerCommission < 0 ||
       providerReceives < 0 ||
       totalAmount <= 0 ||
-      platformEarns < 0
+      platformEarns < 0 ||
+      tax < 0
     ) {
       throw new Error("Invalid payment breakdown");
     }
@@ -41,6 +203,15 @@ class WalletService {
       providerReceives,
       totalAmount,
       platformEarns,
+      tax,
+      discountApplied,
+      discountAmount,
+      discountPercent,
+      originalTotalAmount,
+      originalServiceFee,
+      originalProviderCommission,
+      originalPlatformEarns,
+      promoSubsidyAmount,
     };
   }
 
@@ -235,23 +406,40 @@ class WalletService {
 
       if (notificationService) {
         try {
+          const buyerId = userId?._id ?? userId;
+          const subtotal = normalizedBreakdown.agreedPrice;
+          const userPlatformFee = normalizedBreakdown.userPlatformFee;
+          const providerPlatformFee = normalizedBreakdown.providerCommission;
+          const originalProviderPlatformFee =
+            normalizedBreakdown.originalProviderCommission ?? providerPlatformFee;
+          const discountAmount = normalizedBreakdown.discountAmount;
+          const taxAmount = normalizedBreakdown.tax;
+          const promoApplied = Boolean(normalizedBreakdown.discountApplied);
+          const promoSummary = promoApplied ? "Promo applied" : "No promo applied";
+
           await notificationService.notifyProvider(providerId, {
-            type: "tip_received",
-            title: "💰 New Tip Received",
-            message: `You received a ₦${tipAmount.toLocaleString()} tip for booking #${bookingId}.`,
+            type: "payment_received",
+            title: "Payment Secured in Escrow",
+            message: `NGN${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: NGN${subtotal.toLocaleString()}. Service charge (15%): NGN${originalProviderPlatformFee.toLocaleString()}. Complete the service to receive payment.`,
             bookingId,
-            amount: tipAmount,
+            amount: normalizedBreakdown.providerReceives,
+            pendingBalance: providerBalanceAfter.pending,
           });
 
-          await notificationService.notifyUser(userId, {
-            type: "tip_sent",
-            title: "✅ Tip Sent",
-            message: `Your ₦${tipAmount.toLocaleString()} tip was sent successfully.`,
+          await notificationService.notifyUser(buyerId, {
+            type: "payment_received",
+            title: "Payment Successful",
+            message: promoApplied
+              ? `${promoSummary}. Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Promo discount: NGN${discountAmount.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${taxAmount.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`
+              : `${promoSummary}. Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${taxAmount.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`,
             bookingId,
-            amount: tipAmount,
+            amount: normalizedBreakdown.totalAmount,
           });
         } catch (notifyError) {
-          console.error("Tip notification error:", notifyError.message);
+          console.error(
+            "Failed to send escrow notification to provider:",
+            notifyError.message,
+          );
         }
       }
 
@@ -326,12 +514,16 @@ class WalletService {
           const subtotal = normalizedBreakdown.agreedPrice;
           const userPlatformFee = normalizedBreakdown.serviceFee;
           const providerPlatformFee = normalizedBreakdown.providerCommission;
-          const totalPlatformFee = normalizedBreakdown.platformEarns;
+          const originalProviderPlatformFee =
+            normalizedBreakdown.originalProviderCommission ?? providerPlatformFee;
+          const discountAmount = normalizedBreakdown.discountAmount;
+          const taxAmount = normalizedBreakdown.tax;
+          const promoApplied = Boolean(normalizedBreakdown.discountApplied);
 
           await notificationService.notifyProvider(providerId, {
             type: "payment_received",
-            title: "💰 Payment Secured in Escrow",
-            message: `₦${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: ₦${subtotal.toLocaleString()}. Service charge:(15%) ₦${providerPlatformFee.toLocaleString()}. Complete the service to receive payment.`,
+            title: "Payment Secured in Escrow",
+            message: `NGN${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: NGN${subtotal.toLocaleString()}. Service charge (15%): NGN${originalProviderPlatformFee.toLocaleString()}. Complete the service to receive payment.`,
             bookingId,
             amount: normalizedBreakdown.providerReceives,
             pendingBalance: providerBalanceAfter.pending,
@@ -339,8 +531,10 @@ class WalletService {
 
           await notificationService.notifyUser(buyerId, {
             type: "payment_received",
-            title: "✅ Payment Successful",
-            message: `Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${normalizedBreakdown.tax.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`,
+            title: "Payment Successful",
+            message: promoApplied
+              ? `Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Promo discount: NGN${discountAmount.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${taxAmount.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`
+              : `Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${taxAmount.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`,
             bookingId,
             amount: normalizedBreakdown.totalAmount,
           });
@@ -411,216 +605,37 @@ class WalletService {
       // Send notification to provider
       if (notificationService) {
         try {
+          const buyerId = userId?._id ?? userId;
+          const subtotal = normalizedBreakdown.agreedPrice;
+          const userPlatformFee = normalizedBreakdown.serviceFee;
+          const providerPlatformFee = normalizedBreakdown.providerCommission;
+          const originalProviderPlatformFee =
+            normalizedBreakdown.originalProviderCommission ?? providerPlatformFee;
+          const discountAmount = normalizedBreakdown.discountAmount;
+          const taxAmount = normalizedBreakdown.tax;
+          const promoApplied = Boolean(normalizedBreakdown.discountApplied);
+
           await notificationService.notifyProvider(providerId, {
-            type: "funds_released",
-            title: "✅ Payment Released",
-            message: `₦${amount} has been released from escrow for booking #${bookingId}. Check your available balance.`,
+            type: "payment_received",
+            title: "Payment Secured in Escrow",
+            message: `NGN${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: NGN${subtotal.toLocaleString()}. Service charge (15%): NGN${originalProviderPlatformFee.toLocaleString()}. Complete the service to receive payment.`,
             bookingId,
-            amount,
-            availableBalance: balanceAfter.available,
+            amount: normalizedBreakdown.providerReceives,
+            pendingBalance: providerBalanceAfter.pending,
+          });
+
+          await notificationService.notifyUser(buyerId, {
+            type: "payment_received",
+            title: "Payment Successful",
+            message: promoApplied
+              ? `Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Promo discount: NGN${discountAmount.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${taxAmount.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`
+              : `Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${taxAmount.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`,
+            bookingId,
+            amount: normalizedBreakdown.totalAmount,
           });
         } catch (notifyError) {
           console.error(
-            "Failed to send escrow release notification:",
-            notifyError.message,
-          );
-        }
-      }
-
-      return transaction;
-    } catch (error) {
-      console.error("Release escrow error:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Process payout (transfer to bank)
-   */
-  async processPayout(providerId, amount, accountNumber, paystackReference) {
-    try {
-      const wallet = await this.getOrCreateWallet(providerId, "Provider");
-
-      if (wallet.balance.available < amount) {
-        throw new Error("Insufficient balance");
-      }
-
-      const balanceBefore = {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      };
-
-      // Debit wallet
-      await wallet.debit(amount);
-
-      const balanceAfter = {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      };
-
-      // Create transaction
-      const transaction = await Transaction.create({
-        reference: this.generateReference("WTH"),
-        type: "payout",
-        from: {
-          userId: providerId,
-          userModel: "Provider",
-          walletId: wallet._id,
-        },
-        amount,
-        gateway: {
-          name: "paystack",
-          reference: paystackReference,
-        },
-        balances: {
-          before: balanceBefore,
-          after: balanceAfter,
-        },
-        accountNumber,
-        status: "processing",
-        description: `Withdrawal to ${accountNumber}`,
-      });
-
-      return transaction;
-    } catch (error) {
-      console.error("Process payout error:", error);
-      throw error;
-    }
-  }
-
-  // Withdraw money (provider withdraws to bank)
-
-  async withdraw(providerId, amount, bankDetails) {
-    try {
-      const wallet = await this.getOrCreateWallet(
-        providerId,
-        "ServiceProvider",
-      );
-
-      // Check if sufficient balance
-      if (wallet.balance.available < amount) {
-        throw new Error("Insufficient balance");
-      }
-
-      const balanceBefore = {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      };
-
-      // Debit wallet
-      await wallet.debit(amount);
-
-      const balanceAfter = {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      };
-
-      // Create transaction record
-      const transaction = await WalletTransaction.create({
-        walletId: wallet._id,
-        type: "withdrawal",
-        amount: -amount,
-        balanceBefore,
-        balanceAfter,
-        reference: this.generateReference("WTH"),
-        description: `Withdrawal to ${bankDetails.accountNumber}`,
-        metadata: {
-          bankDetails,
-          withdrawalMethod: "bank_transfer",
-        },
-        status: "pending",
-      });
-
-      return { wallet, transaction };
-    } catch (error) {
-      console.error("Withdrawal error:", error);
-      throw error;
-    }
-  }
-
-  // Fund user wallet (add money to user account)
-
-  async fundUserWallet(
-    userId,
-    amount,
-    paymentReference,
-    notificationService = null,
-  ) {
-    try {
-      const existingTx = await Transaction.findOne({
-        "gateway.reference": paymentReference,
-        type: "credit",
-      });
-
-      if (existingTx) {
-        const wallet = await this.getOrCreateWallet(userId, "Buyer");
-
-        return {
-          wallet,
-          transaction: existingTx,
-          alreadyProcessed: true,
-        };
-      }
-      const wallet = await this.getOrCreateWallet(userId, "Buyer");
-
-      const balanceBefore = {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      };
-
-      // Add to available balance
-      await wallet.credit(amount, "topup");
-
-      const balanceAfter = {
-        available: wallet.balance.available,
-        pending: wallet.balance.pending,
-        total: wallet.balance.total,
-      };
-
-      // Create transaction record
-      const transaction = await Transaction.create({
-        // reference: this.generateReference('FUND'),
-        reference: paymentReference,
-        type: "credit",
-        to: {
-          userId,
-          userModel: "Buyer",
-          walletId: wallet._id,
-        },
-        amount,
-        gateway: {
-          name: "paystack",
-          reference: paymentReference,
-        },
-        balances: {
-          before: balanceBefore,
-          after: balanceAfter,
-        },
-        status: "completed",
-        description: `Wallet funded with ₦${amount}`,
-        completedAt: new Date(),
-      });
-
-      console.log(`✅ User wallet funded: ₦${amount} for user ${userId}`);
-
-      // Send notification if service is provided
-      if (notificationService) {
-        try {
-          await notificationService.notifyUser(userId, {
-            type: "wallet_funded",
-            title: "Wallet Funded Successfully",
-            message: `Your wallet has been credited with ₦${amount}. New available balance: ₦${balanceAfter.available}`,
-            amount,
-            newBalance: balanceAfter.available,
-          });
-        } catch (notifyError) {
-          console.error(
-            "Failed to send wallet funding notification:",
+            "Failed to send escrow notification to provider:",
             notifyError.message,
           );
         }
@@ -642,46 +657,39 @@ class WalletService {
     bookingId,
     notificationService = null,
   ) {
-  try {
-    const existingBooking = await Booking.findById(bookingId)
-      .select(
-        "status payment userId providerId agreedPrice calculatedPrice budget serviceType totalAmount serviceFee providerCommission providerReceives platformEarns driverReceives pricingBreakdown",
-      )
-      .lean();
+    try {
+      const existingBooking = await Booking.findById(bookingId)
+        .select(
+          "status payment applyFirstRideDiscount userId providerId agreedPrice calculatedPrice budget serviceType totalAmount serviceFee providerCommission providerReceives platformEarns driverReceives pricingBreakdown pricingMeta",
+        )
+        .lean();
 
     if (!existingBooking) {
       throw new Error("Booking not found");
     }
 
-    const pricingBreakdown = existingBooking.pricingBreakdown ?? {};
-    const agreedPrice = Number(
-      pricingBreakdown.subtotal ??
-        existingBooking.agreedPrice ??
-        existingBooking.calculatedPrice ??
-        existingBooking.budget,
-    );
-    const totalCharge = Number(
-      pricingBreakdown.riderPaysFinal ??
-        existingBooking.calculatedPrice ??
-        existingBooking.totalAmount,
-    );
-    const serviceFee = Number(
-      pricingBreakdown.platformFee ?? existingBooking.serviceFee ?? 0,
-    );
-    const providerCommission = Number(
-      pricingBreakdown.driverCommission ??
-        existingBooking.providerCommission ??
-        0,
-    );
-    const providerReceives = Number(
-      pricingBreakdown.driverReceives ??
-        existingBooking.driverReceives ??
-        existingBooking.providerReceives ??
-        agreedPrice - providerCommission,
-    );
-    const platformEarns = Number(
-      pricingBreakdown.platformEarns ?? existingBooking.platformEarns ?? 0,
-    );
+      const pricingBreakdown = existingBooking.pricingBreakdown ?? {};
+      const baseBreakdown = pricingBreakdown.breakdown ?? pricingBreakdown ?? {};
+      const buyer = await Buyer.findById(userId)
+        .select("firstRideDiscountUsed isNewUser")
+        .lean();
+      const applyFirstRideDiscount = Boolean(
+        existingBooking.applyFirstRideDiscount ??
+          existingBooking.payment?.discount?.applied ??
+          false,
+      );
+      const promoPricing = discountService.buildLaunchPromoBreakdown({
+        user: buyer,
+        booking: existingBooking,
+        pricingBreakdown: baseBreakdown,
+        applyDiscount: applyFirstRideDiscount,
+      });
+      const agreedPrice = Number(promoPricing.agreedPrice);
+      const totalCharge = Number(promoPricing.totalAmount);
+      const serviceFee = Number(promoPricing.serviceFee);
+      const providerCommission = Number(promoPricing.providerCommission);
+      const providerReceives = Number(promoPricing.providerReceives);
+      const platformEarns = Number(promoPricing.platformEarns);
 
     if (
       !Number.isFinite(agreedPrice) ||
@@ -693,8 +701,8 @@ class WalletService {
       agreedPrice <= 0 ||
       totalCharge <= 0
     ) {
-      throw new Error("Invalid booking pricing data");
-    }
+        throw new Error("Invalid booking pricing data");
+      }
 
     const paymentAlreadyCaptured =
       existingBooking.payment?.paidAt ||
@@ -752,9 +760,9 @@ class WalletService {
       total: buyerWallet.balance.total,
     };
 
-    const transaction = await Transaction.create({
-      reference: this.generateReference("WPAY"),
-      type: "payment",
+      const transaction = await Transaction.create({
+        reference: this.generateReference("WPAY"),
+        type: "payment",
       from: {
         userId,
         userModel: "Buyer",
@@ -764,17 +772,27 @@ class WalletService {
         userId: providerId,
         userModel: "Provider",
       },
-      amount: totalCharge,
-      agreedPrice,
-      bookingId,
-      breakdown: {
+        amount: totalCharge,
         agreedPrice,
-        serviceFee,
-        providerCommission,
-        providerReceives,
-        platformEarns,
-        totalAmount: totalCharge,
-      },
+        bookingId,
+        breakdown: {
+          agreedPrice,
+          serviceFee,
+          providerCommission,
+          providerReceives,
+          platformEarns,
+          totalAmount: totalCharge,
+          tax: Number(baseBreakdown.tax ?? pricingBreakdown.tax ?? 0),
+          discountApplied: promoPricing.discountApplied,
+          discountAmount: promoPricing.discountAmount,
+          discountPercent: promoPricing.discountPercent,
+          discountCode: promoPricing.discountCode,
+          originalTotalAmount: promoPricing.originalTotalAmount,
+          originalServiceFee: promoPricing.originalServiceFee,
+          originalProviderCommission: promoPricing.originalProviderCommission,
+          originalPlatformEarns: promoPricing.originalPlatformEarns,
+          promoSubsidyAmount: promoPricing.promoSubsidyAmount,
+        },
       balances: {
         before: buyerBalanceBefore,
         after: buyerBalanceAfter,
@@ -786,28 +804,69 @@ class WalletService {
     });
 
     const booking = await Booking.findByIdAndUpdate(
-      bookingId,
-      {
-        status: "paid_escrow",
-        "payment.method": "wallet",
-        "payment.escrowStatus": "held",
-        "payment.paidAt": new Date(),
-        "payment.escrowAmount": totalCharge,
-        "payment.providerReceives": providerReceives,
-        "payment.transactionReference": transaction.reference,
-        serviceFee,
-        providerCommission,
-        providerReceives,
-        platformEarns,
-        totalAmount: totalCharge,
-      },
+        bookingId,
+        {
+          status: "paid_escrow",
+          "payment.method": "wallet",
+          "payment.escrowStatus": "held",
+          "payment.paidAt": new Date(),
+          "payment.escrowAmount": totalCharge,
+          "payment.providerReceives": providerReceives,
+          "payment.transactionReference": transaction.reference,
+          "payment.discount": promoPricing.discountApplied
+            ? {
+                code: promoPricing.discountCode,
+                percent: promoPricing.discountPercent,
+                amount: promoPricing.discountAmount,
+                applied: promoPricing.discountApplied,
+                reason: promoPricing.discountReason,
+                usedBefore: promoPricing.launchPromoSummary.used,
+                usedAfter: promoPricing.launchPromoSummary.usedAfter,
+                remainingAfter: promoPricing.launchPromoSummary.remainingAfter,
+              }
+            : existingBooking.payment?.discount ?? undefined,
+          serviceFee,
+          providerCommission,
+          providerReceives,
+          platformEarns,
+          totalAmount: totalCharge,
+          calculatedPrice: totalCharge,
+          agreedPrice,
+          pricingBreakdown: {
+            ...(pricingBreakdown || {}),
+            breakdown: baseBreakdown,
+            launchPromo: promoPricing.launchPromo,
+            launchPromoSummary: promoPricing.launchPromoSummary,
+            discountAmount: promoPricing.discountAmount,
+            discountPercent: promoPricing.discountPercent,
+            discountApplied: promoPricing.discountApplied,
+            discountCode: promoPricing.discountCode,
+            originalTotalAmount: promoPricing.originalTotalAmount,
+            discountedTotalAmount: promoPricing.totalAmount,
+            originalServiceFee: promoPricing.originalServiceFee,
+            originalProviderCommission: promoPricing.originalProviderCommission,
+            originalPlatformEarns: promoPricing.originalPlatformEarns,
+            promoSubsidyAmount: promoPricing.promoSubsidyAmount,
+          },
+        },
       { new: true },
-    )
+      )
       .populate("userId", "fullName email")
       .populate("providerId", "userId");
 
     if (!booking) {
       throw new Error("Booking not found");
+    }
+
+    if (promoPricing.discountApplied) {
+      await Buyer.findByIdAndUpdate(userId, {
+        $inc: { firstRideDiscountUsed: 1 },
+        $set: { isNewUser: false },
+      });
+    } else {
+      await Buyer.findByIdAndUpdate(userId, {
+        $set: { isNewUser: false },
+      });
     }
 
     await this.recordPayment(
@@ -821,6 +880,16 @@ class WalletService {
         providerReceives,
         platformEarns,
         totalAmount: totalCharge,
+        tax: Number(baseBreakdown.tax ?? pricingBreakdown.tax ?? 0),
+        discountApplied: promoPricing.discountApplied,
+        discountAmount: promoPricing.discountAmount,
+        discountPercent: promoPricing.discountPercent,
+        discountCode: promoPricing.discountCode,
+        originalTotalAmount: promoPricing.originalTotalAmount,
+        originalServiceFee: promoPricing.originalServiceFee,
+        originalProviderCommission: promoPricing.originalProviderCommission,
+        originalPlatformEarns: promoPricing.originalPlatformEarns,
+        promoSubsidyAmount: promoPricing.promoSubsidyAmount,
       },
       notificationService,
     );
@@ -1013,6 +1082,4 @@ class WalletService {
 }
 
 module.exports = new WalletService();
-
-
 
