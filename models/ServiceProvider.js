@@ -230,6 +230,14 @@ const serviceProviderSchema = new mongoose.Schema(
     },
     kycRejectionReason: { type: String },
     kycRejectionNote: { type: String },
+    kycBonusAmount: {
+      type: Number,
+      default: 0,
+    },
+    kycBonusCreditedAt: {
+      type: Date,
+      default: null,
+    },
     kycLevel: { type: Number, default: 0 },
   },
   {

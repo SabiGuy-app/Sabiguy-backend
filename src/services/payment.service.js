@@ -11,6 +11,7 @@ class paymentService {
   constructor() {
     this.paystackBaseURL = "https://api.paystack.co";
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+    this.MAX_BANK_WITHDRAWAL_AMOUNT = 2000;
   }
 
   resolvePaymentBreakdown(booking) {
@@ -714,9 +715,32 @@ class paymentService {
   async withdrawToBank(providerId, amount) {
     try {
       const provider = await Provider.findById(providerId);
-      console.log("provider", providerId);
       if (!provider) {
         throw new Error("Provider not found");
+      }
+
+      if (Number(provider.completedJobs || 0) < 1) {
+        throw new Error(
+          "You must complete at least one booking before you can withdraw funds.",
+        );
+      }
+
+      const withdrawalAmount = Number(amount);
+      if (!Number.isFinite(withdrawalAmount) || withdrawalAmount <= 0) {
+        throw new Error("Valid withdrawal amount is required");
+      }
+
+      if (withdrawalAmount > this.MAX_BANK_WITHDRAWAL_AMOUNT) {
+        throw new Error(
+          `Withdrawal is limited to NGN${this.MAX_BANK_WITHDRAWAL_AMOUNT.toLocaleString()} per request`,
+        );
+      }
+
+      const wallet = await WalletService.getOrCreateWallet(providerId, "Provider");
+      if (wallet.balance.available < withdrawalAmount) {
+        throw new Error(
+          `Insufficient wallet balance. Required: NGN${withdrawalAmount.toLocaleString()}, Available: NGN${wallet.balance.available.toLocaleString()}`,
+        );
       }
 
       // Check if provider has recipient code
@@ -730,7 +754,7 @@ class paymentService {
         `${this.paystackBaseURL}/transfer`,
         {
           source: "balance",
-          amount: amount * 100,
+          amount: withdrawalAmount * 100,
           recipient: recipientCode,
           reason: `Wallet withdrawal`,
           reference: this.generateReference("WTH"),
@@ -748,18 +772,53 @@ class paymentService {
         throw new Error("Failed to initiate transfer");
       }
 
-      // Process payout (debit from wallet)
-      const payoutTransaction = await WalletService.processPayout(
-        providerId,
-        amount,
-        provider.accountNumber,
-        transferResponse.data.data.reference,
-      );
+      const balanceBefore = {
+        available: wallet.balance.available,
+        pending: wallet.balance.pending,
+        total: wallet.balance.total,
+      };
+
+      await wallet.debit(withdrawalAmount);
+
+      const balanceAfter = {
+        available: wallet.balance.available,
+        pending: wallet.balance.pending,
+        total: wallet.balance.total,
+      };
+
+      const payoutTransaction = await Transaction.create({
+        reference: transferResponse.data.data.reference,
+        type: "withdrawal",
+        from: {
+          userId: provider._id,
+          userModel: "Provider",
+          walletId: wallet._id,
+        },
+        amount: withdrawalAmount,
+        balances: {
+          before: balanceBefore,
+          after: balanceAfter,
+        },
+        bankDetails: {
+          accountNumber: provider.accountNumber,
+          accountName: provider.accountName,
+          bankCode: provider.bankCode,
+          bankName: provider.bankName,
+        },
+        gateway: {
+          name: "paystack",
+          reference: transferResponse.data.data.reference,
+          response: transferResponse.data.data,
+        },
+        status: "completed",
+        description: "Wallet withdrawal to bank",
+        completedAt: new Date(),
+      });
 
       return {
         success: true,
         message: "Withdrawal initiated",
-        amount,
+        amount: withdrawalAmount,
         reference: transferResponse.data.data.reference,
         transaction: payoutTransaction,
       };

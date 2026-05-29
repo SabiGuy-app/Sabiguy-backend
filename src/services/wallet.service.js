@@ -958,7 +958,10 @@ class WalletService {
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip((page - 1) * limit)
-      .populate("bookingId", "serviceType status")
+      .populate(
+        "bookingId",
+        "reference serviceType status pricingBreakdown agreedPrice calculatedPrice totalAmount budget serviceFee providerCommission providerReceives platformEarns driverReceives",
+      )
       .lean();
 
     const total = await Transaction.countDocuments(query);
@@ -970,7 +973,14 @@ class WalletService {
     // Format transactions
     const formatted = transactions.map((txn) => {
       const isCredit = txn.to?.userId?.toString() === userId.toString();
-      const bookingSubtotal = Number(txn.bookingId?.pricingBreakdown?.subtotal);
+      const bookingSubtotal = Number(
+        txn.bookingId?.pricingBreakdown?.subtotal ??
+          txn.bookingId?.agreedPrice ??
+          txn.bookingId?.calculatedPrice ??
+          txn.bookingId?.totalAmount ??
+          txn.bookingId?.budget ??
+          NaN,
+      );
       const derivedSubtotal =
         Number.isFinite(txn.breakdown?.providerReceives) &&
         Number.isFinite(txn.breakdown?.providerCommission)
@@ -982,13 +992,17 @@ class WalletService {
         : Number.isFinite(derivedSubtotal)
           ? derivedSubtotal
           : null;
+      const isProviderCredit = userModel === "Provider" && isCredit;
       const displayAmountValue =
-        isCredit && providerSubtotal !== null ? providerSubtotal : txn.amount;
+        isProviderCredit && providerSubtotal !== null ? providerSubtotal : txn.amount;
 
       return {
         ...txn,
+        amount: txn.amount,
         direction: isCredit ? "credit" : "debit",
         displayAmount: isCredit ? `+₦${displayAmountValue}` : `-₦${txn.amount}`,
+        displayLabel: isProviderCredit && providerSubtotal !== null ? "Subtotal" : "Amount",
+        subtotal: isProviderCredit ? providerSubtotal : null,
         providerSubtotal,
       };
     });
@@ -1054,21 +1068,45 @@ class WalletService {
    * Helper: Get or create wallet
    */
   async getOrCreateWallet(ownerId, ownerModel) {
-    let wallet = await Wallet.findOne({ ownerId, ownerModel });
+    const normalizedOwnerId =
+      ownerId && ownerId.toString
+        ? ownerId
+        : new mongoose.Types.ObjectId(ownerId);
 
-    if (!wallet) {
-      wallet = await Wallet.create({
-        ownerId,
-        ownerModel,
-        balance: {
-          available: 0,
-          pending: 0,
-          total: 0,
+    try {
+      return await Wallet.findOneAndUpdate(
+        { ownerId: normalizedOwnerId, ownerModel },
+        {
+          $setOnInsert: {
+            ownerId: normalizedOwnerId,
+            ownerModel,
+            balance: {
+              available: 0,
+              pending: 0,
+              total: 0,
+            },
+          },
         },
-      });
-    }
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+    } catch (error) {
+      if (error?.code === 11000) {
+        const wallet = await Wallet.findOne({
+          ownerId: normalizedOwnerId,
+          ownerModel,
+        });
 
-    return wallet;
+        if (wallet) {
+          return wallet;
+        }
+      }
+
+      throw error;
+    }
   }
 
   /**
