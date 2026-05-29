@@ -754,6 +754,12 @@ class ProviderController {
       });
     }
 
+    if (!existingProvider.kycVerified) {
+        return res.status(403).json({
+          success: false,
+          message: "KYC verification required to update location",
+        });
+      }
     const isRawCoords = (addr) =>
       addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
 
