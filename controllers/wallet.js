@@ -284,9 +284,32 @@ class WalletController {
 
       console.log("📊 Found transactions:", result.transactions.length);
 
+      const formattedTransactions = result.transactions.map((txn) => {
+        const isProviderCredit =
+          req.user.role === "provider" && txn.direction === "credit";
+        const displayAmount =
+          isProviderCredit && Number.isFinite(txn.subtotal)
+            ? txn.subtotal
+            : txn.amount;
+
+        return {
+          ...txn,
+          ledgerAmount: txn.amount,
+          amount: displayAmount,
+          displayAmount:
+            isProviderCredit && Number.isFinite(txn.subtotal)
+              ? `+₦${txn.subtotal}`
+              : txn.displayAmount,
+          displayLabel:
+            isProviderCredit && Number.isFinite(txn.subtotal)
+              ? "Subtotal"
+              : txn.displayLabel || "Amount",
+        };
+      });
+
       return res.status(200).json({
         success: true,
-        data: result.transactions,
+        data: formattedTransactions,
         pagination: result.pagination,
       });
     } catch (error) {

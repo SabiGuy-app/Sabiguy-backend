@@ -5,6 +5,8 @@ const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
 const Booking = require("../models/Bookings");
 const Transaction = require("../models/Transaction");
+const WalletService = require("../src/services/wallet.service");
+const notificationService = require("../src/services/notification.service");
 const {
   findUserByEmailAcrossDb,
   normalizeEmail,
@@ -15,6 +17,7 @@ const {
 } = require("../src/config/emailVerification");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
+const KYC_PROMO_BONUS_AMOUNT = 500;
 
 class AdminController {
   constructor() {
@@ -280,6 +283,85 @@ class AdminController {
 
       await provider.save();
 
+      const existingPromoTransaction = await Transaction.findOne({
+        type: "bonus",
+        "to.userId": provider._id,
+        "metadata.purpose": "kyc_verification_bonus",
+        status: "completed",
+      }).select("_id");
+
+      let bonusApplied = false;
+      if (!existingPromoTransaction) {
+        const wallet = await WalletService.getOrCreateWallet(
+          provider._id,
+          "Provider",
+        );
+
+        const balanceBefore = {
+          available: wallet.balance.available,
+          pending: wallet.balance.pending,
+          total: wallet.balance.total,
+        };
+
+        await wallet.credit(KYC_PROMO_BONUS_AMOUNT, "bonus");
+
+        const balanceAfter = {
+          available: wallet.balance.available,
+          pending: wallet.balance.pending,
+          total: wallet.balance.total,
+        };
+
+        await Transaction.create({
+          reference: WalletService.generateReference("KYCBONUS"),
+          type: "bonus",
+          to: {
+            userId: provider._id,
+            userModel: "Provider",
+            walletId: wallet._id,
+          },
+          amount: KYC_PROMO_BONUS_AMOUNT,
+          balances: {
+            before: balanceBefore,
+            after: balanceAfter,
+          },
+          metadata: {
+            purpose: "kyc_verification_bonus",
+            providerId: provider._id,
+            approvedBy: {
+              id: admin._id,
+              email: admin.email,
+              fullName: admin.fullName,
+            },
+          },
+          status: "completed",
+          description: "Launch bonus",
+          completedAt: new Date(),
+        });
+
+        provider.kycBonusAmount = KYC_PROMO_BONUS_AMOUNT;
+        provider.kycBonusCreditedAt = new Date();
+        await provider.save();
+        bonusApplied = true;
+
+        try {
+          await notificationService.notifyProvider(provider._id, {
+            type: "wallet_funded",
+            title: "KYC Bonus Credited",
+            message:
+              "NGN500 has been added to your wallet after KYC verification. You must complete at least one booking before you can withdraw these funds.",
+            amount: KYC_PROMO_BONUS_AMOUNT,
+            kycBonus: true,
+            bookingRequirement: 1,
+          });
+        } catch (notifyError) {
+          console.error("Failed to send KYC bonus notification:", notifyError);
+        }
+      } else if (!provider.kycBonusCreditedAt) {
+        provider.kycBonusAmount = KYC_PROMO_BONUS_AMOUNT;
+        provider.kycBonusCreditedAt = new Date();
+        await provider.save();
+      }
+
       // Send KYC verification confirmation email
       try {
         await sendKycVerificationEmail(provider.email, {
@@ -300,6 +382,9 @@ class AdminController {
           kycVerifiedAt: provider.kycVerifiedAt,
           kycVerifiedBy: provider.kycVerifiedBy,
           kycVerificationNote: provider.kycVerificationNote,
+          kycBonusApplied: bonusApplied,
+          kycBonusAmount: provider.kycBonusAmount || KYC_PROMO_BONUS_AMOUNT,
+          kycBonusCreditedAt: provider.kycBonusCreditedAt,
         },
       });
     } catch (error) {
