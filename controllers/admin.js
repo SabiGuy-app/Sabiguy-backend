@@ -12,6 +12,7 @@ const {
   normalizeEmail,
 } = require("../src/services/identity.service");
 const {
+  sendWelcomeEmail,
   sendKycVerificationEmail,
   sendKycDisputeEmail,
 } = require("../src/config/emailVerification");
@@ -392,6 +393,93 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error verifying KYC",
+        error: error.message,
+      });
+    }
+  }
+
+  async verifyBuyerKyc(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { buyerId } = req.params;
+      const { note } = req.body || {};
+
+      if (!buyerId) {
+        return res.status(400).json({ message: "buyerId is required" });
+      }
+
+      const admin = await Admin.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+
+      const buyer = await Buyer.findById(buyerId);
+      if (!buyer) {
+        return res.status(404).json({ message: "Buyer not found" });
+      }
+
+      buyer.kycCompleted = true;
+      buyer.kycVerified = true;
+      buyer.kycVerifiedAt = new Date();
+      buyer.kycVerifiedBy = {
+        id: admin._id,
+        email: admin.email,
+        fullName: admin.fullName,
+      };
+      buyer.kycRejected = false;
+      buyer.kycRejectedAt = null;
+      buyer.kycRejectedBy = undefined;
+      buyer.kycRejectionReason = undefined;
+      buyer.kycRejectionNote = undefined;
+      buyer.kycLevel = Math.max(buyer.kycLevel || 0, 2);
+      if (note) buyer.kycVerificationNote = note;
+
+      await buyer.save();
+
+      let welcomeEmailSent = Boolean(buyer.email);
+      if (buyer.email) {
+        try {
+          const firstName = buyer.fullName
+            ? buyer.fullName.trim().split(/\s+/)[0]
+            : "there";
+          const baseUrl = process.env.FRONTEND_URL || "";
+
+          await sendWelcomeEmail(buyer.email, {
+            firstName,
+            year: new Date().getFullYear(),
+            appUrl: baseUrl,
+            ctaText: "Explore SabiGuy",
+            role: "buyer",
+          });
+        } catch (emailError) {
+          console.error("Failed to send buyer KYC approval email:", emailError);
+          welcomeEmailSent = false;
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: welcomeEmailSent
+          ? "Buyer KYC verified successfully"
+          : "Buyer KYC verified successfully. Welcome email will be sent shortly.",
+        data: {
+          buyerId: buyer._id,
+          kycCompleted: buyer.kycCompleted,
+          kycVerified: buyer.kycVerified,
+          kycVerifiedAt: buyer.kycVerifiedAt,
+          kycVerifiedBy: buyer.kycVerifiedBy,
+          kycVerificationNote: buyer.kycVerificationNote,
+          kycLevel: buyer.kycLevel,
+        },
+      });
+    } catch (error) {
+      console.error("Verify buyer KYC error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error verifying buyer KYC",
         error: error.message,
       });
     }
