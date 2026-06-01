@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Provider = require("../models/ServiceProvider");
 const Buyer = require("../models/ServiceUser");
 const geolocationService = require("../src/services/geolocation.service");
+const { sendNinSubmittedEmail } = require("../src/config/emailVerification");
 
 const getPagination = (req) => {
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -272,9 +273,28 @@ exports.uploadUserNin = async (req, res) => {
     buyer.kycCompleted = true;
     await buyer.save();
 
+    let notificationEmailSent = Boolean(buyer.email);
+    if (buyer.email) {
+      try {
+        const firstName = buyer.fullName
+          ? buyer.fullName.trim().split(/\s+/)[0]
+          : "there";
+
+        await sendNinSubmittedEmail(buyer.email, {
+          firstName,
+          year: new Date().getFullYear(),
+        });
+      } catch (emailError) {
+        console.error("NIN submitted email error:", emailError);
+        notificationEmailSent = false;
+      }
+    }
+
     return res.status(200).json({
       success: true,
-      message: "NIN uploaded successfully",
+      message: notificationEmailSent
+        ? "NIN uploaded successfully. We will review it and reach out once verified."
+        : "NIN uploaded successfully. Verification email will be sent shortly.",
       data: buyer,
     });
   } catch (error) {
