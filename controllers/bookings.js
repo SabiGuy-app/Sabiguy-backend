@@ -1335,7 +1335,6 @@ class BookingController {
 
       await booking.save();
 
-      // 🔔 Notify provider about the dispute
       try {
         await Promise.all([
           notificationService.notifyProvider(providerId, {
