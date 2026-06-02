@@ -16,6 +16,16 @@ const { swaggerUi, swaggerSpec } = require("./src/config/swagger");
 const notificationService = require("./src/services/notification.service");
 // const notificationService = require ("./cron/notificationService")
 
+const REDIS_MAX_RECONNECT_ATTEMPTS = Number(
+  process.env.REDIS_MAX_RECONNECT_ATTEMPTS || 5,
+);
+const REDIS_ERROR_LOG_INTERVAL_MS = Number(
+  process.env.REDIS_ERROR_LOG_INTERVAL_MS || 60000,
+);
+
+const getErrorMessage = (error) =>
+  error?.message || error?.code || error?.name || "Unknown error";
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
@@ -42,6 +52,43 @@ const io = socketIO(server, {
 });
 
 // Setup Redis adapter for Socket.io
+const createThrottledRedisErrorLogger = (clientName) => {
+  let lastLoggedAt = 0;
+  let suppressedCount = 0;
+
+  return (error) => {
+    const now = Date.now();
+    const shouldLog = now - lastLoggedAt >= REDIS_ERROR_LOG_INTERVAL_MS;
+
+    if (!shouldLog) {
+      suppressedCount += 1;
+      return;
+    }
+
+    const suppressedMessage =
+      suppressedCount > 0
+        ? ` (${suppressedCount} similar error(s) suppressed)`
+        : "";
+
+    console.error(
+      `Redis ${clientName} client error: ${getErrorMessage(error)}${suppressedMessage}`,
+    );
+
+    lastLoggedAt = now;
+    suppressedCount = 0;
+  };
+};
+
+const safeDestroyRedisClient = async (client) => {
+  try {
+    await client.destroy();
+  } catch (error) {
+    if (error?.name !== "ClientClosedError") {
+      throw error;
+    }
+  }
+};
+
 const initRedisAdapter = async () => {
   const redisHost = process.env.REDIS_HOST;
   const redisPort = Number(process.env.REDIS_PORT || 6379);
@@ -57,17 +104,22 @@ const initRedisAdapter = async () => {
     socket: {
       host: redisHost,
       port: redisPort,
+      connectTimeout: Number(process.env.REDIS_CONNECT_TIMEOUT_MS || 5000),
+      reconnectStrategy: (retries, cause) => {
+        if (retries >= REDIS_MAX_RECONNECT_ATTEMPTS) {
+          return new Error(
+            `Redis reconnect stopped after ${retries} attempt(s): ${getErrorMessage(cause)}`,
+          );
+        }
+
+        return Math.min(retries * 500, 5000);
+      },
     },
   });
   const subClient = pubClient.duplicate();
 
-  pubClient.on("error", (error) => {
-    console.error("Redis pub client error:", error.message);
-  });
-
-  subClient.on("error", (error) => {
-    console.error("Redis sub client error:", error.message);
-  });
+  pubClient.on("error", createThrottledRedisErrorLogger("pub"));
+  subClient.on("error", createThrottledRedisErrorLogger("sub"));
 
   try {
     await Promise.all([pubClient.connect(), subClient.connect()]);
@@ -77,6 +129,10 @@ const initRedisAdapter = async () => {
     console.warn(
       `⚠️ Redis unavailable. Socket.IO will continue without clustering support: ${error.message}`,
     );
+    await Promise.allSettled([
+      safeDestroyRedisClient(pubClient),
+      safeDestroyRedisClient(subClient),
+    ]);
   }
 };
 

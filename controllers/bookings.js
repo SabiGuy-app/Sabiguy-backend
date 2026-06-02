@@ -24,7 +24,7 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "funds_released",
   "cancelled",
   "payment_pending",
-  "disputed"
+  "disputed",
 ]; // Bookings that count towards provider activity
 const DELETABLE_BOOKING_STATUSES = [
   "pending_providers",
@@ -115,7 +115,9 @@ class BookingController {
         totalPlatformFee,
         providerReceives: providerNet,
         discountAmount:
-          breakdown?.discountAmount ?? booking.payment?.discount?.amount ?? null,
+          breakdown?.discountAmount ??
+          booking.payment?.discount?.amount ??
+          null,
         discountApplied:
           breakdown?.discountApplied ??
           booking.payment?.discount?.applied ??
@@ -236,8 +238,10 @@ class BookingController {
     const pricingBreakdown = booking.pricingBreakdown ?? {};
     const baseBreakdown = pricingBreakdown.breakdown ?? pricingBreakdown;
     const pricingMeta = booking.pricingMeta ?? pricingBreakdown.meta ?? {};
-    const ratesUsed = pricingMeta.ratesUsed ?? pricingBreakdown?.meta?.ratesUsed ?? {};
-    const promo = pricingBreakdown.launchPromo ?? booking.payment?.discount ?? null;
+    const ratesUsed =
+      pricingMeta.ratesUsed ?? pricingBreakdown?.meta?.ratesUsed ?? {};
+    const promo =
+      pricingBreakdown.launchPromo ?? booking.payment?.discount ?? null;
     const promoApplied = Boolean(
       pricingBreakdown.discountApplied ?? promo?.applied ?? false,
     );
@@ -253,18 +257,17 @@ class BookingController {
     );
     const finalTotalAmount = Number(
       pricingBreakdown.discountApplied
-        ? pricingBreakdown.discountedTotalAmount ??
+        ? (pricingBreakdown.discountedTotalAmount ??
             booking.totalAmount ??
             booking.calculatedPrice ??
-            originalTotalAmount
-        : booking.totalAmount ??
-          booking.calculatedPrice ??
-          pricingBreakdown.riderPaysFinal ??
-          originalTotalAmount,
+            originalTotalAmount)
+        : (booking.totalAmount ??
+            booking.calculatedPrice ??
+            pricingBreakdown.riderPaysFinal ??
+            originalTotalAmount),
     );
 
     return {
-      applyFirstRideDiscount: Boolean(booking.applyFirstRideDiscount ?? false),
       promoApplied,
       fare: {
         baseFare: baseBreakdown.baseFare ?? null,
@@ -299,13 +302,30 @@ class BookingController {
         driverReceives:
           pricingBreakdown.driverReceives ?? booking.driverReceives ?? null,
       },
-      promoFees: {
-        userPlatformFee: booking.serviceFee ?? null,
-        driverCommission: booking.providerCommission ?? null,
-        providerPlatformFee: booking.providerCommission ?? null,
-        totalPlatformFee: booking.platformEarns ?? null,
-        platformEarns: booking.platformEarns ?? null,
-      },
+      promoFees: promoApplied
+        ? {
+            userDiscount: discountAmount,
+            providerBonusAmount: Math.round(
+              Number(baseBreakdown.subtotal ?? 0) * 0.05,
+            ),
+            totalPlatformFee: Math.max(
+              (baseBreakdown.platformFee ??
+                pricingBreakdown.originalServiceFee ??
+                0) +
+                (baseBreakdown.driverCommission ??
+                  pricingBreakdown.originalProviderCommission ??
+                  0) -
+                discountAmount,
+              0,
+            ),
+            platformEarns: Math.max(
+              (baseBreakdown.platformEarns ??
+                pricingBreakdown.originalPlatformEarns ??
+                0) - discountAmount,
+              0,
+            ),
+          }
+        : null,
       tax: {
         amount:
           baseBreakdown.tax ??
@@ -329,18 +349,7 @@ class BookingController {
             percent: promo?.percent ?? pricingBreakdown.discountPercent ?? null,
             reason: promo?.reason ?? pricingBreakdown.discountReason ?? null,
             amount: discountAmount,
-            usedBefore:
-              pricingBreakdown.launchPromoSummary?.used ??
-              booking.payment?.discount?.usedBefore ??
-              null,
-            usedAfter:
-              pricingBreakdown.launchPromoSummary?.usedAfter ??
-              booking.payment?.discount?.usedAfter ??
-              null,
-            remainingAfter:
-              pricingBreakdown.launchPromoSummary?.remainingAfter ??
-              booking.payment?.discount?.remainingAfter ??
-              null,
+            maxDiscount: promo?.maxDiscount ?? 500,
           }
         : null,
       meta: {
@@ -360,12 +369,6 @@ class BookingController {
         ? booking.toObject({ versionKey: false })
         : { ...booking };
 
-    bookingObject.applyFirstRideDiscount = Boolean(
-      bookingObject.applyFirstRideDiscount ??
-        bookingObject.pricingBreakdown?.discountApplied ??
-        bookingObject.payment?.discount?.applied ??
-        false,
-    );
     bookingObject.pricing = this.formatBookingPricingSummary(bookingObject);
     delete bookingObject.pricingBreakdown;
     delete bookingObject.pricingMeta;
@@ -395,7 +398,7 @@ class BookingController {
         attachments,
         modeOfDelivery: modeOfDeliveryRaw,
         modeOfDelivey,
-        applyFirstRideDiscount: applyFirstRideDiscountRaw,
+        applyRideDiscount = false,
       } = req.body;
 
       const rawModeOfDelivery = modeOfDeliveryRaw ?? modeOfDelivey;
@@ -414,10 +417,7 @@ class BookingController {
         meta: pricing.meta,
       });
       const modeOfDelivery = normalizeModeOfDelivery(rawModeOfDelivery);
-      const applyFirstRideDiscount = Boolean(applyFirstRideDiscountRaw);
-      const buyer = await Buyer.findById(userId)
-        .select("firstRideDiscountUsed isNewUser")
-        .lean();
+      const buyer = await Buyer.findById(userId).select("isNewUser").lean();
 
       /* -----------------------------
        1️⃣ Validation
@@ -477,8 +477,8 @@ class BookingController {
         endDate,
         budget,
         modeOfDelivery,
+        applyRideDiscount,
         attachments: attachments || [],
-        applyFirstRideDiscount,
       };
 
       let searchCoordinates;
@@ -609,7 +609,7 @@ class BookingController {
           message: "Booking created but no providers available nearby",
           data: {
             booking: bookingResponse,
-            applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
+            pricing: bookingResponse.pricing,
             providers: [],
             ...(isTransport && transportEstimates
               ? {
@@ -716,7 +716,7 @@ class BookingController {
             user: buyer,
             booking,
             pricingBreakdown: pricing.breakdown,
-            applyDiscount: applyFirstRideDiscount,
+            applyDiscount: applyRideDiscount,
           });
 
           booking.calculatedPrice = launchPromo.totalAmount;
@@ -730,15 +730,11 @@ class BookingController {
           booking.pricingBreakdown = {
             breakdown: pricing.breakdown,
             ...launchPromo,
-            launchPromo: launchPromo.launchPromo,
-            launchPromoSummary: launchPromo.launchPromoSummary,
             riderPaysFinal: launchPromo.totalAmount,
             meta: pricing.meta,
           };
           booking.pricingMeta = {
             ...pricing.meta,
-            launchPromo: launchPromo.launchPromo,
-            launchPromoSummary: launchPromo.launchPromoSummary,
           };
           booking.payment = {
             ...(booking.payment || {}),
@@ -748,12 +744,9 @@ class BookingController {
               amount: launchPromo.discountAmount,
               applied: launchPromo.discountApplied,
               reason: launchPromo.discountReason,
-              usedBefore: launchPromo.launchPromoSummary.used,
-              usedAfter: launchPromo.launchPromoSummary.usedAfter,
-              remainingAfter: launchPromo.launchPromoSummary.remainingAfter,
             },
           };
-          booking.applyFirstRideDiscount = applyFirstRideDiscount;
+          booking.applyRideDiscount = applyRideDiscount;
           booking.selectedAt = new Date();
           booking.notifiedProviders = enrichedProviders.map((p) => p.id);
           booking.status = "awaiting_provider_acceptance";
@@ -767,10 +760,9 @@ class BookingController {
             message: "Booking created. Looking for a provider near you.",
             data: {
               booking: bookingResponse,
-              applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
+              pricing: bookingResponse.pricing,
               notifiedProvidersCount: enrichedProviders.length,
               calculatedPrice: booking.calculatedPrice,
-              pricing: bookingResponse.pricing,
               originalPricing: formatPricing(pricing),
               distance: booking.distance,
               estimatedDuration: transportEstimates.estimatedDuration,
@@ -781,7 +773,6 @@ class BookingController {
         } else {
           // 👤 User selection — return enriched providers with individual pricing
           booking.suggestedProviders = enrichedProviders.map((p) => p.id);
-          booking.applyFirstRideDiscount = applyFirstRideDiscount;
           booking.status = "awaiting_provider_acceptance";
           await booking.save();
           const bookingResponse = this.prepareBookingResponse(booking);
@@ -791,9 +782,8 @@ class BookingController {
             message: "Booking created successfully",
             data: {
               booking: bookingResponse,
-              applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
-              providers: enrichedProviders,
               pricing: bookingResponse.pricing,
+              providers: enrichedProviders,
               distance: booking.distance,
               estimatedDuration: transportEstimates.estimatedDuration,
               estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
@@ -807,7 +797,7 @@ class BookingController {
        7️⃣ Regular services flow
     ------------------------------*/
       booking.suggestedProviders = enrichedProviders.map((p) => p.id);
-      booking.applyFirstRideDiscount = applyFirstRideDiscount;
+      booking.applyRideDiscount = applyRideDiscount;
       await booking.save();
       const bookingResponse = this.prepareBookingResponse(booking);
 
@@ -816,7 +806,7 @@ class BookingController {
         message: "Booking created successfully",
         data: {
           booking: bookingResponse,
-          applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
+          pricing: bookingResponse.pricing,
           providers: enrichedProviders,
         },
       });
@@ -1278,10 +1268,10 @@ class BookingController {
 
       await booking.save();
 
-      await notificationService.notifyUser(providerId, {
+      await notificationService.notifyProvider(providerId, {
         type: "job_completed_confirmed",
-        title: "✅ Job Completion Confirmed",
-        message: `Your customer confirmed completion of the ${booking.serviceType} service.`,
+        title: "Job Completion Confirmed And You got a bonus.🥳",
+        message: `Your customer confirmed completion of the ${booking.serviceType} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
         bookingId: booking._id,
         userId,
       });
@@ -1492,10 +1482,10 @@ class BookingController {
 
       booking.providerId = providerId;
       const launchPromo = discountService.buildLaunchPromoBreakdown({
-        user: await Buyer.findById(userId).select("firstRideDiscountUsed isNewUser").lean(),
+        user: await Buyer.findById(userId).lean(),
         booking,
         pricingBreakdown: finalPricing.breakdown ?? {},
-        applyDiscount: Boolean(booking.applyFirstRideDiscount),
+        applyDiscount: booking.applyRideDiscount,
       });
 
       booking.calculatedPrice = launchPromo.totalAmount;
@@ -1509,15 +1499,11 @@ class BookingController {
       booking.pricingBreakdown = {
         breakdown: finalPricing.breakdown ?? null,
         ...launchPromo,
-        launchPromo: launchPromo.launchPromo,
-        launchPromoSummary: launchPromo.launchPromoSummary,
         riderPaysFinal: launchPromo.totalAmount,
         meta: finalPricing.meta ?? null,
       };
       booking.pricingMeta = {
         ...(finalPricing.meta ?? {}),
-        launchPromo: launchPromo.launchPromo,
-        launchPromoSummary: launchPromo.launchPromoSummary,
       };
       booking.payment = {
         ...(booking.payment || {}),
@@ -1527,9 +1513,7 @@ class BookingController {
           amount: launchPromo.discountAmount,
           applied: launchPromo.discountApplied,
           reason: launchPromo.discountReason,
-          usedBefore: launchPromo.launchPromoSummary.used,
-          usedAfter: launchPromo.launchPromoSummary.usedAfter,
-          remainingAfter: launchPromo.launchPromoSummary.remainingAfter,
+          maxDiscount: 500,
         },
       };
       booking.selectedAt = new Date();
@@ -1561,7 +1545,6 @@ class BookingController {
         message: "Provider selected successfully",
         data: {
           booking: bookingResponse,
-          applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
           pricing: bookingResponse.pricing,
           flowType: "user_selection",
         },
@@ -1592,7 +1575,7 @@ class BookingController {
             "awaiting_provider_acceptance",
             "provider_selected",
             "paid_escrow",
-            "payment_pending"
+            "payment_pending",
           ],
         },
       });
@@ -1996,7 +1979,6 @@ class BookingController {
         success: true,
         data: {
           booking: bookingResponse,
-          applyFirstRideDiscount: bookingResponse.applyFirstRideDiscount,
           pricing: bookingResponse.pricing,
         },
       });
