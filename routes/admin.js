@@ -335,6 +335,48 @@ router.patch(
 
 /**
  * @swagger
+ * /api/v1/admin/buyers/{buyerId}/kyc/verify:
+ *   patch:
+ *     summary: Verify buyer KYC
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: buyerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Buyer ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 example: "Verified buyer NIN details"
+ *     responses:
+ *       200:
+ *         description: Buyer KYC verified successfully
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Buyer not found
+ */
+router.patch(
+  "/buyers/:buyerId/kyc/verify",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  adminVerifyKycLimiter,
+  AdminController.verifyBuyerKyc,
+);
+
+/**
+ * @swagger
  * /api/v1/admin/providers/{providerId}/kyc/dispute:
  *   patch:
  *     summary: Reject/dispute provider KYC

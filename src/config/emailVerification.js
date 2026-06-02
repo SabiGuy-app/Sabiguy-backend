@@ -116,6 +116,28 @@ const sendWelcomeEmail = async (email, data = {}) => {
   }
 };
 
+const sendNinSubmittedEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+
+  sendSmtpEmail.subject = "Your SabiGuy NIN is Under Review";
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate("nin-submitted.njk", {
+    firstName: data.firstName || "there",
+    year: new Date().getFullYear(),
+    ...data,
+  });
+  sendSmtpEmail.sender = sender;
+
+  try {
+    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log("NIN submitted email sent. Message ID:", result.body.messageId);
+    return { success: true, messageId: result.body.messageId };
+  } catch (error) {
+    console.error("NIN submitted email error:", error);
+    throw new Error(error.message || "NIN submitted email failed");
+  }
+};
+
 const sendKycVerificationEmail = async (email, data = {}) => {
   const sendSmtpEmail = new brevo.SendSmtpEmail();
 
@@ -179,6 +201,7 @@ module.exports = {
   forgotPasswordOtp,
   passwordChangedEmail,
   sendWelcomeEmail,
+  sendNinSubmittedEmail,
   sendKycVerificationEmail,
   sendKycDisputeEmail,
 };
