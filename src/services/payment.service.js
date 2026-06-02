@@ -57,15 +57,15 @@ class paymentService {
     );
     const riderPays = Number(
       pricingBreakdown.discountApplied
-        ? pricingBreakdown.discountedTotalAmount ??
-          baseBreakdown.riderPaysFinal ??
-          booking?.totalAmount ??
-          booking?.calculatedPrice ??
-          subtotal + userPlatformFee
-        : baseBreakdown.riderPaysFinal ??
-        booking?.totalAmount ??
-        booking?.calculatedPrice ??
-        subtotal + userPlatformFee,
+        ? (pricingBreakdown.discountedTotalAmount ??
+            baseBreakdown.riderPaysFinal ??
+            booking?.totalAmount ??
+            booking?.calculatedPrice ??
+            subtotal + userPlatformFee)
+        : (baseBreakdown.riderPaysFinal ??
+            booking?.totalAmount ??
+            booking?.calculatedPrice ??
+            subtotal + userPlatformFee),
     );
 
     return {
@@ -79,11 +79,7 @@ class paymentService {
     };
   }
 
-  async initializePayment(
-    bookingId,
-    userId,
-    pickupNote = null,
-  ) {
+  async initializePayment(bookingId, userId, pickupNote = null) {
     try {
       const booking = await Booking.findById(bookingId)
         .populate("userId", "email fullName")
@@ -106,7 +102,6 @@ class paymentService {
         booking.status !== "provider_selected" &&
         booking.status !== "provider_accepted" &&
         booking.status !== "payment_pending"
-
       ) {
         throw new Error("Booking must have a selected provider before payment");
       }
@@ -130,7 +125,8 @@ class paymentService {
                 used: booking.payment?.discount?.usedBefore ?? null,
                 remaining: booking.payment?.discount?.remainingAfter ?? null,
                 amount: booking.payment?.discount?.amount ?? 0,
-                baseAmount: booking.pricingBreakdown?.originalTotalAmount ?? null,
+                baseAmount:
+                  booking.pricingBreakdown?.originalTotalAmount ?? null,
                 reason: booking.payment?.discount?.reason ?? null,
               }
             : null),
@@ -165,7 +161,8 @@ class paymentService {
           booking.pricingBreakdown?.originalProviderCommission ??
           booking.providerCommission,
         originalPlatformEarns:
-          booking.pricingBreakdown?.originalPlatformEarns ?? booking.platformEarns,
+          booking.pricingBreakdown?.originalPlatformEarns ??
+          booking.platformEarns,
         promoSubsidyAmount:
           booking.pricingBreakdown?.promoSubsidyAmount ??
           booking.payment?.discount?.amount ??
@@ -328,7 +325,8 @@ class paymentService {
           discountCode: paymentBreakdown.discountCode,
           originalTotalAmount: paymentBreakdown.originalTotalAmount,
           originalServiceFee: paymentBreakdown.originalServiceFee,
-          originalProviderCommission: paymentBreakdown.originalProviderCommission,
+          originalProviderCommission:
+            paymentBreakdown.originalProviderCommission,
           originalPlatformEarns: paymentBreakdown.originalPlatformEarns,
           promoSubsidyAmount: paymentBreakdown.promoSubsidyAmount,
         },
@@ -712,7 +710,7 @@ class paymentService {
     }
   }
 
-  async withdrawToBank(providerId, amount) {
+  async withdrawToBank(providerId, amount, withdrawalType = "available") {
     try {
       const provider = await Provider.findById(providerId);
       if (!provider) {
@@ -736,11 +734,31 @@ class paymentService {
         );
       }
 
-      const wallet = await WalletService.getOrCreateWallet(providerId, "Provider");
-      if (wallet.balance.available < withdrawalAmount) {
-        throw new Error(
-          `Insufficient wallet balance. Required: NGN${withdrawalAmount.toLocaleString()}, Available: NGN${wallet.balance.available.toLocaleString()}`,
-        );
+      const wallet = await WalletService.getOrCreateWallet(
+        providerId,
+        "Provider",
+      );
+
+      // Handle bonus balance withdrawal restriction
+      if (withdrawalType === "bonus") {
+        if (Number(provider.completedJobs || 0) < 5) {
+          throw new Error(
+            `You must complete at least 5 bookings before you can withdraw from your bonus balance. Currently completed: ${provider.completedJobs || 0}`,
+          );
+        }
+
+        if (wallet.balance.bonus < withdrawalAmount) {
+          throw new Error(
+            `Insufficient bonus balance. Required: NGN${withdrawalAmount.toLocaleString()}, Available: NGN${wallet.balance.bonus.toLocaleString()}`,
+          );
+        }
+      } else {
+        // Regular available balance withdrawal
+        if (wallet.balance.available < withdrawalAmount) {
+          throw new Error(
+            `Insufficient wallet balance. Required: NGN${withdrawalAmount.toLocaleString()}, Available: NGN${wallet.balance.available.toLocaleString()}`,
+          );
+        }
       }
 
       // Check if provider has recipient code
@@ -775,14 +793,21 @@ class paymentService {
       const balanceBefore = {
         available: wallet.balance.available,
         pending: wallet.balance.pending,
+        bonus: wallet.balance.bonus,
         total: wallet.balance.total,
       };
 
-      await wallet.debit(withdrawalAmount);
+      // Debit from appropriate balance
+      if (withdrawalType === "bonus") {
+        await wallet.debitBonus(withdrawalAmount);
+      } else {
+        await wallet.debit(withdrawalAmount);
+      }
 
       const balanceAfter = {
         available: wallet.balance.available,
         pending: wallet.balance.pending,
+        bonus: wallet.balance.bonus,
         total: wallet.balance.total,
       };
 
@@ -795,6 +820,7 @@ class paymentService {
           walletId: wallet._id,
         },
         amount: withdrawalAmount,
+        withdrawalType: withdrawalType,
         balances: {
           before: balanceBefore,
           after: balanceAfter,
@@ -811,7 +837,7 @@ class paymentService {
           response: transferResponse.data.data,
         },
         status: "completed",
-        description: "Wallet withdrawal to bank",
+        description: `${withdrawalType === "bonus" ? "Bonus" : "Wallet"} withdrawal to bank`,
         completedAt: new Date(),
       });
 

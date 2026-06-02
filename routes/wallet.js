@@ -1,8 +1,8 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const WalletController = require('../controllers/wallet');
-const authMiddleware = require ('../middleware/authMiddleware');
- /** 
+const WalletController = require("../controllers/wallet");
+const authMiddleware = require("../middleware/authMiddleware");
+/**
  * @swagger
  * /api/v1/wallet/balance:
  *   get:
@@ -29,6 +29,9 @@ const authMiddleware = require ('../middleware/authMiddleware');
  *                     pending:
  *                       type: number
  *                       example: 5000
+ *                     bonus:
+ *                       type: number
+ *                       example: 2500
  *                     total:
  *                       type: number
  *                       example: 20000
@@ -39,9 +42,9 @@ const authMiddleware = require ('../middleware/authMiddleware');
  *                       type: number
  *                       example: 30000
  */
-router.get('/balance', authMiddleware, WalletController.getBalance);
+router.get("/balance", authMiddleware, WalletController.getBalance);
 
-/** 
+/**
  * @swagger
  * /api/v1/wallet/fund:
  *   post:
@@ -63,7 +66,7 @@ router.get('/balance', authMiddleware, WalletController.getBalance);
  *       200:
  *         description: Wallet funding initiated
  */
-router.post('/fund', authMiddleware, WalletController.fundWallet);
+router.post("/fund", authMiddleware, WalletController.fundWallet);
 
 /**
  * @swagger
@@ -124,7 +127,11 @@ router.post('/fund', authMiddleware, WalletController.fundWallet);
  *         description: Server error
  */
 
-router.get('/fund/verify/:reference', authMiddleware, WalletController.verifyWalletFunding);
+router.get(
+  "/fund/verify/:reference",
+  authMiddleware,
+  WalletController.verifyWalletFunding,
+);
 /**
  * @swagger
  * /api/v1/wallet/pay:
@@ -160,7 +167,7 @@ router.get('/fund/verify/:reference', authMiddleware, WalletController.verifyWal
  *       500:
  *         description: Server error
  */
-router.post('/pay', authMiddleware, WalletController.payFromWallet);
+router.post("/pay", authMiddleware, WalletController.payFromWallet);
 
 /**
  * @swagger
@@ -242,7 +249,7 @@ router.post('/pay', authMiddleware, WalletController.payFromWallet);
  *         description: Server error
  */
 
-router.get('/transactions', authMiddleware, WalletController.getTransactions);
+router.get("/transactions", authMiddleware, WalletController.getTransactions);
 
 /**
  * @swagger
@@ -279,7 +286,6 @@ router.get('/transactions', authMiddleware, WalletController.getTransactions);
  *       500:
  *         description: Server error
  */
-router.get('/platform', authMiddleware, WalletController.getPlatformSummary);
-
+router.get("/platform", authMiddleware, WalletController.getPlatformSummary);
 
 module.exports = router;

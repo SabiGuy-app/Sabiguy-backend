@@ -201,15 +201,15 @@ class PricingService {
         durationMinutes: duration,
         ratesUsed: {
           baseFare: BF,
-          perKmRate: parseFloat(PK.toFixed(2)),         // Row 17
-          perMinuteRate: PM,                             // Row 18
-          marketAdjustment: MA,                          // Row 19
-          fuelPricePerLitre,                             // Row 15
-          efficiencyKmPerLitre: efficiency[category],    // Row 16
-          riderPlatformFeePercent,                       // Row 22
-          driverPlatformFeePercent,                      // Row 23
-          taxRate,                                       // Row 24
-          surgeMultiplier: effectiveSurge,               // Row 25
+          perKmRate: parseFloat(PK.toFixed(2)),         
+          perMinuteRate: PM,                             
+          marketAdjustment: MA,                          
+          fuelPricePerLitre,                            
+          efficiencyKmPerLitre: efficiency[category],    
+          riderPlatformFeePercent,                       
+          driverPlatformFeePercent,                      
+          taxRate,                                       
+          surgeMultiplier: effectiveSurge,               
         },
       },
     };

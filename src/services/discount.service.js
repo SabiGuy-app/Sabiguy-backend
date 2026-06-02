@@ -3,26 +3,24 @@ const pricingService = require("./pricing.service");
 class DiscountService {
   constructor() {
     this.config = {
-      code: "first_two_rides",
-      percent: 20,
-      maxRedemptions: 2,
+      code: "launch_promo",
+      percent: 15,
+      maxDiscount: 500, // Cap discount at 500 naira
     };
   }
 
   getLaunchPromoBaseAmount(subtotal) {
-    return pricingService.roundToNearest50(
+    const baseDiscount = pricingService.roundToNearest50(
       Number(subtotal || 0) * (this.config.percent / 100),
     );
+    // Cap the discount at 500 naira
+    return Math.min(baseDiscount, this.config.maxDiscount);
   }
 
   getLaunchPromoStatus(user) {
-    const used = Number(user?.firstRideDiscountUsed ?? 0);
-    const remaining = Math.max(this.config.maxRedemptions - used, 0);
-
+    // All users are eligible for the launch promo discount
     return {
-      used,
-      remaining,
-      eligible: remaining > 0,
+      eligible: true,
     };
   }
 
@@ -85,11 +83,6 @@ class DiscountService {
     const promoStatus = this.getLaunchPromoStatus(user);
     const promoBaseAmount = this.getLaunchPromoBaseAmount(subtotal);
     const discountApplied = Boolean(applyDiscount && promoStatus.eligible);
-    const usedAfter = discountApplied ? promoStatus.used + 1 : promoStatus.used;
-    const remainingAfter = Math.max(
-      this.config.maxRedemptions - usedAfter,
-      0,
-    );
     const discountAmount = discountApplied
       ? Math.min(promoBaseAmount, originalPlatformEarns)
       : 0;
@@ -118,24 +111,16 @@ class DiscountService {
       discountPercent: discountApplied ? this.config.percent : 0,
       discountApplied,
       discountCode: discountApplied ? this.config.code : null,
-      discountReason: discountApplied ? "first_two_rides" : null,
+      discountReason: discountApplied ? "launch_promo" : null,
       launchPromo: {
         code: this.config.code,
         percent: this.config.percent,
         applied: discountApplied,
         eligible: promoStatus.eligible,
-        used: promoStatus.used,
-        remaining: promoStatus.remaining,
         amount: discountAmount,
         baseAmount: promoBaseAmount,
-        reason: discountApplied ? "first_two_rides" : null,
-      },
-      launchPromoSummary: {
-        used: promoStatus.used,
-        remaining: promoStatus.remaining,
-        eligible: promoStatus.eligible,
-        usedAfter,
-        remainingAfter,
+        maxDiscount: this.config.maxDiscount,
+        reason: discountApplied ? "launch_promo" : null,
       },
       promoSubsidyAmount: discountApplied ? discountAmount : 0,
     };
