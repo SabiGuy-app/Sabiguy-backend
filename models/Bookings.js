@@ -173,7 +173,7 @@ const bookingSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
-    applyFirstRideDiscount: {
+    applyRideDiscount: {
       type: Boolean,
       default: false,
     },
@@ -234,8 +234,7 @@ const bookingSchema = new mongoose.Schema(
         amount: Number,
         applied: Boolean,
         reason: String,
-        usedBefore: Number,
-        remainingAfter: Number,
+        maxDiscount: Number,
       },
       escrowStatus: {
         type: String,
@@ -254,7 +253,6 @@ const bookingSchema = new mongoose.Schema(
     startedAt: Date,
     completedAt: Date,
     lastNotifiedAt: { type: Date },
-
 
     // Attachments
     attachments: [String],

@@ -1,7 +1,7 @@
-const express = require ('express');
+const express = require("express");
 const router = express.Router();
-const authMiddleware = require ('../middleware/authMiddleware');
-const ProviderController = require ('../controllers/provider');
+const authMiddleware = require("../middleware/authMiddleware");
+const ProviderController = require("../controllers/provider");
 const rateLimit = require("express-rate-limit");
 
 const kycLevelLimiter = rateLimit({
@@ -378,16 +378,29 @@ router.post("/kyc-level", kycLevelLimiter, ProviderController.getKycLevel);
  *                     completedBookings:
  *                       type: integer
  *                       example: 45
- *                     totalEarnings:
+ *                     availableEarnings:
  *                       type: number
- *                       example: 450000
+ *                       example: 400000
  *                     pendingEarnings:
  *                       type: number
  *                       example: 50000
+ *                     bonusEarnings:
+ *                       type: number
+ *                       example: 12500
+ *                     totalEarnings:
+ *                       type: number
+ *                       example: 450000
+ *                     totalWithdrawals:
+ *                       type: number
+ *                       example: 100000
  *       500:
  *         description: Server error
  */
-router.get('/dashboard/stats', authMiddleware, ProviderController.getDashboardStats);
+router.get(
+  "/dashboard/stats",
+  authMiddleware,
+  ProviderController.getDashboardStats,
+);
 
 /**
  * @swagger
@@ -425,7 +438,7 @@ router.get('/dashboard/stats', authMiddleware, ProviderController.getDashboardSt
  *       500:
  *         description: Server error
  */
-router.put('/location', authMiddleware, ProviderController.updateLocation);
+router.put("/location", authMiddleware, ProviderController.updateLocation);
 
 /**
  * @swagger
@@ -470,7 +483,11 @@ router.put('/location', authMiddleware, ProviderController.updateLocation);
  *       500:
  *         description: Server error
  */
-router.put('/availability/toggle', authMiddleware, ProviderController.toggleAvailability);
+router.put(
+  "/availability/toggle",
+  authMiddleware,
+  ProviderController.toggleAvailability,
+);
 
 /**
  * @swagger
@@ -523,7 +540,7 @@ router.put('/availability/toggle', authMiddleware, ProviderController.toggleAvai
  *       500:
  *         description: Server error
  */
-router.get('/bookings', authMiddleware, ProviderController.getBookings);
+router.get("/bookings", authMiddleware, ProviderController.getBookings);
 
 // /**
 //  * @swagger
@@ -586,7 +603,7 @@ router.get('/bookings', authMiddleware, ProviderController.getBookings);
  *       500:
  *         description: Server error
  */
-router.patch('/:id/accept', authMiddleware, ProviderController.acceptBooking);
+router.patch("/:id/accept", authMiddleware, ProviderController.acceptBooking);
 /**
  * @swagger
  * /api/v1/provider/bookings/{bookingId}/cancel:
@@ -621,7 +638,11 @@ router.patch('/:id/accept', authMiddleware, ProviderController.acceptBooking);
  *       500:
  *         description: Server error
  */
-router.patch('/bookings/:bookingId/cancel', authMiddleware, ProviderController.cancelBooking);
+router.patch(
+  "/bookings/:bookingId/cancel",
+  authMiddleware,
+  ProviderController.cancelBooking,
+);
 
 /**
  * @swagger
@@ -674,7 +695,11 @@ router.patch('/bookings/:bookingId/cancel', authMiddleware, ProviderController.c
  *       500:
  *         description: Server error
  */
-router.patch('/bookings/:bookingId/counter-offer', authMiddleware, ProviderController.sendCounterOffer);
+router.patch(
+  "/bookings/:bookingId/counter-offer",
+  authMiddleware,
+  ProviderController.sendCounterOffer,
+);
 
 /**
  * @swagger
@@ -700,7 +725,11 @@ router.patch('/bookings/:bookingId/counter-offer', authMiddleware, ProviderContr
  *       500:
  *         description: Server error
  */
-router.patch('/bookings/:bookingId/start', authMiddleware, ProviderController.startJob);
+router.patch(
+  "/bookings/:bookingId/start",
+  authMiddleware,
+  ProviderController.startJob,
+);
 
 /**
  * @swagger
@@ -733,7 +762,11 @@ router.patch('/bookings/:bookingId/start', authMiddleware, ProviderController.st
  *       500:
  *         description: Server error
  */
-router.patch('/bookings/:bookingId/status', authMiddleware, ProviderController.updateBookingStatus);
+router.patch(
+  "/bookings/:bookingId/status",
+  authMiddleware,
+  ProviderController.updateBookingStatus,
+);
 
 /**
  * @swagger
@@ -757,7 +790,11 @@ router.patch('/bookings/:bookingId/status', authMiddleware, ProviderController.u
  *       500:
  *         description: Server error
  */
-router.patch('/bookings/:bookingId/complete', authMiddleware, ProviderController.markJobComplete);
+router.patch(
+  "/bookings/:bookingId/complete",
+  authMiddleware,
+  ProviderController.markJobComplete,
+);
 
 /**
  * @swagger
@@ -808,7 +845,7 @@ router.patch('/bookings/:bookingId/complete', authMiddleware, ProviderController
  *       500:
  *         description: Server error
  */
-router.get('/earnings', authMiddleware, ProviderController.getEarnings);
+router.get("/earnings", authMiddleware, ProviderController.getEarnings);
 
 /**
  * @swagger
@@ -865,7 +902,7 @@ router.get('/earnings', authMiddleware, ProviderController.getEarnings);
  *       500:
  *         description: Server error
  */
-router.post('/bank-account', authMiddleware, ProviderController.addBankAccount);
+router.post("/bank-account", authMiddleware, ProviderController.addBankAccount);
 
 /**
  * @swagger
@@ -916,7 +953,11 @@ router.post('/bank-account', authMiddleware, ProviderController.addBankAccount);
  *       500:
  *         description: Server error
  */
-router.post('/bank-account/verify', authMiddleware, ProviderController.verifyBankAccount);
+router.post(
+  "/bank-account/verify",
+  authMiddleware,
+  ProviderController.verifyBankAccount,
+);
 
 /**
  * @swagger
@@ -982,13 +1023,8 @@ router.post('/bank-account/verify', authMiddleware, ProviderController.verifyBan
  *       500:
  *         description: Server error
  */
-router.get('/reviews', authMiddleware, ProviderController.getReviews);
+router.get("/reviews", authMiddleware, ProviderController.getReviews);
 
 module.exports = router;
 
-
-
-
-
 module.exports = router;
-
