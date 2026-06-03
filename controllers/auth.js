@@ -709,25 +709,23 @@ try {
 
     await user.save();
 
-    let welcomeEmailSent = userType === "buyer";
-    if (userType !== "buyer") {
-      try {
-        const firstName = user.fullName
-          ? user.fullName.trim().split(/\s+/)[0]
-          : "there";
-        const baseUrl = process.env.FRONTEND_URL || "";
-        await sendWelcomeEmail(user.email, {
-          firstName,
-          year: new Date().getFullYear(),
-          appUrl: baseUrl,
-          ctaText: "Open SabiGuy",
-          role: userType,
-          // unsubscribeUrl: baseUrl ? `${baseUrl.replace(/\\/$/, "")}/unsubscribe` : "",
-        });
-      } catch (welcomeError) {
-        console.error("Welcome email error:", welcomeError);
-        welcomeEmailSent = false;
-      }
+    let welcomeEmailSent = true;
+    try {
+      const firstName = user.fullName
+        ? user.fullName.trim().split(/\s+/)[0]
+        : "there";
+      const baseUrl = process.env.FRONTEND_URL || "";
+      await sendWelcomeEmail(user.email, {
+        firstName,
+        year: new Date().getFullYear(),
+        appUrl: baseUrl,
+        ctaText: "Open SabiGuy",
+        role: userType,
+        // unsubscribeUrl: baseUrl ? `${baseUrl.replace(/\\/$/, "")}/unsubscribe` : "",
+      });
+    } catch (welcomeError) {
+      console.error("Welcome email error:", welcomeError);
+      welcomeEmailSent = false;
     }
 
     res.status(200).json({
