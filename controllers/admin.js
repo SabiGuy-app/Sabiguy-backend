@@ -18,6 +18,9 @@ const {
 } = require("../src/config/emailVerification");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
+const STALE_LOCATION_MINUTES = Number(
+  process.env.STALE_LOCATION_MINUTES || 10,
+);
 
 class AdminController {
   constructor() {
@@ -170,6 +173,8 @@ class AdminController {
         process.env.JWT_SECRET,
         { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
       );
+
+      
 
       return res.status(201).json({
         success: true,
@@ -473,6 +478,151 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error disputing KYC",
+        error: error.message,
+      });
+    }
+  }
+
+   async getOnlineProviders(req, res) {
+      try {
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+        const safeLimit = Math.min(limit, 100);
+        const skip = (page - 1) * safeLimit;
+  
+        const staleThreshold = new Date(
+          Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
+        );
+  
+        const query = {
+          isActive: true,
+          isDeleted: { $ne: true },
+          currentLocation: {
+            $exists: true,
+            $ne: null,
+          },
+          "currentLocation.coordinates": { $exists: true, $ne: [] },
+          lastLocationUpdate: { $gte: staleThreshold },
+        };
+  
+        const [providers, total] = await Promise.all([
+          Provider.find(query)
+            .select(
+              "fullName profilePicture phoneNumber email job service rating completedJobs availability currentLocation lastLocationUpdate city address kycVerified",
+            )
+            .sort({ lastLocationUpdate: -1, createdAt: -1 })
+            .skip(skip)
+            .limit(safeLimit)
+            .lean(),
+          Provider.countDocuments(query),
+        ]);
+  
+        const data = providers.map((provider) => {
+          const lastLocationUpdate = provider.lastLocationUpdate
+            ? new Date(provider.lastLocationUpdate)
+            : null;
+  
+          return {
+            ...provider,
+            online: true,
+            locationFresh: true,
+            locationAgeMinutes: lastLocationUpdate
+              ? Math.max(
+                  0,
+                  Math.round(
+                    (Date.now() - lastLocationUpdate.getTime()) / 60000,
+                  ),
+                )
+              : null,
+          };
+        });
+  
+        return res.status(200).json({
+          success: true,
+          count: data.length,
+          total,
+          page,
+          totalPages: Math.ceil(total / safeLimit) || 1,
+          data,
+        });
+      } catch (error) {
+        console.error("Get online providers error:", error);
+        return res.status(500).json({
+          success: false,
+          message: "Error fetching online providers",
+          error: error.message,
+        });
+      }
+    }
+
+
+     async getOnlineBuyers(req, res) {
+    try {
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+      const safeLimit = Math.min(limit, 100);
+      const skip = (page - 1) * safeLimit;
+
+      const staleThreshold = new Date(
+        Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
+      );
+
+      const query = {
+        isActive: true,
+        isDeleted: { $ne: true },
+        currentLocation: {
+          $exists: true,
+          $ne: null,
+        },
+        "currentLocation.coordinates": { $exists: true, $ne: [] },
+        lastLocationUpdate: { $gte: staleThreshold },
+      };
+
+      const [buyers, total] = await Promise.all([
+        Buyer.find(query)
+          .select(
+            "fullName profilePicture phoneNumber email job service rating completedJobs availability currentLocation lastLocationUpdate city address kycVerified",
+          )
+          .sort({ lastLocationUpdate: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(safeLimit)
+          .lean(),
+        Buyer.countDocuments(query),
+      ]);
+
+      const data = buyers.map((buyer) => {
+        const lastLocationUpdate = buyer.lastLocationUpdate
+          ? new Date(buyer.lastLocationUpdate)
+          : null;
+
+        return {
+          ...buyer,
+          online: true,
+          locationFresh: true,
+          locationAgeMinutes: lastLocationUpdate
+            ? Math.max(
+                0,
+                Math.round(
+                  (Date.now() - lastLocationUpdate.getTime()) / 60000,
+                ),
+              )
+            : null,
+        };
+      });
+
+      return res.status(200).json({
+        success: true,
+        count: data.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / safeLimit) || 1,
+        data,
+      });
+    } catch (error) {
+      console.error("Get online providers error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching online providers",
         error: error.message,
       });
     }
