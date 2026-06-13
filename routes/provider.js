@@ -440,6 +440,38 @@ router.get(
  */
 router.put("/location", authMiddleware, ProviderController.updateLocation);
 
+// /**
+//  * @swagger
+//  * /api/v1/provider/online:
+//  *   get:
+//  *     summary: Get online providers
+//  *     description: Returns providers whose location was updated within the configured freshness window and includes their latest current location.
+//  *     tags: [Provider]
+//  *     security:
+//  *       - bearerAuth: []
+//  *     parameters:
+//  *       - name: page
+//  *         in: query
+//  *         required: false
+//  *         schema:
+//  *           type: integer
+//  *           example: 1
+//  *         description: Page number
+//  *       - name: limit
+//  *         in: query
+//  *         required: false
+//  *         schema:
+//  *           type: integer
+//  *           example: 20
+//  *         description: Items per page
+//  *     responses:
+//  *       200:
+//  *         description: Online providers retrieved successfully
+//  *       500:
+//  *         description: Server error
+//  */
+// router.get("/online", authMiddleware, ProviderController.getOnlineProviders);
+
 /**
  * @swagger
  * /api/v1/provider/availability/toggle:
