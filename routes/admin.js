@@ -137,6 +137,71 @@ router.get(
 
 /**
  * @swagger
+ * /api/v1/admin/online-providers:
+ *   get:
+ *     summary: Get online providers
+ *     description: Returns providers whose location was updated within the configured freshness window and includes their latest current location.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *         description: Items per page
+ *     responses:
+ *       200:
+ *         description: Online providers retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+router.get("/online-providers", authMiddleware,   onlyRole("admin"),
+ AdminController.getOnlineProviders);
+
+/**
+ * @swagger
+ * /api/v1/admin/online-buyers:
+ *   get:
+ *     summary: Get online buyers
+ *     description: Returns buyers whose location was updated within the configured freshness window and includes their latest current location.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *         description: Items per page
+ *     responses:
+ *       200:
+ *         description: Online buyers retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+router.get("/online-buyers", authMiddleware, onlyRole("admin"), AdminController.getOnlineBuyers);
+
+/**
+ * @swagger
  * /api/v1/admin/platform-fee-report:
  *   get:
  *     summary: Get platform fee report for dashboard
