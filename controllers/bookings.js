@@ -369,6 +369,16 @@ class BookingController {
         ? booking.toObject({ versionKey: false })
         : { ...booking };
 
+    if (bookingObject.location) {
+      delete bookingObject.location.formattedAddress;
+    }
+    if (bookingObject.pickupLocation) {
+      delete bookingObject.pickupLocation.formattedAddress;
+    }
+    if (bookingObject.dropoffLocation) {
+      delete bookingObject.dropoffLocation.formattedAddress;
+    }
+
     bookingObject.pricing = this.formatBookingPricingSummary(bookingObject);
     delete bookingObject.pricingBreakdown;
     delete bookingObject.pricingMeta;
@@ -493,7 +503,8 @@ class BookingController {
         ]);
 
         bookingData.pickupLocation = {
-          address: pickupGeo.formattedAddress,
+          address: pickupAddress,
+          formattedAddress: pickupGeo.formattedAddress,
           coordinates: {
             type: "Point",
             coordinates: [pickupGeo.longitude, pickupGeo.latitude],
@@ -501,7 +512,8 @@ class BookingController {
         };
 
         bookingData.dropoffLocation = {
-          address: dropoffGeo.formattedAddress,
+          address: dropoffAddress,
+          formattedAddress: dropoffGeo.formattedAddress,
           coordinates: {
             type: "Point",
             coordinates: [dropoffGeo.longitude, dropoffGeo.latitude],
@@ -554,7 +566,8 @@ class BookingController {
         const geo = await this.geocodeWithFallback(address);
 
         bookingData.location = {
-          address: geo.formattedAddress,
+          address,
+          formattedAddress: geo.formattedAddress,
           coordinates: {
             type: "Point",
             coordinates: [geo.longitude, geo.latitude],
