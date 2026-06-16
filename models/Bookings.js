@@ -33,6 +33,9 @@ const bookingSchema = new mongoose.Schema(
         type: String,
         required: false,
       },
+      formattedAddress: {
+        type: String,
+      },
       coordinates: {
         type: {
           type: String,
@@ -47,6 +50,7 @@ const bookingSchema = new mongoose.Schema(
     // Transport / Logistics
     pickupLocation: {
       address: String,
+      formattedAddress: String,
       coordinates: {
         type: {
           type: String,
@@ -63,6 +67,7 @@ const bookingSchema = new mongoose.Schema(
 
     dropoffLocation: {
       address: String,
+      formattedAddress: String,
       coordinates: {
         type: {
           type: String,
