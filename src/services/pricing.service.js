@@ -41,7 +41,7 @@ class PricingService {
 
       // Row 16 – km per litre
       efficiency: {
-        bike: 50,
+        bike: 20,
         pre2000: 10,
         post2000: 14,
       },
