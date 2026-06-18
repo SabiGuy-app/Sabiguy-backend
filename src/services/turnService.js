@@ -5,6 +5,8 @@ async function getIceServers () {
         const response = await axios.get (
          `https://${process.env.METERED_APP_DOMAIN}/api/v1/turn/credentials?apiKey=${process.env.METERED_API_KEY}` 
         );
+            console.log("TURN servers fetched:", response.data); // ← check this logs
+
         return response.data;
     } catch (error) {
         console.error('Error fetching ICE servers:', error.message);
