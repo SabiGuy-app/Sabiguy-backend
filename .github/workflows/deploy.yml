@@ -132,6 +132,9 @@ jobs:
             SABIGUY_LOGO_URL=${{ secrets.SABIGUY_LOGO_URL }}
             API_BASE_URL=${{ secrets.API_BASE_URL }}
             GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
+            METERED_APP_DOMAIN=${{ secrets.METERED_APP_DOMAIN }}
+            METERED_API_KEY=${{ secrets.METERED_API_KEY }}
+
             ENVEOF
 
       - name: Deploy to EC2
