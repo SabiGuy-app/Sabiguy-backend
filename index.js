@@ -14,8 +14,7 @@ const redis = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { swaggerUi, swaggerSpec } = require("./src/config/swagger");
 const notificationService = require("./src/services/notification.service");
-// const notificationService = require ("./cron/notificationService")
-
+const turnService = require("./src/services/turnService");
 const REDIS_MAX_RECONNECT_ATTEMPTS = Number(
   process.env.REDIS_MAX_RECONNECT_ATTEMPTS || 5,
 );
@@ -168,6 +167,7 @@ const routes = [
   { path: "/chats", file: "./routes/chat" },
   { path: "/support-chatbot", file: "./routes/supportChatbot" },
   { path: "/admin", file: "./routes/admin" },
+  { path: "/call", file: "./routes/call" }
 ];
 
 routes.forEach((route) => {
@@ -376,6 +376,141 @@ io.on("connection", (socket) => {
       userId: socket.userId,
     });
   });
+
+  // ─────────────────────────────────────────
+// WEBRTC CALL SIGNALING
+// ─────────────────────────────────────────
+
+// 1. Caller initiates a call
+// socket.on("call:initiate", async (data) => {
+//   try {
+//     const { bookingId, receiverId, receiverType } = data;
+
+//     // Get fresh ICE/TURN servers
+//     const iceServers = await turnService.getIceServers();
+
+//     // Build receiver's room (matches your existing room pattern)
+//     const receiverRoom = `${receiverType}:${receiverId}`;
+
+//     // Notify the receiver of incoming call
+//     io.to(receiverRoom).emit("call:incoming", {
+//       bookingId,
+//       callerId: socket.userId,
+//       callerType: socket.userType,
+//       iceServers,             // send ICE servers to receiver too
+//     });
+
+//     // Send ICE servers back to caller so they can start
+//     socket.emit("call:initiated", {
+//       bookingId,
+//       iceServers,
+//     });
+
+//     console.log(`📞 Call initiated: ${socket.userId} → ${receiverId} [booking: ${bookingId}]`);
+//   } catch (error) {
+//     console.error("call:initiate error:", error.message);
+//     socket.emit("error", { message: "Failed to initiate call" });
+//   }
+// });
+
+// Replace your existing call:initiate and call:offer with this single event
+socket.on("call:initiate", async ({ bookingId, targetId, targetType, offer }) => {
+  try {
+    const iceServers = await turnService.getIceServers();
+    const receiverRoom = `${targetType}:${targetId}`;
+
+    // Forward everything in one shot — no race condition
+    io.to(receiverRoom).emit("call:incoming", {
+      bookingId,
+      callerId: socket.userId,
+      callerType: socket.userType,
+      iceServers,
+      offer,                    // ← offer included from the start
+    });
+
+    // Confirm to caller with ICE servers
+    socket.emit("call:initiated", { bookingId, iceServers });
+
+    console.log(`📞 Call initiated: ${socket.userId} → ${targetId} [booking: ${bookingId}]`);
+  } catch (error) {
+    console.error("call:initiate error:", error.message);
+    socket.emit("error", { message: "Failed to initiate call" });
+  }
+});
+
+// call:offer event no longer needed — remove it
+
+// 2. Receiver answers the call
+socket.on("call:answer", (data) => {
+  const { bookingId, callerId, callerType, answer } = data;
+  const callerRoom = `${callerType}:${callerId}`;
+
+  io.to(callerRoom).emit("call:answered", {
+    bookingId,
+    answer,                   // SDP answer from receiver's browser
+    answererId: socket.userId,
+  });
+
+  console.log(`✅ Call answered: ${socket.userId} → ${callerId} [booking: ${bookingId}]`);
+});
+
+// 3. Exchange ICE candidates (WebRTC handshake)
+socket.on("call:ice-candidate", (data) => {
+  const { bookingId, targetId, targetType, candidate } = data;
+  const targetRoom = `${targetType}:${targetId}`;
+
+  io.to(targetRoom).emit("call:ice-candidate", {
+    bookingId,
+    candidate,                // ICE candidate from browser
+    fromId: socket.userId,
+  });
+});
+
+// 4. Receiver rejects the call
+socket.on("call:reject", (data) => {
+  const { bookingId, callerId, callerType } = data;
+  const callerRoom = `${callerType}:${callerId}`;
+
+  io.to(callerRoom).emit("call:rejected", {
+    bookingId,
+    rejectedBy: socket.userId,
+  });
+
+  console.log(`❌ Call rejected by ${socket.userId} [booking: ${bookingId}]`);
+});
+
+// 5. Either party ends the call
+socket.on("call:end", (data) => {
+  const { bookingId, targetId, targetType } = data;
+  const targetRoom = `${targetType}:${targetId}`;
+
+  io.to(targetRoom).emit("call:ended", {
+    bookingId,
+    endedBy: socket.userId,
+  });
+
+  console.log(`📵 Call ended by ${socket.userId} [booking: ${bookingId}]`);
+});
+
+// Forward SDP offer to receiver
+// socket.on("call:offer", ({ bookingId, targetId, targetType, offer }) => {
+//   io.to(`${targetType}:${targetId}`).emit("call:offer", {
+//     bookingId,
+//     offer,
+//     fromId: socket.userId,
+//     fromType: socket.userType,
+//   });
+// });
+
+// Forward SDP answer to caller (rename your existing call:answer)
+socket.on("call:answer", ({ bookingId, targetId, targetType, answer }) => {
+  io.to(`${targetType}:${targetId}`).emit("call:answer", {
+    bookingId,
+    answer,
+    fromId: socket.userId,
+    fromType: socket.userType,
+  });
+});
 
   socket.on("disconnect", async () => {
     console.log(`❌ Client disconnected: ${socket.id}`);
