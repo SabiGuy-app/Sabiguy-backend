@@ -58,57 +58,6 @@ class GeolocationService {
     }
   }
 
-  // /* ─────────────────────────────────────────────────────────────
-  //    Reverse geocode coordinates → address
-  //    Uses Places API nearby search first for street-level accuracy,
-  //    falls back to Geocoding API
-  // ───────────────────────────────────────────────────────────── */
-  // async reverseGeocode(longitude, latitude) {
-  //   try {
-  //     if (!this.googleKey) throw new Error('GOOGLE_MAPS_API_KEY is not configured');
-
-  //     // 1️⃣ Try Geocoding API with result_type for maximum granularity
-  //     const response = await axios.get(`${this.googleBaseUrl}/geocode/json`, {
-  //       params: {
-  //         latlng: `${latitude},${longitude}`,
-  //         key: this.googleKey,
-  //         language: 'en',
-  //         result_type: 'street_address|premise|subpremise|route|neighborhood',
-  //       },
-  //     });
-
-  //     if (response.data.status !== 'OK' || !response.data.results?.length) {
-  //       throw new Error(`Reverse geocoding failed: ${response.data.status}`);
-  //     }
-
-  //     // Google returns multiple results from most to least specific
-  //     // Pick the most granular one (first result)
-  //     const result = response.data.results[0];
-  //     const context = this.parseGoogleComponents(result.address_components);
-
-  //     // Build a detailed address string if formatted_address is vague
-  //     const detailedAddress = this.buildDetailedAddress(context, result.formatted_address);
-
-  //     return {
-  //       formattedAddress: detailedAddress,
-  //       placeName: context.route || context.neighborhood,
-  //       placeId: result.place_id,
-  //       locationType: result.geometry.location_type,
-  //       context: {
-  //         streetNumber: context.street_number,
-  //         street: context.route,
-  //         neighborhood: context.neighborhood || context.sublocality_level_1,
-  //         city: context.locality || context.administrative_area_level_2,
-  //         state: context.administrative_area_level_1,
-  //         country: context.country,
-  //         postcode: context.postal_code,
-  //       },
-  //     };
-  //   } catch (error) {
-  //     console.error('Reverse geocoding error:', error.message);
-  //     throw new Error(`Failed to reverse geocode: ${error.message}`);
-  //   }
-  // }
 
   async reverseGeocode(longitude, latitude) {
   try {
