@@ -81,6 +81,37 @@ router.post(
   AdminController.createAdmin,
 );
 
+
+/**
+ * @swagger
+ * /api/v1/admin/{bookingId}/delete-booking
+ *   delete:
+ *     summary: Delete booking
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *    parameters:
+ *       - name: bookingId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "booking123"
+ *    responses:
+ *      200:
+ *        description: Booking deleted successfully
+ *      403:
+ *        description: Admin access required
+ *      404:
+ *        description: Booking not found
+ */
+
+router.delete(
+  "/:bookingId/delete-booking", 
+  authMiddleware, onlyRole("admin"), 
+  AdminController.deleteBooking);
+
+
 /**
  * @swagger
  * /api/v1/admin/login:

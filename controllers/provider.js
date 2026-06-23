@@ -12,9 +12,36 @@ const STALE_LOCATION_MINUTES = Number(
 );
 
 class ProviderController {
+
+
+  async AccountType(req, res) {
+    try {
+      const { accountType } = req.body;
+      const provider = await Provider.findById(req.user.id);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      provider.accountType = accountType;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
+      await provider.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Account type updated successfully",
+        data: provider,
+      });
+    } catch (err) {
+      console.error("Account type update error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+
+
   async ProfileInfo(req, res) {
     try {
-      const { gender, city, address } = req.body;
+      const { gender, city, address, ninSlip, imageUrl} = req.body;
 
       const provider = await Provider.findById(req.user.id);
       if (!provider) {
@@ -24,7 +51,9 @@ class ProviderController {
       provider.gender = gender;
       provider.city = city;
       provider.address = address;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
+      provider.ninSlip = ninSlip;
+      provider.profilePicture = imageUrl;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
 
       await provider.save();
 
@@ -46,9 +75,7 @@ class ProviderController {
         regNumber,
         BusinessAddress,
         cacFile,
-        accountType,
-        ninSlip,
-      } = req.body;
+        } = req.body;
 
       const provider = await Provider.findById(req.user.id);
       if (!provider) {
@@ -59,9 +86,7 @@ class ProviderController {
       provider.regNumber = regNumber;
       provider.BusinessAddress = BusinessAddress;
       provider.cacFile = cacFile;
-      provider.accountType = accountType;
-      provider.ninSlip = ninSlip;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
+      // provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
 
       await provider.save();
 
@@ -76,40 +101,12 @@ class ProviderController {
     }
   }
 
-  async setProfilePicture(req, res) {
-    try {
-      const { imageUrl } = req.body;
-
-      if (!imageUrl) {
-        return res.status(400).json({ message: "Image URL is required" });
-      }
-
-      const provider = await Provider.findById(req.user.id);
-      if (!provider) {
-        return res.status(404).json({ message: "Provider not found" });
-      }
-
-      // Update the provider's profile picture
-      provider.profilePicture = imageUrl;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
-      await provider.save();
-
-      res.status(200).json({
-        success: true,
-        message: "Profile picture updated successfully",
-        profilePicture: provider.profilePicture,
-      });
-    } catch (err) {
-      console.error("Profile picture error:", err);
-      res.status(500).json({ success: false, message: err.message });
-    }
-  }
-
   async JobAndService(req, res) {
     try {
       const {
         job,
         service,
+        workVisuals,
         driverLicenseNumber,
         vehicleProductionYear,
         vehicleColor,
@@ -153,6 +150,17 @@ class ProviderController {
         }));
       }
 
+      if (workVisuals) {
+        if (!Array.isArray(workVisuals)) {
+          return res.status(400).json({ message: "Work visuals must be an array" });
+        }
+
+        provider.workVisuals = workVisuals.map((item) => ({
+          pictures: Array.isArray(item.pictures) ? item.pictures : [],
+          videos: Array.isArray(item.videos) ? item.videos : [],
+        }));
+      }
+
       // Update vehicle-related fields
       const vehicleFields = {
         driverLicenseNumber,
@@ -167,7 +175,8 @@ class ProviderController {
           provider[key] = value;
         }
       });
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 5);
+      provider.kycCompleted = true;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
 
       await provider.save();
 
@@ -182,7 +191,7 @@ class ProviderController {
     }
   }
 
-  async workVisuals(req, res) {
+  async updateWorkVisuals(req, res) {
     try {
       const { workVisuals } = req.body;
       const provider = await Provider.findById(req.user.id);
@@ -200,7 +209,6 @@ class ProviderController {
         pictures: Array.isArray(item.pictures) ? item.pictures : [],
         videos: Array.isArray(item.videos) ? item.videos : [],
       }));
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 6);
 
       await provider.save();
 
@@ -215,6 +223,35 @@ class ProviderController {
     }
   }
 
+  async editProfilePicture(req, res) {
+    try {
+      const { imageUrl } = req.body;
+
+      if (!imageUrl) {
+        return res.status(400).json({ message: "Image URL is required" });
+      }
+
+      const provider = await Provider.findById(req.user.id);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      // Update the provider's profile picture
+      provider.profilePicture = imageUrl;
+      await provider.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Profile picture updated successfully",
+        profilePicture: provider.profilePicture,
+      });
+    } catch (err) {
+      console.error("Profile picture error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+
   async BankInfo(req, res) {
     try {
       const { accountName, accountNumber, bankName, bankCode } = req.body;
@@ -228,8 +265,6 @@ class ProviderController {
       provider.accountNumber = accountNumber;
       provider.bankName = bankName;
       provider.bankCode = bankCode;
-      provider.kycCompleted = true;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 7);
 
       await provider.save();
 
