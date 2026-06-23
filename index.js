@@ -179,6 +179,9 @@ app.get("/api-docs/swagger.json", (req, res) => {
   res.json(swaggerSpec);
 });
 
+// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+
 app.get(["/api-docs", "/api-docs/"], (req, res) => {
   const apiBaseUrl = process.env.API_BASE_URL;
   res.send(`<!DOCTYPE html>
@@ -377,41 +380,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  // ─────────────────────────────────────────
-// WEBRTC CALL SIGNALING
-// ─────────────────────────────────────────
-
-// 1. Caller initiates a call
-// socket.on("call:initiate", async (data) => {
-//   try {
-//     const { bookingId, receiverId, receiverType } = data;
-
-//     // Get fresh ICE/TURN servers
-//     const iceServers = await turnService.getIceServers();
-
-//     // Build receiver's room (matches your existing room pattern)
-//     const receiverRoom = `${receiverType}:${receiverId}`;
-
-//     // Notify the receiver of incoming call
-//     io.to(receiverRoom).emit("call:incoming", {
-//       bookingId,
-//       callerId: socket.userId,
-//       callerType: socket.userType,
-//       iceServers,             // send ICE servers to receiver too
-//     });
-
-//     // Send ICE servers back to caller so they can start
-//     socket.emit("call:initiated", {
-//       bookingId,
-//       iceServers,
-//     });
-
-//     console.log(`📞 Call initiated: ${socket.userId} → ${receiverId} [booking: ${bookingId}]`);
-//   } catch (error) {
-//     console.error("call:initiate error:", error.message);
-//     socket.emit("error", { message: "Failed to initiate call" });
-//   }
-// });
 
 // Replace your existing call:initiate and call:offer with this single event
 socket.on("call:initiate", async ({ bookingId, targetId, targetType, offer }) => {
@@ -491,16 +459,6 @@ socket.on("call:end", (data) => {
 
   console.log(`📵 Call ended by ${socket.userId} [booking: ${bookingId}]`);
 });
-
-// Forward SDP offer to receiver
-// socket.on("call:offer", ({ bookingId, targetId, targetType, offer }) => {
-//   io.to(`${targetType}:${targetId}`).emit("call:offer", {
-//     bookingId,
-//     offer,
-//     fromId: socket.userId,
-//     fromType: socket.userType,
-//   });
-// });
 
 // Forward SDP answer to caller (rename your existing call:answer)
 socket.on("call:answer", ({ bookingId, targetId, targetType, answer }) => {

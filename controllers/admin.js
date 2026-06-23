@@ -320,6 +320,39 @@ class AdminController {
     }
   }
 
+  async deleteBooking(req, res) { 
+    try {
+       if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+    }
+
+     const { bookingId } = req.params;
+
+     if (!bookingId) {
+       return res.status(400).json({ message: "bookingId is required" });
+     }
+
+     const booking = await Booking.findById(bookingId);
+     if (!booking) {
+       return res.status(404).json({ message: "Booking not found" });
+     }
+
+     await booking.deleteOne();
+
+     return res.status(200).json({
+       success: true,
+       message: "Booking deleted successfully",
+     });
+   } catch (error) {
+     console.error("Delete booking error:", error);
+     return res.status(500).json({
+       success: false,
+       message: "Error deleting booking",
+       error: error.message,
+     });
+   }
+ }
+
   async verifyBuyerKyc(req, res) {
     try {
       if (req.user?.role !== "admin") {

@@ -24,8 +24,38 @@ const providerUpdateLimiter = rateLimit({
  * @swagger
  * tags:
  *   name: Provider
- *   description: Endpoints for provider profile and business setup
+ *   description: Endpoints for provider profile, onboarding, jobs, bookings, and payouts
  */
+
+/**
+ * @swagger
+ * /api/v1/provider/account-type:
+ *   post:
+ *     summary: Update provider account type
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - accountType
+ *             properties:
+ *               accountType:
+ *                 type: string
+ *                 example: personal
+ *     responses:
+ *       200:
+ *         description: Account type updated successfully
+ *       404:
+ *         description: Provider not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/account-type", authMiddleware, ProviderController.AccountType);
 
 /**
  * @swagger
@@ -51,11 +81,20 @@ const providerUpdateLimiter = rateLimit({
  *               address:
  *                 type: string
  *                 example: "12 Opebi Street, Ikeja"
+ *               ninSlip:
+ *                 type: string
+ *                 example: "https://cdn.com/nin-slip.jpg"
+ *               imageUrl:
+ *                 type: string
+ *                 example: "https://cdn.com/profile.jpg"
+ *                 description: Profile picture URL
  *     responses:
  *       200:
  *         description: Profile info updated successfully
  *       404:
  *         description: Provider not found
+ *       500:
+ *         description: Server error
  */
 router.post("/", authMiddleware, ProviderController.ProfileInfo);
 
@@ -64,6 +103,7 @@ router.post("/", authMiddleware, ProviderController.ProfileInfo);
  * /api/v1/provider/business:
  *   post:
  *     summary: Update provider business information
+ *     description: Stores the provider business name, registration number, business address, and CAC file.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -74,15 +114,9 @@ router.post("/", authMiddleware, ProviderController.ProfileInfo);
  *           schema:
  *             type: object
  *             properties:
- *               accountType:
- *                 type: string
- *                 example: "Personal"
- *               ninSlip:
- *                 type: string
- *                 example: "https://cloudstorage.com/ninslip.jpg"
  *               BusinessName:
  *                 type: string
- *                 example: "Queen’s Glam Studio"
+ *                 example: "Queen's Glam Studio"
  *               regNumber:
  *                 type: string
  *                 example: "RC-1234567"
@@ -97,6 +131,8 @@ router.post("/", authMiddleware, ProviderController.ProfileInfo);
  *         description: Business info updated successfully
  *       404:
  *         description: Provider not found
+ *       500:
+ *         description: Server error
  */
 router.post("/business", authMiddleware, ProviderController.BusinessInfo);
 
@@ -104,10 +140,10 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  * @swagger
  * /api/v1/provider/job-service:
  *   post:
- *     summary: Add or update provider jobs and services
+ *     summary: Add or update provider jobs, services, work visuals, and transport details
  *     description: |
  *       Updates the provider's `job` and/or `service` arrays. You can send either field or both.
- *       Optionally updates transport profile fields (license/vehicle details) in the same request.
+ *       Also accepts `workVisuals` and transport profile fields in the same request.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -123,9 +159,6 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *                 description: List of jobs the provider offers
  *                 items:
  *                   type: object
- *                   required:
- *                     - service
- *                     - title
  *                   properties:
  *                     service:
  *                       type: string
@@ -144,10 +177,6 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *                 description: Additional service packages
  *                 items:
  *                   type: object
- *                   required:
- *                     - serviceName
- *                     - pricingModel
- *                     - price
  *                   properties:
  *                     serviceName:
  *                       type: string
@@ -158,6 +187,22 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *                     price:
  *                       type: string
  *                       example: "25000"
+ *               workVisuals:
+ *                 type: array
+ *                 description: Work visuals to attach to the provider profile
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     pictures:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["https://cdn.com/work1.jpg"]
+ *                     videos:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["https://cdn.com/demo1.mp4"]
  *               driverLicenseNumber:
  *                 type: string
  *                 example: "LAG-DRV-123456"
@@ -175,7 +220,7 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *                 example: "Toyota Corolla"
  *     responses:
  *       200:
- *         description: Job/service info updated successfully
+ *         description: Provider job/service info updated successfully
  *       400:
  *         description: Invalid payload (e.g., missing both job and service, or wrong array types)
  *       404:
@@ -195,6 +240,7 @@ router.post(
  * /api/v1/provider/work-visuals:
  *   put:
  *     summary: Upload or update provider work visuals (images and videos)
+ *     description: Replaces the provider's work visuals array with the supplied list.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -225,12 +271,16 @@ router.post(
  *         description: Work visuals updated successfully
  *       404:
  *         description: Provider not found
+ *       400:
+ *         description: Work visuals must be an array
+ *       500:
+ *         description: Server error
  */
 router.put(
   "/work-visuals",
   providerUpdateLimiter,
   authMiddleware,
-  ProviderController.workVisuals,
+  ProviderController.updateWorkVisuals,
 );
 
 /**
@@ -238,6 +288,7 @@ router.put(
  * /api/v1/provider/bank-info:
  *   put:
  *     summary: Update provider bank details
+ *     description: Stores the provider's payout account details directly on the profile.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -265,6 +316,8 @@ router.put(
  *         description: Bank info updated successfully
  *       404:
  *         description: Provider not found
+ *       500:
+ *         description: Server error
  */
 router.put("/bank-info", authMiddleware, ProviderController.BankInfo);
 
@@ -273,6 +326,7 @@ router.put("/bank-info", authMiddleware, ProviderController.BankInfo);
  * /api/v1/provider/profile-pic:
  *   put:
  *     summary: Update provider profile picture
+ *     description: Updates only the provider's profile picture URL.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -293,12 +347,14 @@ router.put("/bank-info", authMiddleware, ProviderController.BankInfo);
  *         description: Image URL missing
  *       404:
  *         description: Provider not found
+ *       500:
+ *         description: Server error
  */
 router.put(
   "/profile-pic",
   providerUpdateLimiter,
   authMiddleware,
-  ProviderController.setProfilePicture,
+  ProviderController.editProfilePicture,
 );
 
 /**
@@ -306,6 +362,7 @@ router.put(
  * /api/v1/provider/kyc-level:
  *   post:
  *     summary: Get provider KYC level
+ *     description: Returns the provider KYC status and a short-lived token when the email matches an existing provider.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -331,6 +388,7 @@ router.put(
  *               properties:
  *                 success:
  *                   type: boolean
+ *                   example: true
  *                 data:
  *                   type: object
  *                   properties:
@@ -340,8 +398,18 @@ router.put(
  *                     kycCompleted:
  *                       type: boolean
  *                       example: false
+ *                     kycVerified:
+ *                       type: boolean
+ *                       example: false
+ *                     token:
+ *                       type: string
+ *                       example: "eyJhbGciOi..."
  *       404:
  *         description: Provider not found
+ *       403:
+ *         description: Email does not match authenticated user
+ *       400:
+ *         description: Email is required
  *       500:
  *         description: Server error
  */
@@ -352,6 +420,7 @@ router.post("/kyc-level", kycLevelLimiter, ProviderController.getKycLevel);
  * /api/v1/provider/dashboard/stats:
  *   get:
  *     summary: Get provider dashboard statistics
+ *     description: Returns booking counts, earnings breakdown, response time metrics, and peak-hour analysis.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -393,6 +462,14 @@ router.post("/kyc-level", kycLevelLimiter, ProviderController.getKycLevel);
  *                     totalWithdrawals:
  *                       type: number
  *                       example: 100000
+ *                     revenueOverview:
+ *                       type: object
+ *                     averageResponseTimeMinutes:
+ *                       type: number
+ *                     bookingsByDayOfWeek:
+ *                       type: array
+ *                     peakHourAnalysis:
+ *                       type: object
  *       500:
  *         description: Server error
  */
@@ -407,6 +484,7 @@ router.get(
  * /api/v1/provider/location:
  *   put:
  *     summary: Update provider location
+ *     description: Updates the provider's current location and last location update timestamp.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -435,6 +513,8 @@ router.get(
  *         description: Location updated successfully
  *       400:
  *         description: Latitude and longitude required
+ *       404:
+ *         description: Provider not found
  *       500:
  *         description: Server error
  */
@@ -477,6 +557,7 @@ router.put("/location", authMiddleware, ProviderController.updateLocation);
  * /api/v1/provider/availability/toggle:
  *   put:
  *     summary: Toggle provider availability
+ *     description: Requires KYC verification before availability can be changed.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -512,6 +593,12 @@ router.put("/location", authMiddleware, ProviderController.updateLocation);
  *                     isAvailable:
  *                       type: boolean
  *                       example: true
+ *       400:
+ *         description: isAvailable (boolean) is required
+ *       403:
+ *         description: KYC verification required to toggle availability
+ *       404:
+ *         description: Provider not found
  *       500:
  *         description: Server error
  */
@@ -526,6 +613,7 @@ router.put(
  * /api/v1/provider/bookings:
  *   get:
  *     summary: Get provider bookings
+ *     description: Returns bookings for the authenticated provider with pricing metadata attached to each record.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -604,6 +692,7 @@ router.get("/bookings", authMiddleware, ProviderController.getBookings);
  * /api/v1/provider/{id}/accept:
  *   patch:
  *     summary: Accept a booking (Provider - Fastest Finger)
+ *     description: Assigns the booking to the authenticated provider if the booking is still available.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -632,6 +721,10 @@ router.get("/bookings", authMiddleware, ProviderController.getBookings);
  *                   $ref: '#/components/schemas/Booking'
  *       409:
  *         description: Booking already taken by another provider
+ *       403:
+ *         description: This booking was assigned to a different provider
+ *       404:
+ *         description: Booking not found
  *       500:
  *         description: Server error
  */
@@ -641,6 +734,7 @@ router.patch("/:id/accept", authMiddleware, ProviderController.acceptBooking);
  * /api/v1/provider/bookings/{bookingId}/cancel:
  *   patch:
  *     summary: Decline a booking
+ *     description: Cancels a booking that was already selected for this provider.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -681,6 +775,7 @@ router.patch(
  * /api/v1/provider/bookings/{bookingId}/counter-offer:
  *   patch:
  *     summary: Send counter offer to user
+ *     description: Sends a counter-offer against a pending booking request.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -724,6 +819,8 @@ router.patch(
  *                       type: number
  *       404:
  *         description: Booking not found
+ *       400:
+ *         description: Valid offer amount is required
  *       500:
  *         description: Server error
  */
@@ -738,6 +835,7 @@ router.patch(
  * /api/v1/provider/bookings/{bookingId}/start:
  *   patch:
  *     summary: Start a job
+ *     description: Moves a booking from paid escrow into the in-progress state.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -768,6 +866,7 @@ router.patch(
  * /api/v1/provider/bookings/{bookingId}/status:
  *   patch:
  *     summary: Update transport booking status
+ *     description: Updates a transport booking to the next allowed status.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -805,6 +904,7 @@ router.patch(
  * /api/v1/provider/bookings/{bookingId}/complete:
  *   patch:
  *     summary: Mark job as complete
+ *     description: Marks a booking complete after the provider reaches the final dropoff state.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -833,6 +933,7 @@ router.patch(
  * /api/v1/provider/earnings:
  *   get:
  *     summary: Get provider earnings
+ *     description: Returns aggregate earnings from completed bookings for the authenticated provider.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -884,6 +985,7 @@ router.get("/earnings", authMiddleware, ProviderController.getEarnings);
  * /api/v1/provider/bank-account:
  *   post:
  *     summary: Add bank account for payouts
+ *     description: Verifies the account with Paystack, then stores it on the provider profile unless verifyOnly is set.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -929,8 +1031,13 @@ router.get("/earnings", authMiddleware, ProviderController.getEarnings);
  *                       type: string
  *                     recipientCode:
  *                       type: string
+ *                 verificationDetails:
+ *                   type: object
+ *                   description: Full bank verification payload returned by Paystack
  *       400:
  *         description: Invalid account details
+ *       404:
+ *         description: Provider not found
  *       500:
  *         description: Server error
  */
@@ -941,6 +1048,7 @@ router.post("/bank-account", authMiddleware, ProviderController.addBankAccount);
  * /api/v1/provider/bank-account/verify:
  *   post:
  *     summary: Verify bank account
+ *     description: Verifies bank details without saving them to the provider profile.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -996,6 +1104,7 @@ router.post(
  * /api/v1/provider/reviews:
  *   get:
  *     summary: Get provider reviews
+ *     description: Returns the provider's reviews ordered from newest to oldest, plus summary rating metadata.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -1052,11 +1161,11 @@ router.post(
  *                   type: integer
  *                 total:
  *                   type: integer
+ *       404:
+ *         description: Provider not found
  *       500:
  *         description: Server error
  */
 router.get("/reviews", authMiddleware, ProviderController.getReviews);
-
-module.exports = router;
 
 module.exports = router;
