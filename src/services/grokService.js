@@ -2,8 +2,15 @@
 const Groq = require("groq-sdk");
 const Booking = require ('../../models/Bookings')
 
+// const groq = new Groq({
+//   apiKey: process.env.GROQ_API_KEY,
+// });
+
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
+  defaultHeaders: {
+    'Accept-Encoding': 'identity'
+  }
 });
 
 class GroqService {
