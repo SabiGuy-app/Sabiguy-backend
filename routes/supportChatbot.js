@@ -57,6 +57,47 @@ router.post("/chat", authMiddleware, supportChatbotController.chat);
 
 /**
  * @swagger
+ * /api/v1/support-chatbot/public-chat:
+ *   post:
+ *     summary: Chat with support bot without authentication
+ *     tags: [Support Chatbot]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - message
+ *             properties:
+ *               message:
+ *                 type: string
+ *                 example: "What services do you offer?"
+ *               visitorName:
+ *                 type: string
+ *                 example: "Amina"
+ *               conversationHistory:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     role:
+ *                       type: string
+ *                       enum: [user, assistant]
+ *                     content:
+ *                       type: string
+ *     responses:
+ *       200:
+ *         description: Public chatbot response generated
+ *       400:
+ *         description: Message is required
+ *       500:
+ *         description: Server error
+ */
+router.post("/public-chat", supportChatbotController.publicChat);
+
+/**
+ * @swagger
  * /api/v1/support-chatbot/history:
  *   get:
  *     summary: Get support chatbot conversation history

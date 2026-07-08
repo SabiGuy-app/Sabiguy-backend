@@ -1,4 +1,3 @@
-// services/groqService.js
 const Groq = require("groq-sdk");
 const Booking = require ('../../models/Bookings')
 
@@ -16,9 +15,14 @@ const groq = new Groq({
 class GroqService {
  // services/groqService.js
 
-async supportChat(message, conversationHistory = [], userContext = {}) {
+async supportChat(
+  message,
+  conversationHistory = [],
+  userContext = {},
+  options = {},
+) {
   try {
-    const systemPrompt = this.buildSystemPrompt(userContext);
+    const systemPrompt = this.buildSystemPrompt(userContext, options);
 
     // If booking context exists, prepend a reminder to the user message
     let enhancedMessage = message;
@@ -118,7 +122,9 @@ Return ONLY valid JSON:
     }
   }
 
-  buildSystemPrompt(userContext) {
+  buildSystemPrompt(userContext, options = {}) {
+  const isPublicChat = options.isPublic === true;
+
   // Build booking context section if available
   let bookingContextSection = "";
   if (userContext.currentBooking) {
@@ -139,14 +145,28 @@ CURRENT BOOKING INFORMATION (USE THIS EXACT DATA):
 `;
   }
 
+  const modeInstructions = isPublicChat
+    ? `
+PUBLIC HOMEPAGE MODE:
+- The user may not be logged in.
+- Help with general platform questions first.
+- Do not ask for a booking ID unless the user is clearly asking about a specific booking.
+- If the issue is account-specific, explain that they will need to log in or contact support for private details.
+`
+    : `
+AUTHENTICATED SUPPORT MODE:
+- If booking data is not provided and the user is asking about a specific booking, ask for the booking ID.
+- If the question is general, answer normally without forcing a booking ID.
+`;
+
   return `You are SabiBot, the friendly AI customer support assistant for SabiGuy - a service provider platform in Nigeria.
 
 PLATFORM OVERVIEW:
-SabiGuy connects users with verified service providers (plumbers, electricians, cleaners, carpenters, painters, AC technicians, etc.) across Nigeria, primarily in Lagos, Abuja, and Port Harcourt.
+SabiGuy connects users with verified service providers (riders, electricians, plumbers, cleaners, carpenters, painters, AC technicians, etc.) across Nigeria, primarily in Ibadan.
 
 USER CONTEXT:
 ${userContext.userId ? `- User ID: ${userContext.userId}` : "- User: Not logged in"}
-${userContext.userName ? `- Name: ${userContext.userName}` : ""}
+${userContext.userName ? `- Name: ${userContext.userName.trim().split(/\s+/)[0]}` : ""}
 ${userContext.totalBookings ? `- Total Bookings: ${userContext.totalBookings}` : ""}
 ${userContext.activeBookings ? `- Active Bookings: ${userContext.activeBookings}` : ""}
 ${userContext.accountType ? `- Account Type: ${userContext.accountType}` : ""}
@@ -161,6 +181,8 @@ YOUR CAPABILITIES:
 5. **Technical Support**: App issues, notification problems, location tracking
 6. **General FAQs**: Pricing, service areas, how platform works
 7. **Complaints & Escalation**: Handle complaints, know when to escalate
+
+${modeInstructions}
 
 BOOKING STATUS DEFINITIONS (USE THESE EXACTLY):
 - "pending" or "pending_providers": Waiting for providers to respond
@@ -180,7 +202,7 @@ TONE & STYLE:
 IMPORTANT RULES:
 1. ⚠️ NEVER make up booking information - Use ONLY the data provided above
 2. If booking data is provided, use the EXACT status and details
-3. If no booking data is provided, ask for booking ID
+3. Only ask for booking ID when the user is asking about a specific booking and no booking data is provided
 4. Never assume or guess - if you don't know, say so
 5. Always verify before taking action
 6. Protect user privacy
