@@ -176,7 +176,7 @@ class ProviderController {
         }
       });
       provider.kycCompleted = true;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 5);
 
       await provider.save();
 
@@ -223,6 +223,36 @@ class ProviderController {
     }
   }
 
+  async addProfilePicture(req, res) {
+    try {
+      const { imageUrl } = req.body;
+
+      if (!imageUrl) {
+        return res.status(400).json({ message: "Image URL is required" });
+      }
+
+      const provider = await Provider.findById(req.user.id);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      // Update the provider's profile picture
+      provider.profilePicture = imageUrl;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
+
+      await provider.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Profile picture updated successfully",
+        profilePicture: provider.profilePicture,
+      });
+    } catch (err) {
+      console.error("Profile picture error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
   async editProfilePicture(req, res) {
     try {
       const { imageUrl } = req.body;
@@ -242,7 +272,7 @@ class ProviderController {
 
       res.status(200).json({
         success: true,
-        message: "Profile picture updated successfully",
+        message: "Profile picture edited successfully",
         profilePicture: provider.profilePicture,
       });
     } catch (err) {
@@ -250,6 +280,7 @@ class ProviderController {
       res.status(500).json({ success: false, message: err.message });
     }
   }
+
 
 
   async BankInfo(req, res) {
