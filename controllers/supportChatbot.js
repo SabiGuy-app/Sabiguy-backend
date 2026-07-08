@@ -29,7 +29,9 @@ const ACTIVE_STATUSES = [
 
 class SupportChatbotController {
   constructor() {
+    this.handleChatRequest = this.handleChatRequest.bind(this);
     this.chat = this.chat.bind(this);
+    this.publicChat = this.publicChat.bind(this);
     this.getFAQ = this.getFAQ.bind(this);
     this.getBookingInfo = this.getBookingInfo.bind(this);
     this.getConversationHistory = this.getConversationHistory.bind(this);
@@ -37,11 +39,13 @@ class SupportChatbotController {
   }
 
   resolveUserName(user) {
-    return (
+    const fullName =
       user?.fullName ||
       `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
-      null
-    );
+      "";
+
+    const firstName = fullName.trim().split(/\s+/)[0];
+    return firstName || null;
   }
 
   resolveCategory(intent) {
@@ -82,10 +86,15 @@ class SupportChatbotController {
 
   // controllers/supportChatbotController.js
 
-async chat(req, res) {
+  async handleChatRequest(req, res, { allowAnonymous = false } = {}) {
   try {
     const userId = req.user?.id || null;
-    const { message, conversationHistory = [], bookingId = null } = req.body;
+    const {
+      message,
+      conversationHistory = [],
+      bookingId = null,
+      visitorName = null,
+    } = req.body;
 
     if (!message) {
       return res.status(400).json({
@@ -94,43 +103,52 @@ async chat(req, res) {
       });
     }
 
-    if (!userId) {
+    if (!allowAnonymous && !userId) {
       return res.status(401).json({
         success: false,
         message: "Authentication required",
       });
     }
 
-    let user = await Buyer.findById(userId);
-    let userRole = "buyer";
-    if (!user) {
-      user = await Provider.findById(userId);
-      userRole = "provider";
-    }
-
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-    }
-
-    const bookingQuery =
-      userRole === "provider" ? { providerId: userId } : { userId };
-    const bookings = await Booking.find(bookingQuery).select("status");
-
     const userContext = {
       userId,
-      userName: this.resolveUserName(user),
-      totalBookings: bookings.length,
-      activeBookings: bookings.filter((b) =>
-        ACTIVE_STATUSES.includes(b.status),
-      ).length,
-      accountType: user?.role || userRole,
     };
+
+    let userRole = "guest";
+
+    if (allowAnonymous) {
+      userContext.userName = visitorName ? String(visitorName).trim() : "Guest";
+      userContext.accountType = "guest";
+      userContext.source = "homepage";
+    } else {
+      let user = await Buyer.findById(userId);
+      userRole = "buyer";
+      if (!user) {
+        user = await Provider.findById(userId);
+        userRole = "provider";
+      }
+
+      if (!user) {
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found" });
+      }
+
+      const bookingQuery =
+        userRole === "provider" ? { providerId: userId } : { userId };
+      const bookings = await Booking.find(bookingQuery).select("status");
+
+      userContext.userName = this.resolveUserName(user);
+      userContext.totalBookings = bookings.length;
+      userContext.activeBookings = bookings.filter((b) =>
+        ACTIVE_STATUSES.includes(b.status),
+      ).length;
+      userContext.accountType = user?.role || userRole;
+    }
 
     // Extract booking ID from message if not provided separately
     let finalBookingId = bookingId;
-    if (!finalBookingId) {
+    if (!allowAnonymous && !finalBookingId) {
       const bookingIdMatch = message.match(/\b[0-9a-f]{24}\b/i);
       if (bookingIdMatch) {
         finalBookingId = bookingIdMatch[0];
@@ -139,7 +157,7 @@ async chat(req, res) {
     }
 
     // Fetch booking context if booking ID is available
-    if (finalBookingId) {
+    if (finalBookingId && !allowAnonymous) {
       console.log(`🔍 Fetching booking context for: ${finalBookingId} and ${userId}`);
       
       const bookingContext = await groqService.getBookingContext(
@@ -158,12 +176,16 @@ async chat(req, res) {
       console.log(`✅ Booking context loaded:`, bookingContext);
       userContext.currentBooking = bookingContext;
     }
+    if (allowAnonymous && finalBookingId) {
+      console.log("Ignoring booking ID on public chatbot request");
+    }
 
     // Call AI with enhanced context
     const result = await groqService.supportChat(
       message,
       conversationHistory,
       userContext,
+      { isPublic: allowAnonymous },
     );
 
     // Log for debugging
@@ -172,7 +194,7 @@ async chat(req, res) {
       console.log(`📊 Booking Status Used: ${userContext.currentBooking.status}`);
     }
 
-    if (result.intent?.escalationNeeded) {
+    if (!allowAnonymous && result.intent?.escalationNeeded) {
       await this.createSupportTicket(
         userId,
         userRole,
@@ -191,6 +213,7 @@ async chat(req, res) {
         faqSuggestions,
         escalated: Boolean(result.intent?.escalationNeeded),
         escalationTriggered: result.escalationTriggered, 
+        publicChat: allowAnonymous,
         // Include booking data in response for debugging
         bookingContext: userContext.currentBooking || null,
       },
@@ -204,6 +227,14 @@ async chat(req, res) {
       error: error.message,
     });
   }
+  }
+
+  async chat(req, res) {
+    return this.handleChatRequest(req, res, { allowAnonymous: false });
+  }
+
+  async publicChat(req, res) {
+    return this.handleChatRequest(req, res, { allowAnonymous: true });
   }
 
   async getConversationHistory(req, res) {

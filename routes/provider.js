@@ -359,6 +359,43 @@ router.put(
 
 /**
  * @swagger
+ * /api/v1/provider/profile-pic:
+ *   post:
+ *     summary: Add provider profile picture
+ *     description: Adds a new profile picture URL for the provider.
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               imageUrl:
+ *                 type: string
+ *                 example: "https://cdn.com/profile/queen.jpg"
+ *     responses:
+ *       200:
+ *         description: Profile picture added successfully
+ *       400:
+ *         description: Image URL missing
+ *       404:
+ *         description: Provider not found
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/profile-pic",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.addProfilePicture,
+);
+
+
+/**
+ * @swagger
  * /api/v1/provider/kyc-level:
  *   post:
  *     summary: Get provider KYC level
