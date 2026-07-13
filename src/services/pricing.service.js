@@ -313,7 +313,7 @@ this.config = {
   },
 
   riderPlatformFeePercent: 5,
-  driverPlatformFeePercent: 15,
+  driverPlatformFeePercent: 7.5,
   taxRate: 7.5,
   defaultSurgeMultiplier: 1.0,
 };
