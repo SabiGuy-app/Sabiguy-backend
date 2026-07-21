@@ -148,7 +148,22 @@ const options = {
         ],
     },
 
-    apis: ["./routes/*.js"]
+    apis: [
+        "./routes/auth.js",
+        "./routes/bookings.js",
+        "./routes/call.js",
+        "./routes/chat.js",
+        "./routes/contact.js",
+        "./routes/fcm.routes.js",
+        "./routes/notifications.js",
+        "./routes/payment.js",
+        "./routes/provider.js",
+        "./routes/supportChatbot.js",
+        "./routes/transactions.js",
+        "./routes/uploadFile.js",
+        "./routes/users.js",
+        "./routes/wallet.js",
+    ]
 };
 
 

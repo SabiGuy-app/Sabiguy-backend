@@ -7,6 +7,7 @@ const Booking = require("../models/Bookings");
 const Transaction = require("../models/Transaction");
 const WalletService = require("../src/services/wallet.service");
 const notificationService = require("../src/services/notification.service");
+const paymentService = require("../src/services/payment.service");
 const {
   findUserByEmailAcrossDb,
   normalizeEmail,
@@ -435,6 +436,212 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error verifying buyer KYC",
+        error: error.message,
+      });
+    }
+  }
+
+  async verifyPayment(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { bookingId } = req.params;
+      const { note, reference, force } = req.body || {};
+      const referenceFromQuery = req.query?.reference;
+
+      if (!bookingId) {
+        return res.status(400).json({ message: "bookingId is required" });
+      }
+
+      const admin = await Admin.findById(req.user.id).select(
+        "email fullName role",
+      );
+      if (!admin) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+
+      let paymentReference = reference || referenceFromQuery;
+      let booking = null;
+
+      if (bookingId) {
+        booking = await Booking.findById(bookingId).select(
+          "_id payment status userId providerId totalAmount serviceType",
+        );
+        if (!booking) {
+          return res.status(404).json({ message: "Booking not found" });
+        }
+      }
+
+      let bookingToUpdate = booking;
+
+      if (!paymentReference) {
+        paymentReference =
+          booking?.payment?.paystackRef ||
+          (
+            await Transaction.findOne({
+              bookingId: booking?._id,
+              type: "payment",
+            }).select("reference")
+          )?.reference;
+      }
+
+      if (!paymentReference) {
+        return res.status(404).json({
+          message:
+            "Payment reference not found. Provide a bookingId or a Paystack reference.",
+        });
+      }
+
+      let result;
+      try {
+        result = await paymentService.verifyPayment(paymentReference);
+      } catch (verifyError) {
+        const paystackErrorCode = verifyError?.response?.data?.code;
+        const paystackMessage =
+          verifyError?.response?.data?.message || verifyError.message;
+
+        if (force === true || force === "true") {
+          const transaction =
+            (await Transaction.findOne({
+              bookingId: bookingToUpdate?._id || booking?._id,
+              type: "payment",
+              reference: paymentReference,
+            })) ||
+            (await Transaction.findOne({
+              bookingId: bookingToUpdate?._id || booking?._id,
+              type: "payment",
+            }));
+
+          const transactionUpdate = {
+            status: "completed",
+            gateway: {
+              name: "paystack",
+              reference: paymentReference,
+              response: {
+                manualOverride: true,
+                verifiedBy: {
+                  id: admin._id,
+                  email: admin.email,
+                  fullName: admin.fullName,
+                },
+                verifiedAt: new Date(),
+                note:
+                  note ||
+                  "Manually verified by admin after dashboard confirmation",
+                paystackMessage,
+                paystackErrorCode,
+                reference: paymentReference,
+              },
+            },
+            completedAt: new Date(),
+          };
+
+          let updatedTransaction = transaction;
+          if (updatedTransaction) {
+            updatedTransaction = await Transaction.findByIdAndUpdate(
+              updatedTransaction._id,
+              transactionUpdate,
+              { new: true },
+            );
+          } else {
+            updatedTransaction = await Transaction.create({
+              reference: paymentReference,
+              type: "payment",
+              from: {
+                userId: booking.userId,
+                userModel: "Buyer",
+              },
+              to: {
+                userId: booking.providerId,
+                userModel: "Provider",
+              },
+              amount:
+                booking.payment?.escrowAmount ||
+                booking.totalAmount ||
+                0,
+              bookingId: bookingToUpdate?._id || booking._id,
+              gateway: transactionUpdate.gateway,
+              status: "completed",
+              description: `Manual payment verification for booking #${
+                bookingToUpdate?._id || booking._id
+              }`,
+              completedAt: new Date(),
+            });
+          }
+
+          result = {
+            success: true,
+            message:
+              "Payment manually verified by admin after Paystack dashboard confirmation",
+            booking: bookingToUpdate || booking,
+            transaction: updatedTransaction,
+            manualOverride: true,
+          };
+        } else if (paystackErrorCode === "transaction_not_found") {
+          return res.status(422).json({
+            success: false,
+            message:
+              "Paystack could not find this transaction reference. Confirm the exact reference in the Paystack dashboard, or resend the request with force=true after manual confirmation.",
+            error: paystackMessage,
+            code: paystackErrorCode,
+          });
+        } else {
+          throw verifyError;
+        }
+      }
+
+      if (!bookingToUpdate) {
+        bookingToUpdate = await Booking.findOne({
+          "payment.paystackRef": paymentReference,
+        }).select("_id");
+      }
+
+      if (!bookingToUpdate) {
+        return res.status(404).json({
+          message: "Booking not found for this payment reference",
+        });
+      }
+
+      const updatedBooking = await Booking.findByIdAndUpdate(
+        bookingToUpdate._id,
+        {
+          $set: {
+            "payment.verifiedAt": new Date(),
+            "payment.verifiedBy": {
+              id: admin._id,
+              email: admin.email,
+              fullName: admin.fullName,
+            },
+            "payment.verificationMethod": "admin_manual",
+            "payment.verificationNote": note || null,
+          },
+        },
+        { new: true },
+      )
+        .populate("userId", "fullName email")
+        .populate("providerId");
+
+      return res.status(200).json({
+        success: true,
+        message: result.message || "Payment verified successfully",
+        data: {
+          booking: updatedBooking,
+          transaction: result.transaction,
+          manualOverride: result.manualOverride || false,
+          verifiedBy: {
+            id: admin._id,
+            email: admin.email,
+            fullName: admin.fullName,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Admin payment verify error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error verifying payment",
         error: error.message,
       });
     }
