@@ -33,6 +33,16 @@ const adminVerifyKycLimiter = rateLimit({
   },
 });
 
+const adminPaymentVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 25,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    message: "Too many payment verification requests, please try again later.",
+  },
+});
+
 /**
  * @swagger
  * tags:
@@ -110,6 +120,57 @@ router.delete(
   "/:bookingId/delete-booking", 
   authMiddleware, onlyRole("admin"), 
   AdminController.deleteBooking);
+
+/**
+ * @swagger
+ * /api/v1/admin/bookings/{bookingId}/payment/verify:
+ *   patch:
+ *     summary: Manually verify a booking payment
+ *     description: Re-runs Paystack verification and moves the booking to paid_escrow when the charge is already successful in Paystack but the app did not reconcile it.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 example: "Customer paid on Paystack but callback never completed"
+ *               reference:
+ *                 type: string
+ *                 example: "PAY_1784037255021_JDTLLA"
+ *                 description: Optional Paystack transaction reference
+ *               force:
+ *                 type: boolean
+ *                 example: false
+ *                 description: Set to true only after you have confirmed the charge in Paystack dashboard and the verify API cannot resolve it
+ *     responses:
+ *       200:
+ *         description: Payment verified successfully
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Booking or payment reference not found
+ */
+router.patch(
+  "/bookings/:bookingId/payment/verify",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  adminPaymentVerifyLimiter,
+  AdminController.verifyPayment,
+);
 
 
 /**

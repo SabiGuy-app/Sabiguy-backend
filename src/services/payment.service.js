@@ -11,7 +11,7 @@ class paymentService {
   constructor() {
     this.paystackBaseURL = "https://api.paystack.co";
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
-    this.MAX_BANK_WITHDRAWAL_AMOUNT = 2000;
+    this.MAX_BANK_WITHDRAWAL_AMOUNT = 10000;
   }
 
   resolvePaymentBreakdown(booking) {
