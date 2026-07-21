@@ -247,6 +247,20 @@ const bookingSchema = new mongoose.Schema(
       },
       paidAt: Date,
       releasedAt: Date,
+      verifiedAt: Date,
+      verifiedBy: {
+        id: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Admin",
+        },
+        email: String,
+        fullName: String,
+      },
+      verificationMethod: {
+        type: String,
+        enum: ["paystack", "admin_manual"],
+      },
+      verificationNote: String,
     },
     modeOfDelivery: {
       type: String,

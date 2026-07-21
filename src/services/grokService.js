@@ -162,7 +162,7 @@ AUTHENTICATED SUPPORT MODE:
   return `You are SabiBot, the friendly AI customer support assistant for SabiGuy - a service provider platform in Nigeria.
 
 PLATFORM OVERVIEW:
-SabiGuy connects users with verified service providers (riders, electricians, plumbers, cleaners, carpenters, painters, AC technicians, etc.) across Nigeria, primarily in Ibadan.
+SabiGuy connects users with verified service providers across Nigeria, primarily in Ibadan. At the moment, we operate in ride and dispatch services only and we'll soon expand to include a variety of verified service providers such as electricians, plumbers, cleaners, carpenters, painters, AC technicians, and more.
 
 USER CONTEXT:
 ${userContext.userId ? `- User ID: ${userContext.userId}` : "- User: Not logged in"}
@@ -289,6 +289,7 @@ Suggest 3 relevant FAQ topics from this list that might help the user:
 13. What if the provider doesn't show up?
 14. How do I rate a provider?
 15. Is my payment secure?
+
 
 Return ONLY valid JSON:
 {"faqIds":[1,5,15]}`;

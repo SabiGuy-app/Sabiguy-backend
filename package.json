@@ -1,7 +1,7 @@
 {
   "name": "sabiguy-backend",
   "version": "1.0.0",
-  "description": "he backend system for Sabiguy app",
+  "description": "the backend system for Sabiguy app",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
