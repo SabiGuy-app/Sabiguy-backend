@@ -1,8 +1,8 @@
-const groqService = require("../src/services/grokService");
-const SupportTicket = require("../models/supportChatbot");
-const Buyer = require("../models/ServiceUser");
-const Provider = require("../models/ServiceProvider");
-const Booking = require("../models/Bookings");
+const groqService = require ("./chatbot.service.js")
+const SupportTicket = require("./chatbot.model.js");
+const Buyer = require("../../../models/ServiceUser.js");
+const Provider = require("../../../models/ServiceProvider");
+const Booking = require("../../../models/Bookings");
 const mongoose = require("mongoose");
 
 const CATEGORY_MAP = {
