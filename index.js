@@ -154,12 +154,12 @@ app.use(
 
 const routes = [
   { path: "/auth", file: "./routes/auth" },
-  { path: "/file", file: "./routes/uploadFile" },
+  { path: "/file", file: "./src/modules/files/files.routes" },
   { path: "/provider", file: "./routes/provider" },
   { path: "/users", file: "./routes/users" },
-  { path: "/contact", file: "./routes/contact" },
+  { path: "/contact", file: "./src/modules/contact/contact.routes" },
   { path: "/bookings", file: "./routes/bookings" },
-  { path: "/fcm", file: "./routes/fcm.routes" },
+  { path: "/fcm", file: "./src/modules/fcm/fcm.routes" },
   { path: "/notifications", file: "./routes/notifications" },
   { path: "/payment", file: "./routes/payment" },
   { path: "/wallet", file: "./routes/wallet" },

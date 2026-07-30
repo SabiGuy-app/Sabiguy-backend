@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const FCMController = require ('../controllers/fcm');
-const authMiddleware = require ('../middleware/authMiddleware');
+const FCMController = require('./fcm.controller');
+const authMiddleware = require('../../../middleware/authMiddleware');
 
 /** 
  *  @swagger
