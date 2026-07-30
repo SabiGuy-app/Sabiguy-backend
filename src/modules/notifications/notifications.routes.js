@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware");
-const notificationController = require("../controllers/notifications");
+const authMiddleware = require("../../../middleware/authMiddleware");
+const notificationController = require("./notifications.controller");
 /**
  * @swagger
  * /api/v1/notifications:

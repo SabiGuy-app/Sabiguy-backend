@@ -160,7 +160,7 @@ const routes = [
   { path: "/contact", file: "./src/modules/contact/contact.routes" },
   { path: "/bookings", file: "./routes/bookings" },
   { path: "/fcm", file: "./src/modules/fcm/fcm.routes" },
-  { path: "/notifications", file: "./routes/notifications" },
+  { path: "/notifications", file: "./src/modules/notifications/notifications.routes" },
   { path: "/payment", file: "./routes/payment" },
   { path: "/wallet", file: "./routes/wallet" },
   { path: "/transactions", file: "./routes/transactions" },

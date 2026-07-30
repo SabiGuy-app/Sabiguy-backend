@@ -1,7 +1,7 @@
 const admin = require("firebase-admin");
 const Buyer = require("../../models/ServiceUser");
 const Provider = require("../../models/ServiceProvider");
-const Notification = require("../../models/Notification");
+const Notification = require("../modules/notifications/notification.model");
 
 class NotificationService {
   constructor() {

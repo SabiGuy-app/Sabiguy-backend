@@ -155,7 +155,7 @@ const options = {
         "./routes/chat.js",
         "./src/modules/contact/contact.routes.js",
         "./src/modules/fcm/fcm.routes.js",
-        "./routes/notifications.js",
+        "./src/modules/notifications/notifications.routes.js",
         "./routes/payment.js",
         "./routes/provider.js",
         "./routes/supportChatbot.js",
