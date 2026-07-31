@@ -1,19 +1,15 @@
-const Provider = require("../models/ServiceProvider");
-const Booking = require("../models/Bookings");
-const notificationService = require("../src/services/notification.service");
-const paymentService = require("../src/services/payment.service");
 const jwt = require("jsonwebtoken");
-const geolocationService = require("../src/services/geolocation.service");
-const pricingService = require("../src/services/pricing.service");
+const Provider = require("../../../models/ServiceProvider");
+const Booking = require("../bookings/Bookings.model");
+const notificationService = require("../../services/notification.service");
+const paymentService = require("../payment/payment.service");
+const geolocationService = require("../../services/geolocation.service");
+const pricingService = require("../../services/pricing.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
-const STALE_LOCATION_MINUTES = Number(
-  process.env.STALE_LOCATION_MINUTES || 10,
-);
+const STALE_LOCATION_MINUTES = Number(process.env.STALE_LOCATION_MINUTES || 10);
 
 class ProviderController {
-
-
   async AccountType(req, res) {
     try {
       const { accountType } = req.body;
@@ -37,11 +33,9 @@ class ProviderController {
     }
   }
 
-
-
   async ProfileInfo(req, res) {
     try {
-      const { gender, city, address, ninSlip, imageUrl} = req.body;
+      const { gender, city, address, ninSlip, imageUrl } = req.body;
 
       const provider = await Provider.findById(req.user.id);
       if (!provider) {
@@ -70,12 +64,7 @@ class ProviderController {
 
   async BusinessInfo(req, res) {
     try {
-      const {
-        BusinessName,
-        regNumber,
-        BusinessAddress,
-        cacFile,
-        } = req.body;
+      const { BusinessName, regNumber, BusinessAddress, cacFile } = req.body;
 
       const provider = await Provider.findById(req.user.id);
       if (!provider) {
@@ -152,7 +141,9 @@ class ProviderController {
 
       if (workVisuals) {
         if (!Array.isArray(workVisuals)) {
-          return res.status(400).json({ message: "Work visuals must be an array" });
+          return res
+            .status(400)
+            .json({ message: "Work visuals must be an array" });
         }
 
         provider.workVisuals = workVisuals.map((item) => ({
@@ -280,8 +271,6 @@ class ProviderController {
       res.status(500).json({ success: false, message: err.message });
     }
   }
-
-
 
   async BankInfo(req, res) {
     try {

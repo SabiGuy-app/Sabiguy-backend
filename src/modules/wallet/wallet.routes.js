@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const WalletController = require("../controllers/wallet");
-const authMiddleware = require("../middleware/authMiddleware");
+const WalletController = require("./wallet.controller");
+const authMiddleware = require("../../../middleware/authMiddleware");
 /**
  * @swagger
  * /api/v1/wallet/balance:

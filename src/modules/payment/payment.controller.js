@@ -1,13 +1,13 @@
-const paymentService = require ('../src/services/payment.service');
-const Buyer = require("../models/ServiceUser");
-const Booking = require("../models/Bookings");
 const mongoose = require("mongoose");
-const discountService = require("../src/services/discount.service");
+const paymentService = require("./payment.service");
+const Buyer = require("../../../models/ServiceUser");
+const Booking = require("../bookings/Bookings.model");
+const discountService = require("../../services/discount.service");
 
 class PaymentController {
   // Initialze payment
 
-    async initializePayment(req, res) {
+  async initializePayment(req, res) {
     try {
       const { bookingId, pickupNote } = req.body;
       const userId = req.user.id;
@@ -15,7 +15,7 @@ class PaymentController {
       if (!bookingId) {
         return res.status(400).json({
           success: false,
-          message: 'Booking ID is required'
+          message: "Booking ID is required",
         });
       }
 
@@ -27,15 +27,14 @@ class PaymentController {
 
       return res.status(200).json({
         success: true,
-        message: 'Payment initialized successfully',
-        data: paymentData
+        message: "Payment initialized successfully",
+        data: paymentData,
       });
-
     } catch (error) {
-      console.error('Initialize payment error:', error);
+      console.error("Initialize payment error:", error);
       return res.status(500).json({
         success: false,
-        message: error.message || 'Failed to initialize payment'
+        message: error.message || "Failed to initialize payment",
       });
     }
   }
@@ -50,19 +49,18 @@ class PaymentController {
       if (!reference) {
         return res.status(400).json({
           success: false,
-          message: 'Payment reference is required'
+          message: "Payment reference is required",
         });
       }
 
       const result = await paymentService.verifyPayment(reference);
 
       return res.status(200).json(result);
-
     } catch (error) {
-      console.error('Verify payment error:', error);
+      console.error("Verify payment error:", error);
       return res.status(500).json({
         success: false,
-        message: error.message || 'Payment verification failed'
+        message: error.message || "Payment verification failed",
       });
     }
   }
@@ -164,8 +162,8 @@ class PaymentController {
       });
     }
   }
-// Release escrow to provider
-   
+  // Release escrow to provider
+
   async releaseEscrow(req, res) {
     try {
       const { bookingId } = req.body;
@@ -174,19 +172,18 @@ class PaymentController {
       if (!bookingId) {
         return res.status(400).json({
           success: false,
-          message: 'Booking ID is required'
+          message: "Booking ID is required",
         });
       }
 
       const result = await paymentService.releaseEscrow(bookingId, userId);
 
       return res.status(200).json(result);
-
     } catch (error) {
-      console.error('Release escrow error:', error);
+      console.error("Release escrow error:", error);
       return res.status(500).json({
         success: false,
-        message: error.message || 'Failed to release payment'
+        message: error.message || "Failed to release payment",
       });
     }
   }
@@ -201,19 +198,18 @@ class PaymentController {
       if (!bookingId) {
         return res.status(400).json({
           success: false,
-          message: 'Booking ID is required'
+          message: "Booking ID is required",
         });
       }
 
       const result = await paymentService.refundPayment(bookingId, reason);
 
       return res.status(200).json(result);
-
     } catch (error) {
-      console.error('Refund payment error:', error);
+      console.error("Refund payment error:", error);
       return res.status(500).json({
         success: false,
-        message: error.message || 'Failed to process refund'
+        message: error.message || "Failed to process refund",
       });
     }
   }
@@ -224,41 +220,39 @@ class PaymentController {
       const { amount } = req.body;
 
       if (!amount) {
-        return res.status (400).json({
+        return res.status(400).json({
           success: false,
-          message: 'Amount is required'
+          message: "Amount is required",
         });
       }
 
       const result = await paymentService.withdrawToBank(providerId, amount);
-      
-      return res.status(200).json(result);
 
+      return res.status(200).json(result);
     } catch (error) {
-      console.error('Withdraw fund error', error);
-       return res.status(500).json({
+      console.error("Withdraw fund error", error);
+      return res.status(500).json({
         success: false,
-        message: error.message || 'Failed to withdraw fund'
-       });  
+        message: error.message || "Failed to withdraw fund",
+      });
     }
   }
 
-//   Handle Paystack webhook
-   
+  //   Handle Paystack webhook
+
   async handleWebhook(req, res) {
     try {
-      const signature = req.headers['x-paystack-signature'];
+      const signature = req.headers["x-paystack-signature"];
       const payload = req.body;
 
       await paymentService.handleWebhook(payload, signature);
 
       return res.status(200).json({ success: true });
-
     } catch (error) {
-      console.error('Webhook error:', error);
+      console.error("Webhook error:", error);
       return res.status(400).json({
         success: false,
-        message: 'Webhook processing failed'
+        message: "Webhook processing failed",
       });
     }
   }
@@ -272,14 +266,13 @@ class PaymentController {
 
       return res.status(200).json({
         success: true,
-        data: banks
+        data: banks,
       });
-
     } catch (error) {
-      console.error('Get banks error:', error);
+      console.error("Get banks error:", error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to fetch banks'
+        message: "Failed to fetch banks",
       });
     }
   }
@@ -294,25 +287,25 @@ class PaymentController {
       if (!accountNumber || !bankCode) {
         return res.status(400).json({
           success: false,
-          message: 'Account number and bank code are required'
+          message: "Account number and bank code are required",
         });
       }
 
-     const accountDetails = await paymentService.verifyBankAccount({ accountNumber, bankCode });
+      const accountDetails = await paymentService.verifyBankAccount({
+        accountNumber,
+        bankCode,
+      });
       return res.status(200).json({
         success: true,
-        data: accountDetails
+        data: accountDetails,
       });
-
     } catch (error) {
-      console.error('Verify bank account error:', error);
+      console.error("Verify bank account error:", error);
       return res.status(500).json({
         success: false,
-        message: 'Bank account verification failed'
+        message: "Bank account verification failed",
       });
     }
   }
-
 }
 module.exports = new PaymentController();
-

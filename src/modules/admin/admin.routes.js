@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware");
-const AdminController = require("../controllers/admin");
 const rateLimit = require("express-rate-limit");
-const onlyRole = require("../middleware/roleMiddleware");
+const authMiddleware = require("../../../middleware/authMiddleware");
+const AdminController = require("./admin.controller");
+const onlyRole = require("../../../middleware/roleMiddleware");
 
 const adminCreateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -91,7 +91,6 @@ router.post(
   AdminController.createAdmin,
 );
 
-
 /**
  * @swagger
  * /api/v1/admin/{bookingId}/delete-booking
@@ -117,9 +116,11 @@ router.post(
  */
 
 router.delete(
-  "/:bookingId/delete-booking", 
-  authMiddleware, onlyRole("admin"), 
-  AdminController.deleteBooking);
+  "/:bookingId/delete-booking",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.deleteBooking,
+);
 
 /**
  * @swagger
@@ -171,7 +172,6 @@ router.patch(
   adminPaymentVerifyLimiter,
   AdminController.verifyPayment,
 );
-
 
 /**
  * @swagger
@@ -257,8 +257,12 @@ router.get(
  *       500:
  *         description: Server error
  */
-router.get("/online-providers", authMiddleware,   onlyRole("admin"),
- AdminController.getOnlineProviders);
+router.get(
+  "/online-providers",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getOnlineProviders,
+);
 
 /**
  * @swagger
@@ -290,7 +294,12 @@ router.get("/online-providers", authMiddleware,   onlyRole("admin"),
  *       500:
  *         description: Server error
  */
-router.get("/online-buyers", authMiddleware, onlyRole("admin"), AdminController.getOnlineBuyers);
+router.get(
+  "/online-buyers",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getOnlineBuyers,
+);
 
 /**
  * @swagger

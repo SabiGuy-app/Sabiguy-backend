@@ -1,13 +1,23 @@
-const Provider = require ('../models/ServiceProvider');
-const Buyer = require ('../models/ServiceUser');
-const Admin = require ('../models/Admin');
-const bcrypt = require ('bcryptjs');
-const jwt = require ('jsonwebtoken');
-const dotenv = require ('dotenv');
+const { OAuth2Client } = require("google-auth-library");
+const dotenv = require("dotenv");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const Provider = require("../../../models/ServiceProvider");
+const Buyer = require("../../../models/ServiceUser");
+const Admin = require("../admin/Admin.model");
+
 dotenv.config();
-const { OAuth2Client } = require ('google-auth-library');
-const {sendEmailOtp, forgotPasswordOtp, passwordChangedEmail, sendWelcomeEmail} = require ('../src/config/emailVerification')
-const { findUserByEmailAcrossDb, findUserByPhoneAcrossDb, normalizePhoneNumber } = require("../src/services/identity.service");
+const {
+  sendEmailOtp,
+  forgotPasswordOtp,
+  passwordChangedEmail,
+  sendWelcomeEmail,
+} = require("../../config/emailVerification");
+const {
+  findUserByEmailAcrossDb,
+  findUserByPhoneAcrossDb,
+  normalizePhoneNumber,
+} = require("../../services/identity.service");
 
 const roleModelMap = {
   buyer: Buyer,
@@ -15,12 +25,19 @@ const roleModelMap = {
   admin: Admin,
 };
 
-const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeEmail = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase();
 
 const escapeRegex = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const findUserByEmail = async (Model, email, { includePassword = false } = {}) => {
+const findUserByEmail = async (
+  Model,
+  email,
+  { includePassword = false } = {},
+) => {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) return null;
 
@@ -42,7 +59,7 @@ const findUserByEmail = async (Model, email, { includePassword = false } = {}) =
   return fallbackQuery;
 };
 
-const axios = require('axios');
+const axios = require("axios");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
@@ -103,49 +120,53 @@ exports.googleSignUp = async (req, res) => {
 
       email = payload.email;
       googleId = payload.sub;
-      name = payload.name || `${payload.given_name || ""} ${payload.family_name || ""}`.trim();
+      name =
+        payload.name ||
+        `${payload.given_name || ""} ${payload.family_name || ""}`.trim();
       picture = payload.picture;
-
     } catch (idTokenError) {
       // If ID token verification fails, treat it as access token
       console.log("Not an ID token, verifying as access token...");
-      
+
       try {
         // Verify access token with Google
         const tokenInfoResponse = await axios.get(
           `https://www.googleapis.com/oauth2/v3/tokeninfo`,
           {
-            params: { access_token: token } // Use params instead of template string
-          }
+            params: { access_token: token }, // Use params instead of template string
+          },
         );
-        
-        
+
         if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
         // Get user profile using access token
         const userInfoResponse = await axios.get(
-          'https://www.googleapis.com/oauth2/v3/userinfo',
+          "https://www.googleapis.com/oauth2/v3/userinfo",
           {
-            headers: { Authorization: `Bearer ${token}` }
-          }
+            headers: { Authorization: `Bearer ${token}` },
+          },
         );
 
-         const info = userInfoResponse.data;
-        
+        const info = userInfoResponse.data;
+
         console.log("User info:", userInfoResponse.data);
-        
+
         email = info.email;
         googleId = info.sub;
-        name = info.name || `${info.given_name || ""} ${info.family_name || ""}`.trim();
+        name =
+          info.name ||
+          `${info.given_name || ""} ${info.family_name || ""}`.trim();
         picture = info.picture;
-
       } catch (accessTokenError) {
-        console.error("Access token verification failed:", accessTokenError.response?.data || accessTokenError.message);
-        return res.status(401).json({ 
-          message: "Invalid token", 
-          error: accessTokenError.response?.data || accessTokenError.message 
+        console.error(
+          "Access token verification failed:",
+          accessTokenError.response?.data || accessTokenError.message,
+        );
+        return res.status(401).json({
+          message: "Invalid token",
+          error: accessTokenError.response?.data || accessTokenError.message,
         });
       }
     }
@@ -154,7 +175,10 @@ exports.googleSignUp = async (req, res) => {
     const normalizedEmail = normalizeEmail(email);
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
-      if (existingEmail.role === "provider" && !existingEmail.user.emailVerified) {
+      if (
+        existingEmail.role === "provider" &&
+        !existingEmail.user.emailVerified
+      ) {
         existingEmail.user.emailVerified = true;
         existingEmail.user.otp = null;
         existingEmail.user.otpExpiresAt = null;
@@ -186,7 +210,7 @@ exports.googleSignUp = async (req, res) => {
       }
       return res.status(400).json({ message: "Email already in use" });
     }
-    
+
     const newUser = new Provider({
       email: normalizedEmail,
       fullName: name,
@@ -199,7 +223,6 @@ exports.googleSignUp = async (req, res) => {
       profilePicture: picture,
       role: "provider",
       kycLevel: 1,
-
     });
 
     await newUser.save();
@@ -225,7 +248,7 @@ exports.googleSignUp = async (req, res) => {
     const jwtToken = jwt.sign(
       { id: newUser._id, role: newUser.role, email: newUser.email },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: "1h" },
     );
 
     res.status(200).json({
@@ -240,10 +263,11 @@ exports.googleSignUp = async (req, res) => {
     });
   } catch (err) {
     console.error("Google signup failed:", err);
-    res.status(401).json({ message: "Google signup failed", error: err.message });
+    res
+      .status(401)
+      .json({ message: "Google signup failed", error: err.message });
   }
 };
-
 
 exports.googleSignUpBuyer = async (req, res) => {
   const { token } = req.body;
@@ -263,15 +287,16 @@ exports.googleSignUpBuyer = async (req, res) => {
       });
 
       const payload = ticket.getPayload();
-       email = payload.email;
+      email = payload.email;
       googleId = payload.sub;
       console.log("Successfully verified as ID token");
 
       email = payload.email;
       googleId = payload.sub;
-      name = payload.name || `${payload.given_name || ""} ${payload.family_name || ""}`.trim();
+      name =
+        payload.name ||
+        `${payload.given_name || ""} ${payload.family_name || ""}`.trim();
       picture = payload.picture;
-
     } catch (idTokenError) {
       // Try verifying as access token
       console.log("Not an ID token, verifying as access token...");
@@ -279,7 +304,7 @@ exports.googleSignUpBuyer = async (req, res) => {
       try {
         const tokenInfoResponse = await axios.get(
           "https://www.googleapis.com/oauth2/v3/tokeninfo",
-          { params: { access_token: token } }
+          { params: { access_token: token } },
         );
 
         if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
@@ -288,7 +313,7 @@ exports.googleSignUpBuyer = async (req, res) => {
 
         const userInfoResponse = await axios.get(
           "https://www.googleapis.com/oauth2/v3/userinfo",
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         );
 
         const info = userInfoResponse.data;
@@ -297,14 +322,18 @@ exports.googleSignUpBuyer = async (req, res) => {
 
         email = info.email;
         googleId = info.sub;
-        name = info.name || `${info.given_name || ""} ${info.family_name || ""}`.trim();
+        name =
+          info.name ||
+          `${info.given_name || ""} ${info.family_name || ""}`.trim();
         picture = info.picture;
-
       } catch (accessTokenError) {
-        console.error("Access token verification failed:", accessTokenError.response?.data || accessTokenError.message);
-        return res.status(401).json({ 
-          message: "Invalid token", 
-          error: accessTokenError.response?.data || accessTokenError.message 
+        console.error(
+          "Access token verification failed:",
+          accessTokenError.response?.data || accessTokenError.message,
+        );
+        return res.status(401).json({
+          message: "Invalid token",
+          error: accessTokenError.response?.data || accessTokenError.message,
         });
       }
     }
@@ -380,7 +409,9 @@ exports.googleSignUpBuyer = async (req, res) => {
     }
 
     // Generate JWT
-    const jwtToken = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const jwtToken = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
 
     res.status(200).json({
       message: welcomeEmailSent
@@ -392,13 +423,11 @@ exports.googleSignUpBuyer = async (req, res) => {
         _id: newUser._id,
       },
     });
-
   } catch (err) {
     console.error("Google signup failed:", err);
     res.status(401).json({ message: "Google signup failed", error: err });
   }
 };
-
 
 exports.googleLogIn = async (req, res) => {
   const { token } = req.body;
@@ -424,40 +453,43 @@ exports.googleLogIn = async (req, res) => {
     } catch (idTokenError) {
       // If ID token verification fails, treat it as access token
       console.log("Not an ID token, verifying as access token...");
-      
+
       try {
         // Verify access token with Google
         const tokenInfoResponse = await axios.get(
           `https://www.googleapis.com/oauth2/v3/tokeninfo`,
           {
-            params: { access_token: token }
-          }
+            params: { access_token: token },
+          },
         );
-        
+
         console.log("Token info:", tokenInfoResponse.data);
-        
+
         if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
         // Get user profile using access token
         const userInfoResponse = await axios.get(
-          'https://www.googleapis.com/oauth2/v3/userinfo',
+          "https://www.googleapis.com/oauth2/v3/userinfo",
           {
-            headers: { Authorization: `Bearer ${token}` }
-          }
+            headers: { Authorization: `Bearer ${token}` },
+          },
         );
-        
+
         console.log("User info:", userInfoResponse.data);
-        
+
         email = userInfoResponse.data.email;
         googleId = userInfoResponse.data.sub;
         console.log("Successfully verified as access token");
       } catch (accessTokenError) {
-        console.error("Access token verification failed:", accessTokenError.response?.data || accessTokenError.message);
-        return res.status(401).json({ 
-          message: "Invalid token", 
-          error: accessTokenError.response?.data || accessTokenError.message 
+        console.error(
+          "Access token verification failed:",
+          accessTokenError.response?.data || accessTokenError.message,
+        );
+        return res.status(401).json({
+          message: "Invalid token",
+          error: accessTokenError.response?.data || accessTokenError.message,
         });
       }
     }
@@ -470,26 +502,32 @@ exports.googleLogIn = async (req, res) => {
       user = await findUserByEmail(Buyer, normalizedEmail);
     }
     if (!user) {
-      return res.status(400).json({ message: "Account not found. Please sign up" });
+      return res
+        .status(400)
+        .json({ message: "Account not found. Please sign up" });
     }
 
-    // Check if email is verified 
+    // Check if email is verified
 
     if (!user.emailVerified) {
-       return res.status(403).json({ message: "Please verify your email before logging in" });
+      return res
+        .status(403)
+        .json({ message: "Please verify your email before logging in" });
     }
 
     // Check if user registered with Google
     if (!user.isGoogleUser) {
-      return res.status(400).json({ 
-        message: "This email was registered with a password. Use email/password login." 
+      return res.status(400).json({
+        message:
+          "This email was registered with a password. Use email/password login.",
       });
     }
 
     // Optional: Verify googleId matches
     if (user.googleId && user.googleId !== googleId) {
-      return res.status(401).json({ 
-        message: "Google account mismatch. Please use the correct Google account." 
+      return res.status(401).json({
+        message:
+          "Google account mismatch. Please use the correct Google account.",
       });
     }
 
@@ -509,13 +547,15 @@ exports.googleLogIn = async (req, res) => {
     });
   } catch (err) {
     console.error("Google login failed:", err);
-    res.status(401).json({ message: "Google login failed", error: err.message });
+    res
+      .status(401)
+      .json({ message: "Google login failed", error: err.message });
   }
 };
 exports.registerBuyer = async (req, res) => {
-    const { email, password, phoneNumber, city, fullName } = req.body;
-    const normalizedEmail = normalizeEmail(email);
-    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+  const { email, password, phoneNumber, city, fullName } = req.body;
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
   // const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
   // if (!isValidPassword) {
@@ -543,7 +583,9 @@ exports.registerBuyer = async (req, res) => {
     }
 
     if (normalizedPhoneNumber) {
-      const existingPhone = await findUserByPhoneAcrossDb(normalizedPhoneNumber);
+      const existingPhone = await findUserByPhoneAcrossDb(
+        normalizedPhoneNumber,
+      );
       if (existingPhone) {
         return res.status(400).json({ message: "Phone number already in use" });
       }
@@ -551,56 +593,58 @@ exports.registerBuyer = async (req, res) => {
 
     let hashedPassword = null;
     if (password) {
-        hashedPassword = await bcrypt.hash(password, 10);
+      hashedPassword = await bcrypt.hash(password, 10);
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // expires in 10 mins
 
-    const newBuyer = new Buyer ({
-        email: normalizedEmail,
-        password: hashedPassword,
-        otp,
-        otpExpiresAt,
-        isVerified: false,
-        city,
-        fullName,
-        phoneNumber: normalizedPhoneNumber || phoneNumber,
-        role: "buyer", 
-    })
+    const newBuyer = new Buyer({
+      email: normalizedEmail,
+      password: hashedPassword,
+      otp,
+      otpExpiresAt,
+      isVerified: false,
+      city,
+      fullName,
+      phoneNumber: normalizedPhoneNumber || phoneNumber,
+      role: "buyer",
+    });
 
     await newBuyer.save();
 
     try {
-        await sendEmailOtp(normalizedEmail, otp);
-        
+      await sendEmailOtp(normalizedEmail, otp);
     } catch (OtpError) {
-        await Buyer.findByIdAndDelete(newBuyer._id);
-        return res.status(500).json ({ message: 'Failed to send otp, please try again'})    
+      await Buyer.findByIdAndDelete(newBuyer._id);
+      return res
+        .status(500)
+        .json({ message: "Failed to send otp, please try again" });
     }
 
-        const token = jwt.sign({ id: newBuyer._id, role: newBuyer.role, email: newBuyer.email }, process.env.JWT_SECRET, { expiresIn: "20h" });
+    const token = jwt.sign(
+      { id: newBuyer._id, role: newBuyer.role, email: newBuyer.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "20h" },
+    );
 
-    return res.status(201).json ({
-        message: 'OTP sent to email. Please verify to complete registration.',
-        buyer: {
-            id: newBuyer._id,
-            email: newBuyer.email
-        },
-        token
-    })
- 
-    
+    return res.status(201).json({
+      message: "OTP sent to email. Please verify to complete registration.",
+      buyer: {
+        id: newBuyer._id,
+        email: newBuyer.email,
+      },
+      token,
+    });
   } catch (err) {
-    console.error("Registration error:", err)
-    res.status(500).json ({ message: 'Server error:', err});
-    
+    console.error("Registration error:", err);
+    res.status(500).json({ message: "Server error:", err });
   }
 };
 
 exports.registerProvider = async (req, res) => {
-    const { email, password, phoneNumber, fullName } = req.body;
-    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+  const { email, password, phoneNumber, fullName } = req.body;
+  const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
   // const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
   // if (!isValidPassword) {
@@ -610,11 +654,13 @@ exports.registerProvider = async (req, res) => {
   //   });
   // }
   try {
-
     const normalizedEmail = normalizeEmail(email);
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
-      if (existingEmail.role === "provider" && !existingEmail.user.emailVerified) {
+      if (
+        existingEmail.role === "provider" &&
+        !existingEmail.user.emailVerified
+      ) {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
         existingEmail.user.otp = otp;
@@ -630,7 +676,9 @@ exports.registerProvider = async (req, res) => {
     }
 
     if (normalizedPhoneNumber) {
-      const existingPhone = await findUserByPhoneAcrossDb(normalizedPhoneNumber);
+      const existingPhone = await findUserByPhoneAcrossDb(
+        normalizedPhoneNumber,
+      );
       if (existingPhone) {
         return res.status(400).json({ message: "Phone number already in use" });
       }
@@ -638,69 +686,69 @@ exports.registerProvider = async (req, res) => {
 
     let hashedPassword = null;
     if (password) {
-        hashedPassword = await bcrypt.hash(password, 10);
+      hashedPassword = await bcrypt.hash(password, 10);
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // expires in 10 mins
 
-    const newProvider = new Provider ({
-        email: normalizedEmail,
-        password: hashedPassword,
-        otp,
-        otpExpiresAt, 
-        isVerified: false,
-        fullName,
-        phoneNumber: normalizedPhoneNumber || phoneNumber,
-        role: "provider", 
-
-
-    })
+    const newProvider = new Provider({
+      email: normalizedEmail,
+      password: hashedPassword,
+      otp,
+      otpExpiresAt,
+      isVerified: false,
+      fullName,
+      phoneNumber: normalizedPhoneNumber || phoneNumber,
+      role: "provider",
+    });
 
     await newProvider.save();
 
     try {
-        await sendEmailOtp(normalizedEmail, otp);
-        
+      await sendEmailOtp(normalizedEmail, otp);
     } catch (OtpError) {
-        await Provider.findByIdAndDelete(newProvider._id);
-        return res.status(500).json ({ message: 'Failed to send otp, please try again'})    
+      await Provider.findByIdAndDelete(newProvider._id);
+      return res
+        .status(500)
+        .json({ message: "Failed to send otp, please try again" });
     }
-        const token = jwt.sign({ id: newProvider._id, role: newProvider.role, email: newProvider.email }, process.env.JWT_SECRET, { expiresIn: "20h" });
+    const token = jwt.sign(
+      { id: newProvider._id, role: newProvider.role, email: newProvider.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "20h" },
+    );
 
-    return res.status(201).json ({
-        message: 'OTP sent to email. Please verify to complete registration.',
-        provider: {
-            id: newProvider._id,
-            email: newProvider.email
-        },
-        token
-    })
- 
-    
+    return res.status(201).json({
+      message: "OTP sent to email. Please verify to complete registration.",
+      provider: {
+        id: newProvider._id,
+        email: newProvider.email,
+      },
+      token,
+    });
   } catch (err) {
-    console.error("Registration error:", err)
-    res.status(500).json ({ message: 'Server error:', err});
-    
+    console.error("Registration error:", err);
+    res.status(500).json({ message: "Server error:", err });
   }
 };
 
 exports.verifyEmail = async (req, res) => {
-    const { otp } = req.body;
-try {
-    let user = await Buyer.findOne ({ otp: otp});
-    let userType = 'buyer';
+  const { otp } = req.body;
+  try {
+    let user = await Buyer.findOne({ otp: otp });
+    let userType = "buyer";
 
     if (!user) {
-        user = await Provider.findOne ({ otp: otp });
-        userType = 'provider';
+      user = await Provider.findOne({ otp: otp });
+      userType = "provider";
     }
 
     if (!user) {
-        return res.status(400).json({ message: 'Invalid or expired OTP.' });
+      return res.status(400).json({ message: "Invalid or expired OTP." });
     }
     if (Date.now() > user.otpExpiresAt) {
-      return res.status(400).json({ message: 'OTP has expired.' });
+      return res.status(400).json({ message: "OTP has expired." });
     }
     user.emailVerified = true;
     user.otp = null;
@@ -733,11 +781,10 @@ try {
         ? `Email verified successfully as ${userType}.`
         : `Email verified successfully as ${userType}. Welcome email will be sent shortly.`,
     });
-} catch (error) {
+  } catch (error) {
     console.error(error);
-    res.status(500).json ({ message: 'Something went wrong.' });
-    
-}
+    res.status(500).json({ message: "Something went wrong." });
+  }
 };
 
 exports.resendOTP = async (req, res) => {
@@ -751,22 +798,27 @@ exports.resendOTP = async (req, res) => {
     if (!user) {
       user = await findUserByEmail(Provider, normalizedEmail);
       role = "provider";
-    }    
+    }
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
     if (user.emailVerified) {
-      return res.status(400).json({ message: 'Email already verified' });
+      return res.status(400).json({ message: "Email already verified" });
     }
 
-   const now = new Date();
-const lastSent = new Date(user.lastVerificationOtpSentAt);
+    const now = new Date();
+    const lastSent = new Date(user.lastVerificationOtpSentAt);
 
-if (user.lastVerificationOtpSentAt && now.getTime() - lastSent.getTime() < 60 * 1000) {
-  return res.status(429).json({ message: 'Please wait before requesting another OTP' });
-}
+    if (
+      user.lastVerificationOtpSentAt &&
+      now.getTime() - lastSent.getTime() < 60 * 1000
+    ) {
+      return res
+        .status(429)
+        .json({ message: "Please wait before requesting another OTP" });
+    }
 
     // Generate new OTP and expiration
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -774,22 +826,21 @@ if (user.lastVerificationOtpSentAt && now.getTime() - lastSent.getTime() < 60 * 
 
     user.otp = otp;
     user.otpExpiresAt = otpExpiresAt;
-    user.lastVerificationOtpSentAt = now; 
+    user.lastVerificationOtpSentAt = now;
     await user.save();
 
- try {
-         await sendEmailOtp(normalizedEmail, otp);
-
-          
-        } catch (OtpError) {
-          await user.findByIdAndDelete(user._id);
-          return res.status (500).json ({ message: 'Failed to send OTP. Please try again'})
-          
-        }
-    return res.status(200).json({ message: 'OTP resent successfully' });
+    try {
+      await sendEmailOtp(normalizedEmail, otp);
+    } catch (OtpError) {
+      await user.findByIdAndDelete(user._id);
+      return res
+        .status(500)
+        .json({ message: "Failed to send OTP. Please try again" });
+    }
+    return res.status(200).json({ message: "OTP resent successfully" });
   } catch (err) {
-    console.error('Resend OTP error:', err);
-    res.status(500).json({ message: 'Server error', error: err.message });
+    console.error("Resend OTP error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -927,7 +978,7 @@ exports.refreshAuthToken = async (req, res) => {
     return res.status(200).json({
       success: true,
       // accessToken: token,
-      token
+      token,
     });
   } catch (error) {
     return res.status(401).json({
@@ -939,22 +990,24 @@ exports.refreshAuthToken = async (req, res) => {
 };
 
 exports.forgotPassword = async (req, res) => {
-  const { email } = req.body
+  const { email } = req.body;
   const normalizedEmail = normalizeEmail(email);
 
   try {
     let user = await findUserByEmail(Buyer, normalizedEmail);
-    let role = 'buyer';
-    
+    let role = "buyer";
+
     if (!user) {
       user = await findUserByEmail(Provider, normalizedEmail);
-      role = 'provider';
+      role = "provider";
     }
 
     if (!user) {
-      return res.status(400).json ({ message: 'User not found, please check the email'})
+      return res
+        .status(400)
+        .json({ message: "User not found, please check the email" });
     }
-const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     user.resetOtp = otp;
     user.resetOtpExpires = Date.now() + 10 * 60 * 1000; // 10 min
@@ -962,7 +1015,6 @@ const otp = Math.floor(100000 + Math.random() * 900000).toString();
     await forgotPasswordOtp(normalizedEmail, otp);
 
     res.status(201).json({ message: "Forgot password otp sent to email" });
-
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Failed to send OTP email" });
@@ -1030,7 +1082,9 @@ exports.verifyResetOtp = async (req, res) => {
     }
 
     if (!user) {
-      return res.status(400).json({ message: "User not found, please check the email" });
+      return res
+        .status(400)
+        .json({ message: "User not found, please check the email" });
     }
 
     if (!otp || user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
@@ -1040,7 +1094,9 @@ exports.verifyResetOtp = async (req, res) => {
     return res.status(200).json({ message: "OTP verified successfully" });
   } catch (error) {
     console.error("Verify reset OTP error:", error);
-    return res.status(500).json({ message: "Server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
 
@@ -1057,18 +1113,20 @@ exports.resetPassword = async (req, res) => {
   // }
 
   try {
-     let user = await findUserByEmail(Buyer, normalizedEmail);
-    let role = 'buyer';
-    
+    let user = await findUserByEmail(Buyer, normalizedEmail);
+    let role = "buyer";
+
     if (!user) {
       user = await findUserByEmail(Provider, normalizedEmail);
-      role = 'provider';
+      role = "provider";
     }
 
     if (!user) {
-      return res.status(400).json ({ message: 'User not found, please check the email'})
+      return res
+        .status(400)
+        .json({ message: "User not found, please check the email" });
     }
-if ( user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
+    if (user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
@@ -1090,15 +1148,12 @@ if ( user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
       });
     }
 
-   
- res.json({ message: "Password reset successful" });
+    res.json({ message: "Password reset successful" });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error:", err});
-      
+    res.status(500).json({ message: "Server error:", err });
   }
 };
-
 
 exports.changePassword = async (req, res) => {
   try {
@@ -1111,13 +1166,14 @@ exports.changePassword = async (req, res) => {
         message: "Old password and new password are required",
       });
     }
-  const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
-if (!strongPassword.test(newPassword)) {
-  return res.status(400).json({
-    success: false,
-    message: "Password must contain uppercase, lowercase, number, and special character",
-  });
-}
+    const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
+    if (!strongPassword.test(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must contain uppercase, lowercase, number, and special character",
+      });
+    }
     // Minimum password strength check
     if (newPassword.length < 8) {
       return res.status(400).json({
@@ -1131,7 +1187,6 @@ if (!strongPassword.test(newPassword)) {
 
     if (!user) {
       user = await Provider.findById(userId).select("+password");
-
     }
 
     if (!user) {
@@ -1172,12 +1227,10 @@ if (!strongPassword.test(newPassword)) {
       });
     }
 
-
     return res.status(200).json({
       success: true,
       message: "Password changed successfully",
     });
-
   } catch (error) {
     console.error("Change password error:", error);
     return res.status(500).json({

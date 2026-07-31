@@ -1,11 +1,11 @@
 const axios = require("axios");
 const crypto = require("crypto");
-const Booking = require("../../models/Bookings.js");
-const Provider = require("../../models/ServiceProvider.js");
-const Buyer = require("../../models/ServiceUser.js");
-const notificationService = require("../services/notification.service.js");
-const Transaction = require("../../models/Transaction.js");
-const WalletService = require("../services/wallet.service.js");
+const Booking = require("../bookings/Bookings.model.js");
+const Provider = require("../../../models/ServiceProvider.js");
+const Buyer = require("../../../models/ServiceUser.js");
+const notificationService = require("../../services/notification.service.js");
+const Transaction = require("../../../models/Transaction.js");
+const WalletService = require("../wallet/wallet.service.js");
 
 class paymentService {
   constructor() {

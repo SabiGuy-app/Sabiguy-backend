@@ -1,15 +1,15 @@
-const Booking = require("../models/Bookings");
-const Provider = require("../models/ServiceProvider");
-const Buyer = require("../models/ServiceUser");
-const Chat = require("../models/Chat");
-const Notification = require("../src/modules/notifications/notification.model");
+const Booking = require("./Bookings.model");
+const Provider = require("../../../models/ServiceProvider");
+const Buyer = require("../../../models/ServiceUser");
+const Chat = require("../../../models/Chat");
+const Notification = require("../notifications/notification.model");
 const mongoose = require("mongoose");
-const geolocationService = require("../src/services/geolocation.service");
-const notificationService = require("../src/services/notification.service");
-const pricingService = require("../src/services/pricing.service");
-const paymentService = require("../src/services/payment.service");
-const discountService = require("../src/services/discount.service");
-const WalletService = require("../src/services/wallet.service");
+const geolocationService = require("../../services/geolocation.service");
+const notificationService = require("../../services/notification.service");
+const pricingService = require("../../services/pricing.service");
+const paymentService = require("../payment/payment.service");
+const discountService = require("../../services/discount.service");
+const WalletService = require("../wallet/wallet.service");
 
 const PROVIDER_RADIUS = {
   Bike: 4, // km -- ~10-15 mins Lagos traffic
@@ -500,219 +500,241 @@ class BookingController {
       let rideDistanceKm = 0;
       let rideDurationMinutes = 0;
 
-//       if (isTransport) {
-//         const [pickupGeo, dropoffGeo] = await Promise.all([
-//           this.geocodeWithFallback(pickupAddress),
-//           this.geocodeWithFallback(dropoffAddress),
-//         ]);
+      //       if (isTransport) {
+      //         const [pickupGeo, dropoffGeo] = await Promise.all([
+      //           this.geocodeWithFallback(pickupAddress),
+      //           this.geocodeWithFallback(dropoffAddress),
+      //         ]);
 
-//         console.log("📍 Pickup resolved to:", pickupGeo.latitude, pickupGeo.longitude, "-", pickupGeo.formattedAddress);
-// console.log("📍 Dropoff resolved to:", dropoffGeo.latitude, dropoffGeo.longitude, "-", dropoffGeo.formattedAddress);
+      //         console.log("📍 Pickup resolved to:", pickupGeo.latitude, pickupGeo.longitude, "-", pickupGeo.formattedAddress);
+      // console.log("📍 Dropoff resolved to:", dropoffGeo.latitude, dropoffGeo.longitude, "-", dropoffGeo.formattedAddress);
 
-//         bookingData.pickupLocation = {
-//           address: pickupAddress,
-//           formattedAddress: pickupGeo.formattedAddress,
-//           coordinates: {
-//             type: "Point",
-//             coordinates: [pickupGeo.longitude, pickupGeo.latitude],
-//           },
-//         };
+      //         bookingData.pickupLocation = {
+      //           address: pickupAddress,
+      //           formattedAddress: pickupGeo.formattedAddress,
+      //           coordinates: {
+      //             type: "Point",
+      //             coordinates: [pickupGeo.longitude, pickupGeo.latitude],
+      //           },
+      //         };
 
-//         bookingData.dropoffLocation = {
-//           address: dropoffAddress,
-//           formattedAddress: dropoffGeo.formattedAddress,
-//           coordinates: {
-//             type: "Point",
-//             coordinates: [dropoffGeo.longitude, dropoffGeo.latitude],
-//           },
-//         };
+      //         bookingData.dropoffLocation = {
+      //           address: dropoffAddress,
+      //           formattedAddress: dropoffGeo.formattedAddress,
+      //           coordinates: {
+      //             type: "Point",
+      //             coordinates: [dropoffGeo.longitude, dropoffGeo.latitude],
+      //           },
+      //         };
 
-//         const directions = await this.getDirectionsWithFallback(
-//           [pickupGeo.longitude, pickupGeo.latitude],
-//           [dropoffGeo.longitude, dropoffGeo.latitude],
-//         );
+      //         const directions = await this.getDirectionsWithFallback(
+      //           [pickupGeo.longitude, pickupGeo.latitude],
+      //           [dropoffGeo.longitude, dropoffGeo.latitude],
+      //         );
 
-//         // Assign to scoped variables — used throughout the rest of the function
-//         rideDistanceKm = parseFloat(directions.distance.value);
-//         rideDurationMinutes =
-//           Number(directions?.duration?.value) || Math.ceil(rideDistanceKm * 2);
+      //         // Assign to scoped variables — used throughout the rest of the function
+      //         rideDistanceKm = parseFloat(directions.distance.value);
+      //         rideDurationMinutes =
+      //           Number(directions?.duration?.value) || Math.ceil(rideDistanceKm * 2);
 
-//         bookingData.distance = {
-//           value: rideDistanceKm,
-//           unit: "km",
-//         };
+      //         bookingData.distance = {
+      //           value: rideDistanceKm,
+      //           unit: "km",
+      //         };
 
-//         const etaBaseTime = scheduleDate
-//           ? new Date(scheduleDate)
-//           : startDate
-//             ? new Date(startDate)
-//             : new Date();
-//         const hasValidEtaBaseTime = !Number.isNaN(etaBaseTime.getTime());
+      //         const etaBaseTime = scheduleDate
+      //           ? new Date(scheduleDate)
+      //           : startDate
+      //             ? new Date(startDate)
+      //             : new Date();
+      //         const hasValidEtaBaseTime = !Number.isNaN(etaBaseTime.getTime());
 
-//         transportEstimates = {
-//           estimatedDuration: {
-//             value: rideDurationMinutes,
-//             unit: directions?.duration?.unit || "minutes",
-//             isEstimate: Boolean(directions?.isEstimate),
-//           },
-//           estimatedArrivalAt: hasValidEtaBaseTime
-//             ? new Date(etaBaseTime.getTime() + rideDurationMinutes * 60 * 1000)
-//             : null,
-//         };
+      //         transportEstimates = {
+      //           estimatedDuration: {
+      //             value: rideDurationMinutes,
+      //             unit: directions?.duration?.unit || "minutes",
+      //             isEstimate: Boolean(directions?.isEstimate),
+      //           },
+      //           estimatedArrivalAt: hasValidEtaBaseTime
+      //             ? new Date(etaBaseTime.getTime() + rideDurationMinutes * 60 * 1000)
+      //             : null,
+      //         };
 
-//         bookingData.estimatedDuration = transportEstimates.estimatedDuration;
-//         bookingData.estimatedArrivalAt = transportEstimates.estimatedArrivalAt;
+      //         bookingData.estimatedDuration = transportEstimates.estimatedDuration;
+      //         bookingData.estimatedArrivalAt = transportEstimates.estimatedArrivalAt;
 
-//         console.log("📦 Transport Booking Distance:", bookingData.distance);
+      //         console.log("📦 Transport Booking Distance:", bookingData.distance);
 
-//         searchCoordinates = {
-//           latitude: pickupGeo.latitude,
-//           longitude: pickupGeo.longitude,
-//         };
-//       } else {
-//         const geo = await this.geocodeWithFallback(address);
+      //         searchCoordinates = {
+      //           latitude: pickupGeo.latitude,
+      //           longitude: pickupGeo.longitude,
+      //         };
+      //       } else {
+      //         const geo = await this.geocodeWithFallback(address);
 
-//         bookingData.location = {
-//           address,
-//           formattedAddress: geo.formattedAddress,
-//           coordinates: {
-//             type: "Point",
-//             coordinates: [geo.longitude, geo.latitude],
-//           },
-//         };
+      //         bookingData.location = {
+      //           address,
+      //           formattedAddress: geo.formattedAddress,
+      //           coordinates: {
+      //             type: "Point",
+      //             coordinates: [geo.longitude, geo.latitude],
+      //           },
+      //         };
 
-//         bookingData.agreedPrice = budget;
-//         bookingData.totalAmount = budget;
+      //         bookingData.agreedPrice = budget;
+      //         bookingData.totalAmount = budget;
 
-//         searchCoordinates = {
-//           latitude: geo.latitude,
-//           longitude: geo.longitude,
-//         };
-//       }
+      //         searchCoordinates = {
+      //           latitude: geo.latitude,
+      //           longitude: geo.longitude,
+      //         };
+      //       }
 
-if (isTransport) {
-  const {
-    pickupLatitude,
-    pickupLongitude,
-    dropoffLatitude,
-    dropoffLongitude,
-  } = req.body; // destructure these alongside your existing fields at the top
+      if (isTransport) {
+        const {
+          pickupLatitude,
+          pickupLongitude,
+          dropoffLatitude,
+          dropoffLongitude,
+        } = req.body; // destructure these alongside your existing fields at the top
 
-  let pickupGeo, dropoffGeo;
+        let pickupGeo, dropoffGeo;
 
-  // ── Pickup: use frontend coordinates if provided (from Places Autocomplete) ──
-  if (pickupLatitude && pickupLongitude) {
-    pickupGeo = {
-      latitude: pickupLatitude,
-      longitude: pickupLongitude,
-      formattedAddress: pickupAddress, // trust the autocomplete-selected text
-    };
-    console.log("📍 Pickup — using frontend address and coordinates:",pickupAddress, pickupLatitude, pickupLongitude);
-  } else {
-    // Fallback — only geocode if frontend didn't send coordinates
-    pickupGeo = await this.geocodeWithFallback(pickupAddress);
-    console.log("📍 Pickup — geocoded fallback:", pickupGeo.latitude, pickupGeo.longitude, "-", pickupGeo.formattedAddress);
-  }
+        // ── Pickup: use frontend coordinates if provided (from Places Autocomplete) ──
+        if (pickupLatitude && pickupLongitude) {
+          pickupGeo = {
+            latitude: pickupLatitude,
+            longitude: pickupLongitude,
+            formattedAddress: pickupAddress, // trust the autocomplete-selected text
+          };
+          console.log(
+            "📍 Pickup — using frontend address and coordinates:",
+            pickupAddress,
+            pickupLatitude,
+            pickupLongitude,
+          );
+        } else {
+          // Fallback — only geocode if frontend didn't send coordinates
+          pickupGeo = await this.geocodeWithFallback(pickupAddress);
+          console.log(
+            "📍 Pickup — geocoded fallback:",
+            pickupGeo.latitude,
+            pickupGeo.longitude,
+            "-",
+            pickupGeo.formattedAddress,
+          );
+        }
 
-  // ── Dropoff: same logic ───────────────────────────────────────────────────
-  if (dropoffLatitude && dropoffLongitude) {
-    dropoffGeo = {
-      latitude: dropoffLatitude,
-      longitude: dropoffLongitude,
-      formattedAddress: dropoffAddress,
-    };
-    console.log("📍 Dropoff — using frontend address and coordinates:",dropoffAddress, dropoffLatitude, dropoffLongitude);
-  } else {
-    dropoffGeo = await this.geocodeWithFallback(dropoffAddress);
-    console.log("📍 Dropoff — geocoded fallback:", dropoffGeo.latitude, dropoffGeo.longitude, "-", dropoffGeo.formattedAddress);
-  }
+        // ── Dropoff: same logic ───────────────────────────────────────────────────
+        if (dropoffLatitude && dropoffLongitude) {
+          dropoffGeo = {
+            latitude: dropoffLatitude,
+            longitude: dropoffLongitude,
+            formattedAddress: dropoffAddress,
+          };
+          console.log(
+            "📍 Dropoff — using frontend address and coordinates:",
+            dropoffAddress,
+            dropoffLatitude,
+            dropoffLongitude,
+          );
+        } else {
+          dropoffGeo = await this.geocodeWithFallback(dropoffAddress);
+          console.log(
+            "📍 Dropoff — geocoded fallback:",
+            dropoffGeo.latitude,
+            dropoffGeo.longitude,
+            "-",
+            dropoffGeo.formattedAddress,
+          );
+        }
 
-  bookingData.pickupLocation = {
-    address: pickupAddress,
-    formattedAddress: pickupGeo.formattedAddress,
-    coordinates: {
-      type: "Point",
-      coordinates: [pickupGeo.longitude, pickupGeo.latitude],
-    },
-  };
+        bookingData.pickupLocation = {
+          address: pickupAddress,
+          formattedAddress: pickupGeo.formattedAddress,
+          coordinates: {
+            type: "Point",
+            coordinates: [pickupGeo.longitude, pickupGeo.latitude],
+          },
+        };
 
-  bookingData.dropoffLocation = {
-    address: dropoffAddress,
-    formattedAddress: dropoffGeo.formattedAddress,
-    coordinates: {
-      type: "Point",
-      coordinates: [dropoffGeo.longitude, dropoffGeo.latitude],
-    },
-  };
+        bookingData.dropoffLocation = {
+          address: dropoffAddress,
+          formattedAddress: dropoffGeo.formattedAddress,
+          coordinates: {
+            type: "Point",
+            coordinates: [dropoffGeo.longitude, dropoffGeo.latitude],
+          },
+        };
 
-  const directions = await this.getDirectionsWithFallback(
-    [pickupGeo.longitude, pickupGeo.latitude],
-    [dropoffGeo.longitude, dropoffGeo.latitude],
-  );
+        const directions = await this.getDirectionsWithFallback(
+          [pickupGeo.longitude, pickupGeo.latitude],
+          [dropoffGeo.longitude, dropoffGeo.latitude],
+        );
 
-  rideDistanceKm = parseFloat(directions.distance.value);
-  rideDurationMinutes =
-    Number(directions?.duration?.value) || Math.ceil(rideDistanceKm * 2);
+        rideDistanceKm = parseFloat(directions.distance.value);
+        rideDurationMinutes =
+          Number(directions?.duration?.value) || Math.ceil(rideDistanceKm * 2);
 
-  bookingData.distance = {
-    value: rideDistanceKm,
-    unit: "km",
-  };
+        bookingData.distance = {
+          value: rideDistanceKm,
+          unit: "km",
+        };
 
-  const etaBaseTime = scheduleDate
-    ? new Date(scheduleDate)
-    : startDate
-      ? new Date(startDate)
-      : new Date();
-  const hasValidEtaBaseTime = !Number.isNaN(etaBaseTime.getTime());
+        const etaBaseTime = scheduleDate
+          ? new Date(scheduleDate)
+          : startDate
+            ? new Date(startDate)
+            : new Date();
+        const hasValidEtaBaseTime = !Number.isNaN(etaBaseTime.getTime());
 
-  transportEstimates = {
-    estimatedDuration: {
-      value: rideDurationMinutes,
-      unit: directions?.duration?.unit || "minutes",
-      isEstimate: Boolean(directions?.isEstimate),
-    },
-    estimatedArrivalAt: hasValidEtaBaseTime
-      ? new Date(etaBaseTime.getTime() + rideDurationMinutes * 60 * 1000)
-      : null,
-  };
+        transportEstimates = {
+          estimatedDuration: {
+            value: rideDurationMinutes,
+            unit: directions?.duration?.unit || "minutes",
+            isEstimate: Boolean(directions?.isEstimate),
+          },
+          estimatedArrivalAt: hasValidEtaBaseTime
+            ? new Date(etaBaseTime.getTime() + rideDurationMinutes * 60 * 1000)
+            : null,
+        };
 
-  bookingData.estimatedDuration = transportEstimates.estimatedDuration;
-  bookingData.estimatedArrivalAt = transportEstimates.estimatedArrivalAt;
+        bookingData.estimatedDuration = transportEstimates.estimatedDuration;
+        bookingData.estimatedArrivalAt = transportEstimates.estimatedArrivalAt;
 
-  console.log("📦 Transport Booking Distance:", bookingData.distance);
+        console.log("📦 Transport Booking Distance:", bookingData.distance);
 
-  searchCoordinates = {
-    latitude: pickupGeo.latitude,
-    longitude: pickupGeo.longitude,
-  };
-} else {
-  const { latitude, longitude } = req.body; // same pattern for regular services
+        searchCoordinates = {
+          latitude: pickupGeo.latitude,
+          longitude: pickupGeo.longitude,
+        };
+      } else {
+        const { latitude, longitude } = req.body; // same pattern for regular services
 
-  let geo;
-  if (latitude && longitude) {
-    geo = { latitude, longitude, formattedAddress: address };
-  } else {
-    geo = await this.geocodeWithFallback(address);
-  }
+        let geo;
+        if (latitude && longitude) {
+          geo = { latitude, longitude, formattedAddress: address };
+        } else {
+          geo = await this.geocodeWithFallback(address);
+        }
 
-  bookingData.location = {
-    address,
-    formattedAddress: geo.formattedAddress,
-    coordinates: {
-      type: "Point",
-      coordinates: [geo.longitude, geo.latitude],
-    },
-  };
+        bookingData.location = {
+          address,
+          formattedAddress: geo.formattedAddress,
+          coordinates: {
+            type: "Point",
+            coordinates: [geo.longitude, geo.latitude],
+          },
+        };
 
-  bookingData.agreedPrice = budget;
-  bookingData.totalAmount = budget;
+        bookingData.agreedPrice = budget;
+        bookingData.totalAmount = budget;
 
-  searchCoordinates = {
-    latitude: geo.latitude,
-    longitude: geo.longitude,
-  };
-}
+        searchCoordinates = {
+          latitude: geo.latitude,
+          longitude: geo.longitude,
+        };
+      }
       /* -----------------------------
        3️⃣ Set initial status
     ------------------------------*/

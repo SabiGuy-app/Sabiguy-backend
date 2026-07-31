@@ -1,7 +1,7 @@
-const WalletService = require("../src/services/wallet.service.js");
-const Booking = require("../models/Bookings.js");
 const axios = require("axios");
-const NotificationService = require("../src/services/notification.service.js");
+const WalletService = require("./wallet.service.js");
+const Booking = require("../bookings/Bookings.model.js");
+const NotificationService = require("../../services/notification.service.js");
 
 class WalletController {
   async getBalance(req, res) {
@@ -161,98 +161,98 @@ class WalletController {
     }
   }
 
- async payFromWallet(req, res) {
-  try {
-    const userId = req.user.id;
-    const { bookingId, pickupNote } = req.body;
+  async payFromWallet(req, res) {
+    try {
+      const userId = req.user.id;
+      const { bookingId, pickupNote } = req.body;
 
-    if (!bookingId) {
-      return res.status(400).json({
-        success: false,
-        message: "Booking ID is required",
+      if (!bookingId) {
+        return res.status(400).json({
+          success: false,
+          message: "Booking ID is required",
+        });
+      }
+
+      const booking = await Booking.findById(bookingId);
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: "Booking not found",
+        });
+      }
+
+      if (booking.userId.toString() !== userId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
+
+      // ✅ Check if provider is assigned
+      if (!booking.providerId) {
+        return res.status(400).json({
+          success: false,
+          message: "No provider assigned to this booking yet",
+        });
+      }
+
+      if (pickupNote) {
+        booking.pickupNote = String(pickupNote).trim();
+        await booking.save();
+      }
+
+      const totalAmount = Number(
+        booking.pricingBreakdown?.riderPaysFinal ??
+          booking.calculatedPrice ??
+          booking.totalAmount ??
+          booking.agreedPrice,
+      );
+
+      if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid booking amount",
+        });
+      }
+
+      console.log("💳 Processing wallet payment:", {
+        bookingId,
+        amount: totalAmount,
+        userId,
+        providerId: booking.providerId,
       });
-    }
 
-    const booking = await Booking.findById(bookingId);
+      const result = await WalletService.payFromWallet(
+        userId,
+        booking.providerId,
+        totalAmount,
+        bookingId,
+        NotificationService,
+      );
 
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking not found",
-      });
-    }
-
-    if (booking.userId.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    // ✅ Check if provider is assigned
-    if (!booking.providerId) {
-      return res.status(400).json({
-        success: false,
-        message: "No provider assigned to this booking yet",
-      });
-    }
-
-    if (pickupNote) {
-      booking.pickupNote = String(pickupNote).trim();
-      await booking.save();
-    }
-
-    const totalAmount = Number(
-      booking.pricingBreakdown?.riderPaysFinal ??
-        booking.calculatedPrice ??
-        booking.totalAmount ??
-        booking.agreedPrice,
-    );
-
-    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid booking amount",
-      });
-    }
-
-    console.log("💳 Processing wallet payment:", {
-      bookingId,
-      amount: totalAmount,
-      userId,
-      providerId: booking.providerId, 
-    });
-
-    const result = await WalletService.payFromWallet(
-      userId,              
-      booking.providerId,  
-      totalAmount,         
-      bookingId,          
-      NotificationService  
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Payment successful from wallet",
-      data: {
-        booking: result.booking,
-        transaction: result.transaction,
-        walletBalance: {
-          available: result.wallet.balance.available,
-          pending: result.wallet.balance.pending,
-          total: result.wallet.balance.total,
+      return res.status(200).json({
+        success: true,
+        message: "Payment successful from wallet",
+        data: {
+          booking: result.booking,
+          transaction: result.transaction,
+          walletBalance: {
+            available: result.wallet.balance.available,
+            pending: result.wallet.balance.pending,
+            total: result.wallet.balance.total,
+          },
         },
-      },
-    });
-  } catch (error) {
-    console.error("Pay from wallet controller error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Error processing wallet payment",
-      error: error.message,
-    });
+      });
+    } catch (error) {
+      console.error("Pay from wallet controller error:", error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Error processing wallet payment",
+        error: error.message,
+      });
+    }
   }
-}
 
   async getTransactions(req, res) {
     try {

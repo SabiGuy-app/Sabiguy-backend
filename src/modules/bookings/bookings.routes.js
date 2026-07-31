@@ -1,8 +1,8 @@
 const express = require("express");
 const router = express.Router();
-const BookingController = require("../controllers/bookings");
-const authMiddleware = require("../middleware/authMiddleware");
-const onlyRole = require("../middleware/roleMiddleware.js");
+const BookingController = require("./bookings.controller");
+const authMiddleware = require("../../../middleware/authMiddleware.js");
+const onlyRole = require("../../../middleware/roleMiddleware.js");
 
 /**
  *  @swagger

@@ -1,33 +1,40 @@
-const Chat = require ('../../models/Chat');
-const notificationService = require ('./notification.service');
-const Booking = require ('../../models/Bookings');
+const Chat = require("../../models/Chat");
+const notificationService = require("./notification.service");
+const Booking = require("../modules/bookings/Bookings.model");
 
 const ACTIVE_BOOKING_STATUSES = new Set([
-  'paid_escrow',
-  'provider_accepted',
-  'accept_selection',
-  'in_progress',
-  'arrived_at_pickup',
-  'enroute_to_dropoff',
-  'arrived_at_dropoff',
-  'completed',
+  "paid_escrow",
+  "provider_accepted",
+  "accept_selection",
+  "in_progress",
+  "arrived_at_pickup",
+  "enroute_to_dropoff",
+  "arrived_at_dropoff",
+  "completed",
 ]);
 
 const INACTIVE_BOOKING_STATUSES = new Set([
-  'user_accepted_completion',
-  'funds_released',
+  "user_accepted_completion",
+  "funds_released",
 ]);
 
 class ChatService {
   normalizeBookingStatus(status) {
     if (!status) return "";
-    return String(status).trim().toLowerCase().replace(/[\s-]+/g, "_");
+    return String(status)
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
   }
 
   normalizeStatusCategory(category) {
     if (!category) return "all";
     const normalized = String(category).trim().toLowerCase();
-    if (normalized === "active" || normalized === "inactive" || normalized === "all") {
+    if (
+      normalized === "active" ||
+      normalized === "inactive" ||
+      normalized === "all"
+    ) {
       return normalized;
     }
     return "all";
@@ -48,64 +55,66 @@ class ChatService {
     return true;
   }
 
-    async canAccessChat(bookingId, userId) {
+  async canAccessChat(bookingId, userId) {
     try {
       const booking = await Booking.findById(bookingId)
-        .populate('userId', 'fullName')
-        .populate('providerId', 'fullName');
+        .populate("userId", "fullName")
+        .populate("providerId", "fullName");
 
       if (!booking) {
-        throw new Error('Booking not found');
+        throw new Error("Booking not found");
       }
 
       // Define which statuses allow chatting
       const chatAllowedStatuses = [
-        'provider_accepted',
-        'confirmed',
-        'in_progress',
-        'completed',
-        'awaiting_provider_acceptance',
-        'pending_payment',
-        'paid_escrow',
-        'arrived_at_pickup',              
-        'enroute_to_dropoff',             
-        'arrived_at_dropoff',
+        "provider_accepted",
+        "confirmed",
+        "in_progress",
+        "completed",
+        "awaiting_provider_acceptance",
+        "pending_payment",
+        "paid_escrow",
+        "arrived_at_pickup",
+        "enroute_to_dropoff",
+        "arrived_at_dropoff",
       ];
 
       if (!chatAllowedStatuses.includes(booking.status)) {
-        throw new Error(`Chat not available for booking status: ${booking.status}`);
+        throw new Error(
+          `Chat not available for booking status: ${booking.status}`,
+        );
       }
 
       // Check if user is either the customer or the provider
       const isCustomer = booking.userId._id.toString() === userId.toString();
-      const isProvider = booking.providerId?._id.toString() === userId.toString();
+      const isProvider =
+        booking.providerId?._id.toString() === userId.toString();
 
       if (!isCustomer && !isProvider) {
-        throw new Error('You are not authorized to access this chat');
+        throw new Error("You are not authorized to access this chat");
       }
 
       return {
         allowed: true,
         booking,
         isCustomer,
-        isProvider
+        isProvider,
       };
-
     } catch (error) {
-      console.error('Can access chat error:', error);
+      console.error("Can access chat error:", error);
       throw error;
     }
   }
-  
-    async getOrCreateChat(bookingId, userId = null) {
+
+  async getOrCreateChat(bookingId, userId = null) {
     try {
       // Get booking details
       const booking = await Booking.findById(bookingId)
-        .populate('userId', 'fullName profilePicture email')
-        .populate('providerId', 'fullName profilePicture email');
+        .populate("userId", "fullName profilePicture email")
+        .populate("providerId", "fullName profilePicture email");
 
       if (!booking) {
-        throw new Error('Booking not found');
+        throw new Error("Booking not found");
       }
 
       // Check if chat already exists
@@ -114,28 +123,28 @@ class ChatService {
       if (!chat) {
         // Only create chat if provider has been assigned
         if (!booking.providerId) {
-          throw new Error('Chat not available - no provider assigned yet');
+          throw new Error("Chat not available - no provider assigned yet");
         }
 
         // Create participants array
         const participants = [
           {
             userId: booking.userId._id,
-            userModel: 'Buyer',
+            userModel: "Buyer",
             name: booking.userId.fullName,
-            avatar: booking.userId.profilePicture
+            avatar: booking.userId.profilePicture,
           },
           {
             userId: booking.providerId._id,
-            userModel: 'Provider',
+            userModel: "Provider",
             name: booking.providerId.fullName,
-            avatar: booking.providerId.profilePicture
-          }
+            avatar: booking.providerId.profilePicture,
+          },
         ];
 
         chat = await Chat.create({
           bookingId,
-          participants
+          participants,
         });
 
         console.log(`✅ Chat created for booking: ${bookingId}`);
@@ -143,7 +152,7 @@ class ChatService {
 
       return chat;
     } catch (error) {
-      console.error('Get or create chat error:', error);
+      console.error("Get or create chat error:", error);
       throw error;
     }
   }
@@ -153,7 +162,7 @@ class ChatService {
    */
   async sendMessage(bookingId, senderId, senderModel, messageData) {
     try {
-      const { message, messageType = 'text', attachments = [] } = messageData;
+      const { message, messageType = "text", attachments = [] } = messageData;
 
       // Check if user can access this chat
       await this.canAccessChat(bookingId, senderId);
@@ -168,14 +177,14 @@ class ChatService {
         message,
         messageType,
         attachments,
-        readBy: [{ userId: senderId, readAt: new Date() }]
+        readBy: [{ userId: senderId, readAt: new Date() }],
       };
 
       chat.messages.push(newMessage);
       chat.lastMessage = {
         text: message,
         senderId,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       await chat.save();
@@ -184,11 +193,11 @@ class ChatService {
 
       // Get receiver info
       const receiver = chat.participants.find(
-        p => p.userId.toString() !== senderId.toString()
+        (p) => p.userId.toString() !== senderId.toString(),
       );
 
       const sender = chat.participants.find(
-        p => p.userId.toString() === senderId.toString()
+        (p) => p.userId.toString() === senderId.toString(),
       );
 
       // Send notification to receiver
@@ -197,27 +206,26 @@ class ChatService {
           receiver.userId,
           receiver.userModel,
           {
-            type: 'new_message',
-            title: '💬 New Message',
-            message: `${sender?.name}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`,
+            type: "new_message",
+            title: "💬 New Message",
+            message: `${sender?.name}: ${message.substring(0, 50)}${message.length > 50 ? "..." : ""}`,
             bookingId,
             chatId: chat._id,
             data: {
               messageId: savedMessage._id,
               senderId,
-              senderName: sender?.name
-            }
-          }
+              senderName: sender?.name,
+            },
+          },
         );
       }
 
       return {
         chat,
-        message: savedMessage
+        message: savedMessage,
       };
-
     } catch (error) {
-      console.error('Send message error:', error);
+      console.error("Send message error:", error);
       throw error;
     }
   }
@@ -257,7 +265,7 @@ class ChatService {
           participants: [],
           bookingId,
           bookingStatus: access.booking.status,
-          chatAvailable: false
+          chatAvailable: false,
         };
       }
 
@@ -274,16 +282,15 @@ class ChatService {
           page,
           limit,
           total: totalMessages,
-          pages: Math.ceil(totalMessages / limit)
+          pages: Math.ceil(totalMessages / limit),
         },
         participants: chat.participants,
         bookingId: chat.bookingId,
         bookingStatus: access.booking.status,
-        chatAvailable: true
+        chatAvailable: true,
       };
-
     } catch (error) {
-      console.error('Get messages error:', error);
+      console.error("Get messages error:", error);
       throw error;
     }
   }
@@ -296,14 +303,14 @@ class ChatService {
       const chat = await Chat.findOne({ bookingId });
 
       if (!chat) {
-        throw new Error('Chat not found');
+        throw new Error("Chat not found");
       }
 
       let updated = false;
 
-      chat.messages.forEach(msg => {
+      chat.messages.forEach((msg) => {
         const alreadyRead = msg.readBy.some(
-          r => r.userId.toString() === userId.toString()
+          (r) => r.userId.toString() === userId.toString(),
         );
 
         if (!alreadyRead) {
@@ -314,7 +321,7 @@ class ChatService {
 
       // Update last read timestamp for participant
       const participant = chat.participants.find(
-        p => p.userId.toString() === userId.toString()
+        (p) => p.userId.toString() === userId.toString(),
       );
 
       if (participant) {
@@ -326,25 +333,26 @@ class ChatService {
       }
 
       return chat;
-
     } catch (error) {
-      console.error('Mark as read error:', error);
+      console.error("Mark as read error:", error);
       throw error;
     }
   }
   async getUserChats(userId, userModel, options = {}) {
     try {
-      const statusCategory = this.normalizeStatusCategory(options.statusCategory);
+      const statusCategory = this.normalizeStatusCategory(
+        options.statusCategory,
+      );
       const chats = await Chat.find({
-        'participants.userId': userId,
-        status: 'active'
+        "participants.userId": userId,
+        status: "active",
       })
-        .populate('bookingId', 'serviceType status subCategory')
-         .populate({
-        path: 'participants.userId',
-        select: 'fullName profilePicture email avatar' // ✅ Add the fields you need
-      })
-        .sort({ 'lastMessage.timestamp': -1 })
+        .populate("bookingId", "serviceType status subCategory")
+        .populate({
+          path: "participants.userId",
+          select: "fullName profilePicture email avatar", // ✅ Add the fields you need
+        })
+        .sort({ "lastMessage.timestamp": -1 })
         .lean();
 
       // Add unread count for each chat
@@ -353,30 +361,29 @@ class ChatService {
           const bookingStatus = chat.bookingId?.status;
           return this.isChatInStatusCategory(bookingStatus, statusCategory);
         })
-        .map(chat => {
-        const unreadCount = chat.messages.filter(msg => {
-          const isRead = msg.readBy.some(
-            r => r.userId.toString() === userId.toString()
+        .map((chat) => {
+          const unreadCount = chat.messages.filter((msg) => {
+            const isRead = msg.readBy.some(
+              (r) => r.userId.toString() === userId.toString(),
+            );
+            return !isRead && msg.senderId.toString() !== userId.toString();
+          }).length;
+
+          const otherParticipant = chat.participants.find(
+            (p) => p.userId.toString() !== userId.toString(),
           );
-          return !isRead && msg.senderId.toString() !== userId.toString();
-        }).length;
 
-        const otherParticipant = chat.participants.find(
-          p => p.userId.toString() !== userId.toString()
-        );
-
-        return {
-          ...chat,
-          unreadCount,
-          otherParticipant,
-          lastMessageTime: chat.lastMessage?.timestamp
-        };
-      });
+          return {
+            ...chat,
+            unreadCount,
+            otherParticipant,
+            lastMessageTime: chat.lastMessage?.timestamp,
+          };
+        });
 
       return chatsWithUnread;
-
     } catch (error) {
-      console.error('Get user chats error:', error);
+      console.error("Get user chats error:", error);
       throw error;
     }
   }

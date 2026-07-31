@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware");
-const ProviderController = require("../controllers/provider");
+const authMiddleware = require("../../../middleware/authMiddleware");
+const ProviderController = require("./provider.controller");
 const rateLimit = require("express-rate-limit");
 
 const kycLevelLimiter = rateLimit({
@@ -392,7 +392,6 @@ router.post(
   authMiddleware,
   ProviderController.addProfilePicture,
 );
-
 
 /**
  * @swagger

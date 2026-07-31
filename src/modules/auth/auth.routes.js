@@ -1,24 +1,27 @@
-const express = require ('express');
-const { registerBuyer,
-     registerProvider,
-     login, 
-     verifyEmail,
-     forgotPassword,
-     resendForgotPasswordOtp,
-     verifyResetOtp,
-     resetPassword, 
-     googleSignUp, 
-     googleSignUpBuyer, 
-     googleLogIn,
-    resendOTP,
-changePassword,
-refreshAuthToken,
-me} = require ('../controllers/auth');
-const authMiddleware = require ('../middleware/authMiddleware');
-const { changePasswordLimiter, authMeLimiter } = require ('../middleware/rateLimiter.js')
+const express = require("express");
+const {
+  registerBuyer,
+  registerProvider,
+  login,
+  verifyEmail,
+  forgotPassword,
+  resendForgotPasswordOtp,
+  verifyResetOtp,
+  resetPassword,
+  googleSignUp,
+  googleSignUpBuyer,
+  googleLogIn,
+  resendOTP,
+  changePassword,
+  refreshAuthToken,
+  me,
+} = require("./auth.controller.js");
+const authMiddleware = require("../../../middleware/authMiddleware.js");
+const {
+  changePasswordLimiter,
+  authMeLimiter,
+} = require("../../../middleware/rateLimiter.js");
 const router = express.Router();
-
-
 
 /**
  * @swagger
@@ -63,8 +66,6 @@ const router = express.Router();
  *         description: Invalid request
  */
 router.post("/buyer", registerBuyer);
-
-
 
 /**
  * @swagger
@@ -431,7 +432,8 @@ router.put(
   "/change-password",
   authMiddleware,
   changePasswordLimiter,
-  changePassword);
+  changePassword,
+);
 
 /**
  * @swagger
@@ -450,8 +452,5 @@ router.put(
  *         description: User not found
  */
 router.get("/me", authMeLimiter, authMiddleware, me);
-
-
-
 
 module.exports = router;

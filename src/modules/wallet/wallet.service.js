@@ -1,9 +1,9 @@
-const Wallet = require("../../models/Wallet");
-const Transaction = require("../../models/Transaction");
-const Booking = require("../../models/Bookings");
-const Buyer = require("../../models/ServiceUser");
 const mongoose = require("mongoose");
-const discountService = require("./discount.service");
+const Wallet = require("./Wallet.model");
+const Transaction = require("../../../models/Transaction");
+const Booking = require("../bookings/Bookings.model");
+const Buyer = require("../../../models/ServiceUser");
+const discountService = require("../../services/discount.service");
 
 class WalletService {
   constructor() {
@@ -582,8 +582,9 @@ class WalletService {
         throw new Error("Booking not found");
       }
 
-      const bookingSubtotal = booking.agreedPrice || 
-        booking.pricingBreakdown?.subtotal || 
+      const bookingSubtotal =
+        booking.agreedPrice ||
+        booking.pricingBreakdown?.subtotal ||
         booking.pricingBreakdown?.agreedPrice ||
         0;
 

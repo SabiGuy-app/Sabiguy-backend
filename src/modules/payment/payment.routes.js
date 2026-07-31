@@ -1,9 +1,8 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const paymentController = require('../controllers/payment');
-const authMiddleware = require ('../middleware/authMiddleware');
-const onlyRole = require ('../middleware/roleMiddleware.js')
-
+const paymentController = require("./payment.controller");
+const authMiddleware = require("../../../middleware/authMiddleware");
+const onlyRole = require("../../../middleware/roleMiddleware");
 
 /**
  * @swagger
@@ -94,7 +93,7 @@ const onlyRole = require ('../middleware/roleMiddleware.js')
  *       500:
  *         description: Payment initialization failed
  */
-router.post('/initialize', authMiddleware, paymentController.initializePayment);
+router.post("/initialize", authMiddleware, paymentController.initializePayment);
 
 /**
  * @swagger
@@ -171,7 +170,11 @@ router.post('/initialize', authMiddleware, paymentController.initializePayment);
  *       500:
  *         description: Failed to retrieve promo eligibility
  */
-router.get('/promo-eligibility', authMiddleware, paymentController.getPromoEligibility);
+router.get(
+  "/promo-eligibility",
+  authMiddleware,
+  paymentController.getPromoEligibility,
+);
 
 /**
  * @swagger
@@ -231,7 +234,11 @@ router.get('/promo-eligibility', authMiddleware, paymentController.getPromoEligi
  *       500:
  *         description: Verification failed
  */
-router.get('/verify/:reference', authMiddleware, paymentController.verifyPayment);
+router.get(
+  "/verify/:reference",
+  authMiddleware,
+  paymentController.verifyPayment,
+);
 
 /**
  * @swagger
@@ -279,7 +286,12 @@ router.get('/verify/:reference', authMiddleware, paymentController.verifyPayment
  *       500:
  *         description: Failed to release payment
  */
-router.post('/release-escrow', authMiddleware, onlyRole('buyer'), paymentController.releaseEscrow);
+router.post(
+  "/release-escrow",
+  authMiddleware,
+  onlyRole("buyer"),
+  paymentController.releaseEscrow,
+);
 
 /**
  * @swagger
@@ -325,7 +337,7 @@ router.post('/release-escrow', authMiddleware, onlyRole('buyer'), paymentControl
  *       500:
  *         description: Server error
  */
-router.post('/withdraw-fund', authMiddleware, paymentController.withdrawToBank);
+router.post("/withdraw-fund", authMiddleware, paymentController.withdrawToBank);
 
 /**
  * @swagger
@@ -376,7 +388,7 @@ router.post('/withdraw-fund', authMiddleware, paymentController.withdrawToBank);
  *       500:
  *         description: Refund failed
  */
-router.post('/refund', authMiddleware, paymentController.refundPayment);
+router.post("/refund", authMiddleware, paymentController.refundPayment);
 
 /**
  * @swagger
@@ -403,7 +415,7 @@ router.post('/refund', authMiddleware, paymentController.refundPayment);
  *       400:
  *         description: Invalid signature
  */
-router.post('/webhook', paymentController.handleWebhook);
+router.post("/webhook", paymentController.handleWebhook);
 
 /**
  * @swagger
@@ -441,7 +453,7 @@ router.post('/webhook', paymentController.handleWebhook);
  *       500:
  *         description: Failed to fetch banks
  */
-router.get('/banks', authMiddleware, paymentController.getBanks);
+router.get("/banks", authMiddleware, paymentController.getBanks);
 
 /**
  * @swagger
@@ -493,7 +505,10 @@ router.get('/banks', authMiddleware, paymentController.getBanks);
  *       500:
  *         description: Verification failed
  */
-router.post('/verify-bank', authMiddleware, paymentController.verifyBankAccount);
+router.post(
+  "/verify-bank",
+  authMiddleware,
+  paymentController.verifyBankAccount,
+);
 
 module.exports = router;
-

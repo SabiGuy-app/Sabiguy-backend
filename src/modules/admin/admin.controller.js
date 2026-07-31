@@ -1,27 +1,25 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const Admin = require("../models/Admin");
-const Provider = require("../models/ServiceProvider");
-const Buyer = require("../models/ServiceUser");
-const Booking = require("../models/Bookings");
-const Transaction = require("../models/Transaction");
-const WalletService = require("../src/services/wallet.service");
-const notificationService = require("../src/services/notification.service");
-const paymentService = require("../src/services/payment.service");
+const Admin = require("./Admin.model");
+const Provider = require("../../../models/ServiceProvider");
+const Buyer = require("../../../models/ServiceUser");
+const Booking = require("../bookings/Bookings.model");
+const Transaction = require("../../../models/Transaction");
+const WalletService = require("../wallet/wallet.service");
+const notificationService = require("../../services/notification.service");
+const paymentService = require("../payment/payment.service");
 const {
   findUserByEmailAcrossDb,
   normalizeEmail,
-} = require("../src/services/identity.service");
+} = require("../../services/identity.service");
 const {
   sendWelcomeEmail,
   sendKycVerificationEmail,
   sendKycDisputeEmail,
-} = require("../src/config/emailVerification");
+} = require("../../config/emailVerification");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
-const STALE_LOCATION_MINUTES = Number(
-  process.env.STALE_LOCATION_MINUTES || 10,
-);
+const STALE_LOCATION_MINUTES = Number(process.env.STALE_LOCATION_MINUTES || 10);
 
 class AdminController {
   constructor() {
@@ -175,8 +173,6 @@ class AdminController {
         { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
       );
 
-      
-
       return res.status(201).json({
         success: true,
         message: "Admin created successfully",
@@ -321,38 +317,38 @@ class AdminController {
     }
   }
 
-  async deleteBooking(req, res) { 
+  async deleteBooking(req, res) {
     try {
-       if (req.user?.role !== "admin") {
+      if (req.user?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { bookingId } = req.params;
+
+      if (!bookingId) {
+        return res.status(400).json({ message: "bookingId is required" });
+      }
+
+      const booking = await Booking.findById(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      await booking.deleteOne();
+
+      return res.status(200).json({
+        success: true,
+        message: "Booking deleted successfully",
+      });
+    } catch (error) {
+      console.error("Delete booking error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error deleting booking",
+        error: error.message,
+      });
     }
-
-     const { bookingId } = req.params;
-
-     if (!bookingId) {
-       return res.status(400).json({ message: "bookingId is required" });
-     }
-
-     const booking = await Booking.findById(bookingId);
-     if (!booking) {
-       return res.status(404).json({ message: "Booking not found" });
-     }
-
-     await booking.deleteOne();
-
-     return res.status(200).json({
-       success: true,
-       message: "Booking deleted successfully",
-     });
-   } catch (error) {
-     console.error("Delete booking error:", error);
-     return res.status(500).json({
-       success: false,
-       message: "Error deleting booking",
-       error: error.message,
-     });
-   }
- }
+  }
 
   async verifyBuyerKyc(req, res) {
     try {
@@ -557,10 +553,7 @@ class AdminController {
                 userId: booking.providerId,
                 userModel: "Provider",
               },
-              amount:
-                booking.payment?.escrowAmount ||
-                booking.totalAmount ||
-                0,
+              amount: booking.payment?.escrowAmount || booking.totalAmount || 0,
               bookingId: bookingToUpdate?._id || booking._id,
               gateway: transactionUpdate.gateway,
               status: "completed",
@@ -723,80 +716,77 @@ class AdminController {
     }
   }
 
-   async getOnlineProviders(req, res) {
-      try {
-        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-        const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
-        const safeLimit = Math.min(limit, 100);
-        const skip = (page - 1) * safeLimit;
-  
-        const staleThreshold = new Date(
-          Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
-        );
-  
-        const query = {
-          isActive: true,
-          isDeleted: { $ne: true },
-          currentLocation: {
-            $exists: true,
-            $ne: null,
-          },
-          "currentLocation.coordinates": { $exists: true, $ne: [] },
-          lastLocationUpdate: { $gte: staleThreshold },
+  async getOnlineProviders(req, res) {
+    try {
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+      const safeLimit = Math.min(limit, 100);
+      const skip = (page - 1) * safeLimit;
+
+      const staleThreshold = new Date(
+        Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
+      );
+
+      const query = {
+        isActive: true,
+        isDeleted: { $ne: true },
+        currentLocation: {
+          $exists: true,
+          $ne: null,
+        },
+        "currentLocation.coordinates": { $exists: true, $ne: [] },
+        lastLocationUpdate: { $gte: staleThreshold },
+      };
+
+      const [providers, total] = await Promise.all([
+        Provider.find(query)
+          .select(
+            "fullName profilePicture phoneNumber email job service rating completedJobs availability currentLocation lastLocationUpdate city address kycVerified",
+          )
+          .sort({ lastLocationUpdate: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(safeLimit)
+          .lean(),
+        Provider.countDocuments(query),
+      ]);
+
+      const data = providers.map((provider) => {
+        const lastLocationUpdate = provider.lastLocationUpdate
+          ? new Date(provider.lastLocationUpdate)
+          : null;
+
+        return {
+          ...provider,
+          online: true,
+          locationFresh: true,
+          locationAgeMinutes: lastLocationUpdate
+            ? Math.max(
+                0,
+                Math.round((Date.now() - lastLocationUpdate.getTime()) / 60000),
+              )
+            : null,
         };
-  
-        const [providers, total] = await Promise.all([
-          Provider.find(query)
-            .select(
-              "fullName profilePicture phoneNumber email job service rating completedJobs availability currentLocation lastLocationUpdate city address kycVerified",
-            )
-            .sort({ lastLocationUpdate: -1, createdAt: -1 })
-            .skip(skip)
-            .limit(safeLimit)
-            .lean(),
-          Provider.countDocuments(query),
-        ]);
-  
-        const data = providers.map((provider) => {
-          const lastLocationUpdate = provider.lastLocationUpdate
-            ? new Date(provider.lastLocationUpdate)
-            : null;
-  
-          return {
-            ...provider,
-            online: true,
-            locationFresh: true,
-            locationAgeMinutes: lastLocationUpdate
-              ? Math.max(
-                  0,
-                  Math.round(
-                    (Date.now() - lastLocationUpdate.getTime()) / 60000,
-                  ),
-                )
-              : null,
-          };
-        });
-  
-        return res.status(200).json({
-          success: true,
-          count: data.length,
-          total,
-          page,
-          totalPages: Math.ceil(total / safeLimit) || 1,
-          data,
-        });
-      } catch (error) {
-        console.error("Get online providers error:", error);
-        return res.status(500).json({
-          success: false,
-          message: "Error fetching online providers",
-          error: error.message,
-        });
-      }
+      });
+
+      return res.status(200).json({
+        success: true,
+        count: data.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / safeLimit) || 1,
+        data,
+      });
+    } catch (error) {
+      console.error("Get online providers error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching online providers",
+        error: error.message,
+      });
     }
+  }
 
-
-     async getOnlineBuyers(req, res) {
+  async getOnlineBuyers(req, res) {
     try {
       const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
       const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
@@ -842,9 +832,7 @@ class AdminController {
           locationAgeMinutes: lastLocationUpdate
             ? Math.max(
                 0,
-                Math.round(
-                  (Date.now() - lastLocationUpdate.getTime()) / 60000,
-                ),
+                Math.round((Date.now() - lastLocationUpdate.getTime()) / 60000),
               )
             : null,
         };

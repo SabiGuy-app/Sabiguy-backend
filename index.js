@@ -153,21 +153,27 @@ app.use(
 );
 
 const routes = [
-  { path: "/auth", file: "./routes/auth" },
+  { path: "/auth", file: "./src/modules/auth/auth.routes" },
   { path: "/file", file: "./src/modules/files/files.routes" },
-  { path: "/provider", file: "./routes/provider" },
+  { path: "/provider", file: "./src/modules/provider/provider.routes" },
   { path: "/users", file: "./routes/users" },
   { path: "/contact", file: "./src/modules/contact/contact.routes" },
-  { path: "/bookings", file: "./routes/bookings" },
+  { path: "/bookings", file: "./src/modules/bookings/bookings.routes" },
   { path: "/fcm", file: "./src/modules/fcm/fcm.routes" },
-  { path: "/notifications", file: "./src/modules/notifications/notifications.routes" },
-  { path: "/payment", file: "./routes/payment" },
-  { path: "/wallet", file: "./routes/wallet" },
+  {
+    path: "/notifications",
+    file: "./src/modules/notifications/notifications.routes",
+  },
+  { path: "/payment", file: "./src/modules/payment/payment.routes" },
+  { path: "/wallet", file: "./src/modules/wallet/wallet.routes" },
   { path: "/transactions", file: "./routes/transactions" },
   { path: "/chats", file: "./routes/chat" },
-  { path: "/support-chatbot", file: "./src/modules/supportChatbot/chatbot.route.js" },
-  { path: "/admin", file: "./routes/admin" },
-  { path: "/call", file: "./routes/call" }
+  {
+    path: "/support-chatbot",
+    file: "./src/modules/supportChatbot/chatbot.route.js",
+  },
+  { path: "/admin", file: "./src/modules/admin/admin.routes.js" },
+  { path: "/call", file: "./routes/call" },
 ];
 
 routes.forEach((route) => {
@@ -180,7 +186,6 @@ app.get("/api-docs/swagger.json", (req, res) => {
 });
 
 // app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
 
 app.get(["/api-docs", "/api-docs/"], (req, res) => {
   const apiBaseUrl = process.env.API_BASE_URL;
@@ -380,95 +385,101 @@ io.on("connection", (socket) => {
     });
   });
 
+  // Replace your existing call:initiate and call:offer with this single event
+  socket.on(
+    "call:initiate",
+    async ({ bookingId, targetId, targetType, offer }) => {
+      try {
+        const iceServers = await turnService.getIceServers();
+        const receiverRoom = `${targetType}:${targetId}`;
 
-// Replace your existing call:initiate and call:offer with this single event
-socket.on("call:initiate", async ({ bookingId, targetId, targetType, offer }) => {
-  try {
-    const iceServers = await turnService.getIceServers();
-    const receiverRoom = `${targetType}:${targetId}`;
+        // Forward everything in one shot — no race condition
+        io.to(receiverRoom).emit("call:incoming", {
+          bookingId,
+          callerId: socket.userId,
+          callerType: socket.userType,
+          iceServers,
+          offer, // ← offer included from the start
+        });
 
-    // Forward everything in one shot — no race condition
-    io.to(receiverRoom).emit("call:incoming", {
+        // Confirm to caller with ICE servers
+        socket.emit("call:initiated", { bookingId, iceServers });
+
+        console.log(
+          `📞 Call initiated: ${socket.userId} → ${targetId} [booking: ${bookingId}]`,
+        );
+      } catch (error) {
+        console.error("call:initiate error:", error.message);
+        socket.emit("error", { message: "Failed to initiate call" });
+      }
+    },
+  );
+
+  // call:offer event no longer needed — remove it
+
+  // 2. Receiver answers the call
+  socket.on("call:answer", (data) => {
+    const { bookingId, callerId, callerType, answer } = data;
+    const callerRoom = `${callerType}:${callerId}`;
+
+    io.to(callerRoom).emit("call:answered", {
       bookingId,
-      callerId: socket.userId,
-      callerType: socket.userType,
-      iceServers,
-      offer,                    // ← offer included from the start
+      answer, // SDP answer from receiver's browser
+      answererId: socket.userId,
     });
 
-    // Confirm to caller with ICE servers
-    socket.emit("call:initiated", { bookingId, iceServers });
-
-    console.log(`📞 Call initiated: ${socket.userId} → ${targetId} [booking: ${bookingId}]`);
-  } catch (error) {
-    console.error("call:initiate error:", error.message);
-    socket.emit("error", { message: "Failed to initiate call" });
-  }
-});
-
-// call:offer event no longer needed — remove it
-
-// 2. Receiver answers the call
-socket.on("call:answer", (data) => {
-  const { bookingId, callerId, callerType, answer } = data;
-  const callerRoom = `${callerType}:${callerId}`;
-
-  io.to(callerRoom).emit("call:answered", {
-    bookingId,
-    answer,                   // SDP answer from receiver's browser
-    answererId: socket.userId,
+    console.log(
+      `✅ Call answered: ${socket.userId} → ${callerId} [booking: ${bookingId}]`,
+    );
   });
 
-  console.log(`✅ Call answered: ${socket.userId} → ${callerId} [booking: ${bookingId}]`);
-});
+  // 3. Exchange ICE candidates (WebRTC handshake)
+  socket.on("call:ice-candidate", (data) => {
+    const { bookingId, targetId, targetType, candidate } = data;
+    const targetRoom = `${targetType}:${targetId}`;
 
-// 3. Exchange ICE candidates (WebRTC handshake)
-socket.on("call:ice-candidate", (data) => {
-  const { bookingId, targetId, targetType, candidate } = data;
-  const targetRoom = `${targetType}:${targetId}`;
-
-  io.to(targetRoom).emit("call:ice-candidate", {
-    bookingId,
-    candidate,                // ICE candidate from browser
-    fromId: socket.userId,
-  });
-});
-
-// 4. Receiver rejects the call
-socket.on("call:reject", (data) => {
-  const { bookingId, callerId, callerType } = data;
-  const callerRoom = `${callerType}:${callerId}`;
-
-  io.to(callerRoom).emit("call:rejected", {
-    bookingId,
-    rejectedBy: socket.userId,
+    io.to(targetRoom).emit("call:ice-candidate", {
+      bookingId,
+      candidate, // ICE candidate from browser
+      fromId: socket.userId,
+    });
   });
 
-  console.log(`❌ Call rejected by ${socket.userId} [booking: ${bookingId}]`);
-});
+  // 4. Receiver rejects the call
+  socket.on("call:reject", (data) => {
+    const { bookingId, callerId, callerType } = data;
+    const callerRoom = `${callerType}:${callerId}`;
 
-// 5. Either party ends the call
-socket.on("call:end", (data) => {
-  const { bookingId, targetId, targetType } = data;
-  const targetRoom = `${targetType}:${targetId}`;
+    io.to(callerRoom).emit("call:rejected", {
+      bookingId,
+      rejectedBy: socket.userId,
+    });
 
-  io.to(targetRoom).emit("call:ended", {
-    bookingId,
-    endedBy: socket.userId,
+    console.log(`❌ Call rejected by ${socket.userId} [booking: ${bookingId}]`);
   });
 
-  console.log(`📵 Call ended by ${socket.userId} [booking: ${bookingId}]`);
-});
+  // 5. Either party ends the call
+  socket.on("call:end", (data) => {
+    const { bookingId, targetId, targetType } = data;
+    const targetRoom = `${targetType}:${targetId}`;
 
-// Forward SDP answer to caller (rename your existing call:answer)
-socket.on("call:answer", ({ bookingId, targetId, targetType, answer }) => {
-  io.to(`${targetType}:${targetId}`).emit("call:answer", {
-    bookingId,
-    answer,
-    fromId: socket.userId,
-    fromType: socket.userType,
+    io.to(targetRoom).emit("call:ended", {
+      bookingId,
+      endedBy: socket.userId,
+    });
+
+    console.log(`📵 Call ended by ${socket.userId} [booking: ${bookingId}]`);
   });
-});
+
+  // Forward SDP answer to caller (rename your existing call:answer)
+  socket.on("call:answer", ({ bookingId, targetId, targetType, answer }) => {
+    io.to(`${targetType}:${targetId}`).emit("call:answer", {
+      bookingId,
+      answer,
+      fromId: socket.userId,
+      fromType: socket.userType,
+    });
+  });
 
   socket.on("disconnect", async () => {
     console.log(`❌ Client disconnected: ${socket.id}`);

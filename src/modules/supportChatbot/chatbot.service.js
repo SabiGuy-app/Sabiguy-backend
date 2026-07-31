@@ -1,5 +1,5 @@
 const Groq = require("groq-sdk");
-const Booking = require ("../../../models/Bookings")
+const Booking = require("../bookings/Bookings.model");
 
 // const groq = new Groq({
 //   apiKey: process.env.GROQ_API_KEY,
@@ -8,82 +8,83 @@ const Booking = require ("../../../models/Bookings")
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
   defaultHeaders: {
-    'Accept-Encoding': 'identity'
-  }
+    "Accept-Encoding": "identity",
+  },
 });
 
 class GroqService {
- // services/groqService.js
+  // services/groqService.js
 
-async supportChat(
-  message,
-  conversationHistory = [],
-  userContext = {},
-  options = {},
-) {
-  try {
-    const systemPrompt = this.buildSystemPrompt(userContext, options);
+  async supportChat(
+    message,
+    conversationHistory = [],
+    userContext = {},
+    options = {},
+  ) {
+    try {
+      const systemPrompt = this.buildSystemPrompt(userContext, options);
 
-    // If booking context exists, prepend a reminder to the user message
-    let enhancedMessage = message;
-    if (userContext.currentBooking) {
-      enhancedMessage = `[BOOKING DATA AVAILABLE - USE IT]
+      // If booking context exists, prepend a reminder to the user message
+      let enhancedMessage = message;
+      if (userContext.currentBooking) {
+        enhancedMessage = `[BOOKING DATA AVAILABLE - USE IT]
 
 User's booking details are already loaded in your system prompt. Use the EXACT status and information provided.
 
 User's question: ${message}`;
+      }
+
+      const messages = [
+        { role: "system", content: systemPrompt },
+        ...conversationHistory.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+        { role: "user", content: enhancedMessage },
+      ];
+
+      const completion = await groq.chat.completions.create({
+        messages,
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.5, // Lower temperature for more factual responses
+        max_tokens: 2048,
+        top_p: 0.9,
+        stream: false,
+      });
+
+      const rawResponse = completion.choices[0].message.content;
+
+      // Detect WhatsApp escalation trigger
+
+      // Clean the tag from the displayed response
+      const response = rawResponse.replace("[[ESCALATE_WHATSAPP]]", "").trim();
+      // Verify the response mentions the correct booking status if booking context exists
+      if (userContext.currentBooking) {
+        const actualStatus = userContext.currentBooking.status;
+        console.log(`✅ Expected booking status: ${actualStatus}`);
+        console.log(
+          `📝 AI response mentions: ${response.includes(actualStatus) ? "Correct status ✓" : "WARNING: Wrong status ⚠️"}`,
+        );
+      }
+
+      // Detect intent
+      const intent = await this.detectIntent(message, response);
+
+      const escalationTriggered =
+        rawResponse.includes("[[ESCALATE_WHATSAPP]]") ||
+        intent.escalationNeeded === true;
+
+      return {
+        response,
+        intent,
+        escalationTriggered,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("Groq chat error:", error);
+      throw error;
     }
-
-    const messages = [
-      { role: "system", content: systemPrompt },
-      ...conversationHistory.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
-      { role: "user", content: enhancedMessage },
-    ];
-
-    const completion = await groq.chat.completions.create({
-      messages,
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.5, // Lower temperature for more factual responses
-      max_tokens: 2048,
-      top_p: 0.9,
-      stream: false,
-    });
-
-const rawResponse = completion.choices[0].message.content;
-
-// Detect WhatsApp escalation trigger
-
-// Clean the tag from the displayed response
-const response = rawResponse.replace("[[ESCALATE_WHATSAPP]]", "").trim();
-    // Verify the response mentions the correct booking status if booking context exists
-    if (userContext.currentBooking) {
-      const actualStatus = userContext.currentBooking.status;
-      console.log(`✅ Expected booking status: ${actualStatus}`);
-      console.log(`📝 AI response mentions: ${response.includes(actualStatus) ? 'Correct status ✓' : 'WARNING: Wrong status ⚠️'}`);
-    }
-
-    // Detect intent
-    const intent = await this.detectIntent(message, response);
-
-    const escalationTriggered = 
-  rawResponse.includes("[[ESCALATE_WHATSAPP]]") || 
-  intent.escalationNeeded === true;
-  
-
-    return {
-      response,
-      intent,
-      escalationTriggered,
-      timestamp: new Date().toISOString(),
-    };
-  } catch (error) {
-    console.error("Groq chat error:", error);
-    throw error;
   }
-}
 
   async detectIntent(userMessage, botResponse) {
     try {
@@ -123,12 +124,12 @@ Return ONLY valid JSON:
   }
 
   buildSystemPrompt(userContext, options = {}) {
-  const isPublicChat = options.isPublic === true;
+    const isPublicChat = options.isPublic === true;
 
-  // Build booking context section if available
-  let bookingContextSection = "";
-  if (userContext.currentBooking) {
-    bookingContextSection = `
+    // Build booking context section if available
+    let bookingContextSection = "";
+    if (userContext.currentBooking) {
+      bookingContextSection = `
 CURRENT BOOKING INFORMATION (USE THIS EXACT DATA):
 - Booking ID: ${userContext.currentBooking.id}
 - Status: ${userContext.currentBooking.status}
@@ -143,23 +144,23 @@ CURRENT BOOKING INFORMATION (USE THIS EXACT DATA):
 
 ⚠️ CRITICAL: Use the EXACT status above. Do NOT make up or assume the status.
 `;
-  }
+    }
 
-  const modeInstructions = isPublicChat
-    ? `
+    const modeInstructions = isPublicChat
+      ? `
 PUBLIC HOMEPAGE MODE:
 - The user may not be logged in.
 - Help with general platform questions first.
 - Do not ask for a booking ID unless the user is clearly asking about a specific booking.
 - If the issue is account-specific, explain that they will need to log in or contact support for private details.
 `
-    : `
+      : `
 AUTHENTICATED SUPPORT MODE:
 - If booking data is not provided and the user is asking about a specific booking, ask for the booking ID.
 - If the question is general, answer normally without forcing a booking ID.
 `;
 
-  return `You are SabiBot, the friendly AI customer support assistant for SabiGuy - a service provider platform in Nigeria.
+    return `You are SabiBot, the friendly AI customer support assistant for SabiGuy - a service provider platform in Nigeria.
 
 PLATFORM OVERVIEW:
 SabiGuy connects users with verified service providers across Nigeria, primarily in Ibadan. At the moment, we operate in ride and dispatch services only and we'll soon expand to include a variety of verified service providers such as electricians, plumbers, cleaners, carpenters, painters, AC technicians, and more.
@@ -232,7 +233,7 @@ If the user:
 Then END your response with this exact tag on a new line: [[ESCALATE_WHATSAPP]]
 Do NOT explain the tag. The frontend will handle it.
 When you need to escalate, clearly state: "Let me connect you with a human agent."`;
-}
+  }
 
   async getBookingContext(bookingId, userId) {
     // Same as before
