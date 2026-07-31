@@ -163,6 +163,7 @@ const options = {
         "./routes/uploadFile.js",
         "./routes/users.js",
         "./routes/wallet.js",
+        "./routes/admin.js",
     ]
 };
 

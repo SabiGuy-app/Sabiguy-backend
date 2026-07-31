@@ -179,7 +179,7 @@ app.get("/api-docs/swagger.json", (req, res) => {
   res.json(swaggerSpec);
 });
 
-// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 
 app.get(["/api-docs", "/api-docs/"], (req, res) => {
