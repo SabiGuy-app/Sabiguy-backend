@@ -14,7 +14,7 @@ const redis = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { swaggerUi, swaggerSpec } = require("./src/config/swagger");
 const notificationService = require("./src/services/notification.service");
-const turnService = require("./src/services/turnService");
+const turnService = require("./src/modules/call/call.service");
 const REDIS_MAX_RECONNECT_ATTEMPTS = Number(
   process.env.REDIS_MAX_RECONNECT_ATTEMPTS || 5,
 );
@@ -156,7 +156,7 @@ const routes = [
   { path: "/auth", file: "./src/modules/auth/auth.routes" },
   { path: "/file", file: "./src/modules/files/files.routes" },
   { path: "/provider", file: "./src/modules/provider/provider.routes" },
-  { path: "/users", file: "./routes/users" },
+  { path: "/users", file: "./src/modules/users/users.routes" },
   { path: "/contact", file: "./src/modules/contact/contact.routes" },
   { path: "/bookings", file: "./src/modules/bookings/bookings.routes" },
   { path: "/fcm", file: "./src/modules/fcm/fcm.routes" },
@@ -166,14 +166,17 @@ const routes = [
   },
   { path: "/payment", file: "./src/modules/payment/payment.routes" },
   { path: "/wallet", file: "./src/modules/wallet/wallet.routes" },
-  { path: "/transactions", file: "./routes/transactions" },
-  { path: "/chats", file: "./routes/chat" },
+  {
+    path: "/transactions",
+    file: "./src/modules/transactions/transactions.routes",
+  },
+  { path: "/chats", file: "./src/modules/chat/chat.routes" },
   {
     path: "/support-chatbot",
-    file: "./src/modules/supportChatbot/chatbot.route.js",
+    file: "./src/modules/supportChatbot/chatbot.routes",
   },
-  { path: "/admin", file: "./src/modules/admin/admin.routes.js" },
-  { path: "/call", file: "./routes/call" },
+  { path: "/admin", file: "./src/modules/admin/admin.routes" },
+  { path: "/call", file: "./src/modules/call/call.routes" },
 ];
 
 routes.forEach((route) => {

@@ -1,10 +1,8 @@
 // routes/chat.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const chatController = require('../controllers/chat');
-const authMiddleware = require('../middleware/authMiddleware');
-
-
+const chatController = require("./chat.controller");
+const authMiddleware = require("../../../middleware/authMiddleware");
 
 /**
  * @swagger
@@ -56,7 +54,7 @@ const authMiddleware = require('../middleware/authMiddleware');
  *         createdAt:
  *           type: string
  *           format: date-time
- *     
+ *
  *     Chat:
  *       type: object
  *       properties:
@@ -172,7 +170,7 @@ const authMiddleware = require('../middleware/authMiddleware');
  *                   type: string
  *                   example: "Failed to fetch chats"
  */
-router.get('/', authMiddleware, chatController.getUserChats);
+router.get("/", authMiddleware, chatController.getUserChats);
 
 /**
  * @swagger
@@ -274,7 +272,7 @@ router.get('/', authMiddleware, chatController.getUserChats);
  *       500:
  *         description: Server error
  */
-router.get('/:bookingId/messages', authMiddleware, chatController.getMessages);
+router.get("/:bookingId/messages", authMiddleware, chatController.getMessages);
 
 /**
  * @swagger
@@ -396,7 +394,7 @@ router.get('/:bookingId/messages', authMiddleware, chatController.getMessages);
  *       500:
  *         description: Server error
  */
-router.post('/:bookingId/messages', authMiddleware, chatController.sendMessage);
+router.post("/:bookingId/messages", authMiddleware, chatController.sendMessage);
 
 /**
  * @swagger
@@ -438,6 +436,6 @@ router.post('/:bookingId/messages', authMiddleware, chatController.sendMessage);
  *       500:
  *         description: Server error
  */
-router.patch('/:bookingId/read', authMiddleware, chatController.markAsRead);
+router.patch("/:bookingId/read", authMiddleware, chatController.markAsRead);
 
 module.exports = router;

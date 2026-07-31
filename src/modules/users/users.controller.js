@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
-const Provider = require("../models/ServiceProvider");
-const Buyer = require("../models/ServiceUser");
-const geolocationService = require("../src/services/geolocation.service");
-const { sendNinSubmittedEmail } = require("../src/config/emailVerification");
+const Provider = require("../../../models/ServiceProvider");
+const Buyer = require("../../../models/ServiceUser");
+const geolocationService = require("../../services/geolocation.service");
+const { sendNinSubmittedEmail } = require("../../config/emailVerification");
 
 const getPagination = (req) => {
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);

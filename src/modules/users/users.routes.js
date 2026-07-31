@@ -1,4 +1,4 @@
-const express = require ("express");
+const express = require("express");
 const {
   getAllBuyers,
   getAllProviders,
@@ -6,9 +6,9 @@ const {
   getUserByEmail,
   getUserById,
   uploadUserNin,
-  updateUserLocation
-} = require ('../controllers/users')
-const authMiddleware = require ('../middleware/authMiddleware');
+  updateUserLocation,
+} = require("./users.controller");
+const authMiddleware = require("../../../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -304,7 +304,7 @@ router.post("/nin", authMiddleware, uploadUserNin);
  *       404:
  *         description: User not found
  */
-router.get("/email/:email",  getUserByEmail);
+router.get("/email/:email", getUserByEmail);
 
 /**
  * @swagger
@@ -327,7 +327,7 @@ router.get("/email/:email",  getUserByEmail);
  *       404:
  *         description: User not found
  */
-router.get("/:id",  getUserById);
+router.get("/:id", getUserById);
 
 /**
  * @swagger
@@ -365,6 +365,6 @@ router.get("/:id",  getUserById);
  *       500:
  *         description: Server error
  */
-router.put('/location', authMiddleware, updateUserLocation);
+router.put("/location", authMiddleware, updateUserLocation);
 
-module.exports = router
+module.exports = router;

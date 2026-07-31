@@ -1,7 +1,6 @@
-const { getIceServers } = require("../src/services/turnService");
-const authMiddleware = require("../middleware/authMiddleware");
+const { getIceServers } = require("./call.service");
+const authMiddleware = require("../../../middleware/authMiddleware");
 const router = require("express").Router();
-
 
 router.get("/ice-servers", authMiddleware, async (req, res) => {
   try {

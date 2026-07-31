@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const transactionController = require("../controllers/transactions");
-const authMiddleware = require("../middleware/authMiddleware");
-const onlyRole = require("../middleware/roleMiddleware.js");
-const { transactionsLimiter } = require("../middleware/rateLimiter");
+const transactionController = require("./transactions.controller.js");
+const authMiddleware = require("../../../middleware/authMiddleware.js");
+const onlyRole = require("../../../middleware/roleMiddleware.js");
+const { transactionsLimiter } = require("../../../middleware/rateLimiter.js");
 
 /**
  * @swagger
