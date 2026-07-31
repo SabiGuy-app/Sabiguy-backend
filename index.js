@@ -165,7 +165,7 @@ const routes = [
   { path: "/wallet", file: "./routes/wallet" },
   { path: "/transactions", file: "./routes/transactions" },
   { path: "/chats", file: "./routes/chat" },
-  { path: "/support-chatbot", file: "./routes/supportChatbot" },
+  { path: "/support-chatbot", file: "./src/modules/supportChatbot/chatbot.route.js" },
   { path: "/admin", file: "./routes/admin" },
   { path: "/call", file: "./routes/call" }
 ];
@@ -179,7 +179,7 @@ app.get("/api-docs/swagger.json", (req, res) => {
   res.json(swaggerSpec);
 });
 
-// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 
 app.get(["/api-docs", "/api-docs/"], (req, res) => {
