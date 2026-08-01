@@ -8,10 +8,17 @@ const upload = multer({ dest: 'uploads/' });
 
 /**
  * @swagger
+ * tags:
+ *   name: Files
+ *   description: File upload endpoints
+ */
+
+/**
+ * @swagger
  * /api/v1/file/{email}/{category}:
  *   post:
  *     summary: Upload a file for a user
- *     tags: [Uploads]
+ *     tags: [Files]
  *     parameters:
  *       - in: path
  *         name: email

@@ -349,7 +349,7 @@ router.get("/:id", getUserById);
  *               - address
  *             properties:
  *               address:
- *                 type: text
+ *                 type: string
  *                 example: Ikeja, Lagos
  *               latitude:
  *                 type: number

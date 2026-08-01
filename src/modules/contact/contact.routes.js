@@ -16,6 +16,7 @@ const router = express.Router();
  *   post:
  *     summary: Submit contact form
  *     tags: [Contact]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:

@@ -1,5 +1,7 @@
+const path = require('path');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
+const packageJson = require('../../package.json');
 
 const options = {
     definition: {
@@ -7,7 +9,7 @@ const options = {
         info: {
             title: "SabiGuy Backend API",
             description: "API documentation for SabiGuy",
-            // version: "1.0"
+            version: packageJson.version || "1.0.0",
         },
         servers: [
             {
@@ -149,20 +151,21 @@ const options = {
     },
 
     apis: [
-        "./routes/auth.js",
-        "./routes/bookings.js",
-        "./routes/call.js",
-        "./routes/chat.js",
-        "./src/modules/contact/contact.routes.js",
-        "./src/modules/fcm/fcm.routes.js",
-        "./src/modules/notifications/notifications.routes.js",
-        "./routes/payment.js",
-        "./routes/provider.js",
-        "./routes/supportChatbot.js",
-        "./routes/transactions.js",
-        "./src/modules/files/files.routes.js",
-        "./routes/users.js",
-        "./routes/wallet.js",
+        path.join(__dirname, '..', 'modules', 'auth', 'auth.routes.js'),
+        path.join(__dirname, '..', 'modules', 'bookings', 'bookings.routes.js'),
+        path.join(__dirname, '..', 'modules', 'call', 'call.routes.js'),
+        path.join(__dirname, '..', 'modules', 'chat', 'chat.routes.js'),
+        path.join(__dirname, '..', 'modules', 'contact', 'contact.routes.js'),
+        path.join(__dirname, '..', 'modules', 'fcm', 'fcm.routes.js'),
+        path.join(__dirname, '..', 'modules', 'notifications', 'notifications.routes.js'),
+        path.join(__dirname, '..', 'modules', 'payment', 'payment.routes.js'),
+        path.join(__dirname, '..', 'modules', 'provider', 'provider.routes.js'),
+        path.join(__dirname, '..', 'modules', 'supportChatbot', 'chatbot.routes.js'),
+        path.join(__dirname, '..', 'modules', 'transactions', 'transactions.routes.js'),
+        path.join(__dirname, '..', 'modules', 'files', 'files.routes.js'),
+        path.join(__dirname, '..', 'modules', 'users', 'users.routes.js'),
+        path.join(__dirname, '..', 'modules', 'wallet', 'wallet.routes.js'),
+        path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
     ]
 };
 

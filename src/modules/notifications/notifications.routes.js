@@ -327,8 +327,39 @@ router.patch(
 );
 
 /**
- * Internal endpoint for cron service to broadcast notifications via Socket.io
- * This endpoint receives notifications from the cron process and emits them to connected Socket.io clients
+ * @swagger
+ * /api/v1/notifications/broadcast:
+ *   post:
+ *     summary: Broadcast a notification to a Socket.io room
+ *     description: Internal endpoint used by the cron service to push a notification to connected clients in a specific room.
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - room
+ *               - notification
+ *             properties:
+ *               room:
+ *                 type: string
+ *                 example: booking_507f1f77bcf86cd799439011
+ *               notification:
+ *                 type: object
+ *                 description: Notification payload to emit to the room
+ *     responses:
+ *       200:
+ *         description: Notification broadcasted successfully
+ *       400:
+ *         description: Missing room or notification payload
+ *       401:
+ *         description: Unauthorized internal request
+ *       500:
+ *         description: Socket.io unavailable or broadcast failed
  */
 router.post("/broadcast", (req, res) => {
   try {

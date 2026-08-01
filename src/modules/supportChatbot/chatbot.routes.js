@@ -61,6 +61,7 @@ router.post("/chat", authMiddleware, supportChatbotController.chat);
  *   post:
  *     summary: Chat with support bot without authentication
  *     tags: [Support Chatbot]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -160,6 +161,7 @@ router.get(
  *   get:
  *     summary: Get support FAQs
  *     tags: [Support Chatbot]
+ *     security: []
  *     parameters:
  *       - in: query
  *         name: ids

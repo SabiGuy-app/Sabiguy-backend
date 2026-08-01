@@ -93,26 +93,26 @@ router.post(
 
 /**
  * @swagger
- * /api/v1/admin/{bookingId}/delete-booking
+ * /api/v1/admin/{bookingId}/delete-booking:
  *   delete:
  *     summary: Delete booking
- *     tags: [Admins]
+ *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
- *    parameters:
+ *     parameters:
  *       - name: bookingId
  *         in: path
  *         required: true
  *         schema:
  *           type: string
  *           example: "booking123"
- *    responses:
- *      200:
- *        description: Booking deleted successfully
- *      403:
- *        description: Admin access required
- *      404:
- *        description: Booking not found
+ *     responses:
+ *       200:
+ *         description: Booking deleted successfully
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Booking not found
  */
 
 router.delete(

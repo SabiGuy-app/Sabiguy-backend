@@ -36,6 +36,7 @@ const router = express.Router();
  *   post:
  *     summary: Register a new buyer account
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -73,6 +74,7 @@ router.post("/buyer", registerBuyer);
  *   post:
  *     summary: Register a new service provider account
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -107,6 +109,7 @@ router.post("/provider", registerProvider);
  *   post:
  *     summary: Verify user email after registration
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -132,6 +135,7 @@ router.post("/email", verifyEmail);
  *   post:
  *     summary: Log in a user
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -164,6 +168,7 @@ router.post("/", login);
  *   post:
  *     summary: Register a provider with Google OAuth
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -189,6 +194,7 @@ router.post("/google-provider", googleSignUp);
  *   post:
  *     summary: Register a buyer with Google OAuth
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -213,6 +219,7 @@ router.post("/google", googleSignUpBuyer);
  *   post:
  *     summary: Log in user with Google
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -238,6 +245,7 @@ router.post("/google-login", googleLogIn);
  *   post:
  *     summary: Refresh access token
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -263,6 +271,7 @@ router.post("/refresh", refreshAuthToken);
  *   post:
  *     summary: Request password reset link
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -288,6 +297,7 @@ router.post("/password", forgotPassword);
  *   post:
  *     summary: Resend forgot password OTP
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -315,6 +325,7 @@ router.post("/resend-forgot-password-otp", resendForgotPasswordOtp);
  *   post:
  *     summary: Validate password reset OTP
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -343,6 +354,7 @@ router.post("/verify-reset-otp", verifyResetOtp);
  *   post:
  *     summary: Reset password using token
  *     tags: [Auth]
+ *     security: []
  *     requestBody:
  *       required: true
  *       content:
