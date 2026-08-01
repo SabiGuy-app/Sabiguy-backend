@@ -1,18 +1,14 @@
 const dotenv = require("dotenv");
 dotenv.config();
 
-const express = require("express");
-const app = express();
-const morgan = require("morgan");
-
-app.set("trust proxy", true);
+const { createApp } = require("./app");
+const app = createApp();
 
 const connectToDB = require("../utils/db");
 const http = require("http");
 const socketIO = require("socket.io");
 const redis = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
-const { swaggerUi, swaggerSpec } = require("./config/swagger");
 const notificationService = require("./services/notification.service");
 const turnService = require("./modules/call/call.service");
 const REDIS_MAX_RECONNECT_ATTEMPTS = Number(
@@ -25,11 +21,6 @@ const REDIS_ERROR_LOG_INTERVAL_MS = Number(
 const getErrorMessage = (error) =>
   error?.message || error?.code || error?.name || "Unknown error";
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan("dev"));
-
-const cors = require("cors");
 const server = http.createServer(app);
 
 const io = socketIO(server, {
@@ -136,85 +127,6 @@ const initRedisAdapter = async () => {
 };
 
 initRedisAdapter();
-
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:3001",
-      "https://sabi-admin-two.vercel.app",
-      "https://sabiguy.vercel.app",
-      "https://www.sabiguy.com",
-    ],
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-  }),
-);
-
-const routes = [
-  { path: "/auth", file: "./modules/auth/auth.routes" },
-  { path: "/file", file: "./modules/files/files.routes" },
-  { path: "/provider", file: "./modules/provider/provider.routes" },
-  { path: "/users", file: "./modules/users/users.routes" },
-  { path: "/contact", file: "./modules/contact/contact.routes" },
-  { path: "/bookings", file: "./modules/bookings/bookings.routes" },
-  { path: "/fcm", file: "./modules/fcm/fcm.routes" },
-  {
-    path: "/notifications",
-    file: "./modules/notifications/notifications.routes",
-  },
-  { path: "/payment", file: "./modules/payment/payment.routes" },
-  { path: "/wallet", file: "./modules/wallet/wallet.routes" },
-  {
-    path: "/transactions",
-    file: "./modules/transactions/transactions.routes",
-  },
-  { path: "/chats", file: "./modules/chat/chat.routes" },
-  {
-    path: "/support-chatbot",
-    file: "./modules/supportChatbot/chatbot.routes",
-  },
-  { path: "/admin", file: "./modules/admin/admin.routes" },
-  { path: "/call", file: "./modules/call/call.routes" },
-];
-
-routes.forEach((route) => {
-  app.use(`/api/v1${route.path}`, require(route.file));
-});
-
-app.get("/api-docs/swagger.json", (req, res) => {
-  res.setHeader("Content-Type", "application/json");
-  res.json(swaggerSpec);
-});
-
-// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-app.get(["/api-docs", "/api-docs/"], (req, res) => {
-  const apiBaseUrl = process.env.API_BASE_URL;
-  res.send(`<!DOCTYPE html>
-<html>
-<head>
-  <title>SabiGuy API</title>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css">
-</head>
-<body>
-<div id="swagger-ui"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-standalone-preset.min.js"></script>
-<script>
-  SwaggerUIBundle({
-    url: "${apiBaseUrl}/api-docs/swagger.json",
-    dom_id: '#swagger-ui',
-    presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-    layout: "StandaloneLayout"
-  })
-</script>
-</body>
-</html>`);
-});
 
 notificationService.setSocketIO(io);
 

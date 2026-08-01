@@ -1,6 +1,6 @@
 const axios = require("axios");
 const crypto = require("crypto");
-const Booking = require("../bookings/bookings.model.js");
+const Booking = require("../bookings/Bookings.model");
 const Provider = require("../../../models/ServiceProvider.js");
 const Buyer = require("../../../models/ServiceUser.js");
 const notificationService = require("../../services/notification.service.js");

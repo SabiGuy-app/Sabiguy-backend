@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const Provider = require("../../../models/ServiceProvider");
-const Booking = require("../bookings/bookings.model");
+const Booking = require("../bookings/Bookings.model");
 const notificationService = require("../../services/notification.service");
 const paymentService = require("../payment/payment.service");
 const geolocationService = require("../../services/geolocation.service");

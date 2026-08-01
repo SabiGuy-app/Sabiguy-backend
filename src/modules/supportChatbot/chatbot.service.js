@@ -1,16 +1,14 @@
 const Groq = require("groq-sdk");
 const Booking = require("../bookings/Bookings.model");
 
-// const groq = new Groq({
-//   apiKey: process.env.GROQ_API_KEY,
-// });
-
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-  defaultHeaders: {
-    "Accept-Encoding": "identity",
-  },
-});
+const groq = process.env.GROQ_API_KEY
+  ? new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+      defaultHeaders: {
+        "Accept-Encoding": "identity",
+      },
+    })
+  : null;
 
 class GroqService {
   // services/groqService.js
@@ -42,6 +40,15 @@ User's question: ${message}`;
         })),
         { role: "user", content: enhancedMessage },
       ];
+
+      if (!groq) {
+        return {
+          response: "I'm currently unavailable, but I can still help with general guidance while the AI service is being configured.",
+          intent: { intent: "general_faq", requiresAction: false, sentiment: "neutral", escalationNeeded: false },
+          escalationTriggered: false,
+          timestamp: new Date().toISOString(),
+        };
+      }
 
       const completion = await groq.chat.completions.create({
         messages,
@@ -101,6 +108,15 @@ Return ONLY valid JSON:
   "escalationNeeded": true/false,
   "escalationReason": "string or null"
 }`;
+
+      if (!groq) {
+        return {
+          intent: "other",
+          requiresAction: false,
+          sentiment: "neutral",
+          escalationNeeded: false,
+        };
+      }
 
       const completion = await groq.chat.completions.create({
         messages: [{ role: "user", content: intentPrompt }],
@@ -294,6 +310,10 @@ Suggest 3 relevant FAQ topics from this list that might help the user:
 
 Return ONLY valid JSON:
 {"faqIds":[1,5,15]}`;
+
+      if (!groq) {
+        return [1, 2, 3];
+      }
 
       const completion = await groq.chat.completions.create({
         messages: [{ role: "user", content: faqPrompt }],

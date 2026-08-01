@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 const Buyer = require("../models/ServiceUser");
 const Provider = require("../models/ServiceProvider");
-const Admin = require("../src/modules/admin/admin.model");
+const Admin = require("../src/modules/admin/Admin.model");
 
 const roleModelMap = {
   buyer: Buyer,
