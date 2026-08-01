@@ -7,14 +7,14 @@ const morgan = require("morgan");
 
 app.set("trust proxy", true);
 
-const connectToDB = require("./utils/db");
+const connectToDB = require("../utils/db");
 const http = require("http");
 const socketIO = require("socket.io");
 const redis = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
-const { swaggerUi, swaggerSpec } = require("./src/config/swagger");
-const notificationService = require("./src/services/notification.service");
-const turnService = require("./src/modules/call/call.service");
+const { swaggerUi, swaggerSpec } = require("./config/swagger");
+const notificationService = require("./services/notification.service");
+const turnService = require("./modules/call/call.service");
 const REDIS_MAX_RECONNECT_ATTEMPTS = Number(
   process.env.REDIS_MAX_RECONNECT_ATTEMPTS || 5,
 );
@@ -153,30 +153,30 @@ app.use(
 );
 
 const routes = [
-  { path: "/auth", file: "./src/modules/auth/auth.routes" },
-  { path: "/file", file: "./src/modules/files/files.routes" },
-  { path: "/provider", file: "./src/modules/provider/provider.routes" },
-  { path: "/users", file: "./src/modules/users/users.routes" },
-  { path: "/contact", file: "./src/modules/contact/contact.routes" },
-  { path: "/bookings", file: "./src/modules/bookings/bookings.routes" },
-  { path: "/fcm", file: "./src/modules/fcm/fcm.routes" },
+  { path: "/auth", file: "./modules/auth/auth.routes" },
+  { path: "/file", file: "./modules/files/files.routes" },
+  { path: "/provider", file: "./modules/provider/provider.routes" },
+  { path: "/users", file: "./modules/users/users.routes" },
+  { path: "/contact", file: "./modules/contact/contact.routes" },
+  { path: "/bookings", file: "./modules/bookings/bookings.routes" },
+  { path: "/fcm", file: "./modules/fcm/fcm.routes" },
   {
     path: "/notifications",
-    file: "./src/modules/notifications/notifications.routes",
+    file: "./modules/notifications/notifications.routes",
   },
-  { path: "/payment", file: "./src/modules/payment/payment.routes" },
-  { path: "/wallet", file: "./src/modules/wallet/wallet.routes" },
+  { path: "/payment", file: "./modules/payment/payment.routes" },
+  { path: "/wallet", file: "./modules/wallet/wallet.routes" },
   {
     path: "/transactions",
-    file: "./src/modules/transactions/transactions.routes",
+    file: "./modules/transactions/transactions.routes",
   },
-  { path: "/chats", file: "./src/modules/chat/chat.routes" },
+  { path: "/chats", file: "./modules/chat/chat.routes" },
   {
     path: "/support-chatbot",
-    file: "./src/modules/supportChatbot/chatbot.routes",
+    file: "./modules/supportChatbot/chatbot.routes",
   },
-  { path: "/admin", file: "./src/modules/admin/admin.routes" },
-  { path: "/call", file: "./src/modules/call/call.routes" },
+  { path: "/admin", file: "./modules/admin/admin.routes" },
+  { path: "/call", file: "./modules/call/call.routes" },
 ];
 
 routes.forEach((route) => {

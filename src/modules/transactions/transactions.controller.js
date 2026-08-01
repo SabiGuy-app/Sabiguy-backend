@@ -1,4 +1,4 @@
-const Transaction = require("../../../models/Transaction");
+const Transaction = require("./transaction.model");
 const mongoose = require("mongoose");
 
 class TransactionController {
