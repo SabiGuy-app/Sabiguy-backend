@@ -27,7 +27,7 @@ const io = socketIO(server, {
   cors: {
     origin: [
       "http://localhost:5173",
-      "http://localhost:3001",
+      // "http://localhost:3001",
       "https://sabi-admin-two.vercel.app",
       "https://sabiguy.vercel.app",
       "https://www.sabiguy.com",
