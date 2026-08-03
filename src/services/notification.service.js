@@ -1,7 +1,7 @@
 const admin = require("firebase-admin");
 const Buyer = require("../../models/ServiceUser");
 const Provider = require("../../models/ServiceProvider");
-const Notification = require("../../models/Notification");
+const Notification = require("../modules/notifications/notification.model");
 
 class NotificationService {
   constructor() {
@@ -291,7 +291,7 @@ class NotificationService {
 
   async notifyBookingTaken(bookingId, acceptedProviderId) {
     try {
-      const Booking = require("../../models/Bookings");
+      const Booking = require("../modules/bookings/bookings.model");
       const booking = await Booking.findById(bookingId);
 
       if (!booking || !booking.notifiedProviders) return;

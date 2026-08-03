@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "sabiguy-api",
-      script: "./index.js",
+      script: "./src/index.js",
       instances: "max",
       exec_mode: "cluster",
       env: {
