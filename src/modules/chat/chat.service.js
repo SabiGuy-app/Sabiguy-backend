@@ -1,8 +1,8 @@
 // const Chat = require ('../../models/Chat');
 
 const Chat = require ('./chat.model');
-const notificationService = require ('./notification.service');
-const Booking = require ('../../models/Bookings');
+const notificationService = require ('../../services/notification.service')
+const Booking = require ('../bookings/Bookings.model')
 
 const ACTIVE_BOOKING_STATUSES = new Set([
   'paid_escrow',
