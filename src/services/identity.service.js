@@ -1,6 +1,6 @@
 const Buyer = require("../../models/ServiceUser");
 const Provider = require("../../models/ServiceProvider");
-const Admin = require("../../models/Admin");
+const Admin = require("../modules/admin/Admin.model");
 
 const EMAIL_MODELS = [
   { role: "buyer", model: Buyer },
@@ -13,7 +13,10 @@ const PHONE_MODELS = [
   { role: "provider", model: Provider },
 ];
 
-const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeEmail = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase();
 
 const normalizePhoneNumber = (phoneNumber) =>
   String(phoneNumber || "")

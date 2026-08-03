@@ -1,0 +1,370 @@
+const express = require("express");
+const {
+  getAllBuyers,
+  getAllProviders,
+  getAllUsers,
+  getUserByEmail,
+  getUserById,
+  uploadUserNin,
+  updateUserLocation,
+} = require("./users.controller");
+const authMiddleware = require("../../../middleware/authMiddleware");
+
+const router = express.Router();
+
+/**
+ * @swagger
+ * tags:
+ *   name: Users
+ *   description: Admin or system-level routes for managing users
+ */
+
+/**
+ * @swagger
+ * /api/v1/users/buyers:
+ *   get:
+ *     summary: Get all buyers
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number (default 1)
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *         description: Items per page (default 20, max 100)
+ *     responses:
+ *       200:
+ *         description: List of all buyers
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: number
+ *                 total:
+ *                   type: number
+ *                 page:
+ *                   type: number
+ *                 totalPages:
+ *                   type: number
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ */
+router.get("/buyers", getAllBuyers);
+
+/**
+ * @swagger
+ * /api/v1/users/providers:
+ *   get:
+ *     summary: Get all providers with full details
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number (default 1)
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *         description: Items per page (default 20, max 100)
+ *       - name: kycLevel
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 3
+ *         description: Filter by exact KYC level
+ *       - name: kycVerified
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *           example: true
+ *         description: Filter by KYC verification status
+ *     responses:
+ *       200:
+ *         description: List of all service providers with business details, jobs, and visuals
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: number
+ *                 total:
+ *                   type: number
+ *                 page:
+ *                   type: number
+ *                 totalPages:
+ *                   type: number
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       BusinessName:
+ *                         type: string
+ *                       city:
+ *                         type: string
+ *                       address:
+ *                         type: string
+ *                       job:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             service:
+ *                               type: string
+ *                             title:
+ *                               type: string
+ *                             tagLine:
+ *                               type: string
+ *                       service:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             serviceName:
+ *                               type: string
+ *                             pricingModel:
+ *                               type: string
+ *                             price:
+ *                               type: number
+ *                       workVisuals:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             pictures:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                             videos:
+ *                               type: array
+ *                               items:
+ *                                 type: string
+ *                       bankName:
+ *                         type: string
+ *                       accountNumber:
+ *                         type: string
+ *                       accountName:
+ *                         type: string
+ *                       bookingsCount:
+ *                         type: number
+ */
+router.get("/providers", getAllProviders);
+
+/**
+ * @swagger
+ * /api/v1/users:
+ *   get:
+ *     summary: Get all users (buyers + providers)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: Page number (default 1)
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           example: 20
+ *         description: Items per page (default 20, max 100)
+ *     responses:
+ *       200:
+ *         description: Combined list of all users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: number
+ *                 total:
+ *                   type: number
+ *                 page:
+ *                   type: number
+ *                 totalPages:
+ *                   type: number
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ */
+router.get("/", getAllUsers);
+
+/**
+ * @swagger
+ * /api/v1/users/nin:
+ *   post:
+ *     summary: Upload user NIN slip
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ninSlip
+ *             properties:
+ *               ninSlip:
+ *                 type: string
+ *                 description: NIN slip or NIN document URL / identifier
+ *                 example: https://res.cloudinary.com/demo/image/upload/v1234567890/nin-slip.jpg
+ *     responses:
+ *       200:
+ *         description: NIN uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: NIN uploaded successfully
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.post("/nin", authMiddleware, uploadUserNin);
+
+/**
+ * @swagger
+ * /api/v1/users/email/{email}:
+ *   get:
+ *     summary: Get user by email
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: email
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The email of the user
+ *     responses:
+ *       200:
+ *         description: User found
+ *       404:
+ *         description: User not found
+ */
+router.get("/email/:email", getUserByEmail);
+
+/**
+ * @swagger
+ * /api/v1/users/{id}:
+ *   get:
+ *     summary: Get user by ID
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The MongoDB ID of the user
+ *     responses:
+ *       200:
+ *         description: User found successfully
+ *       404:
+ *         description: User not found
+ */
+router.get("/:id", getUserById);
+
+/**
+ * @swagger
+ * /api/v1/users/location:
+ *   put:
+ *     summary: Update user location
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - latitude
+ *               - longitude
+ *               - address
+ *             properties:
+ *               address:
+ *                 type: string
+ *                 example: Ikeja, Lagos
+ *               latitude:
+ *                 type: number
+ *                 example: 6.5244
+ *               longitude:
+ *                 type: number
+ *                 example: 3.3792
+ *     responses:
+ *       200:
+ *         description: Location updated successfully
+ *       400:
+ *         description: Latitude and longitude required
+ *       500:
+ *         description: Server error
+ */
+router.put("/location", authMiddleware, updateUserLocation);
+
+module.exports = router;
