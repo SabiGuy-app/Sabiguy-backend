@@ -167,7 +167,7 @@ io.on("connection", (socket) => {
     try {
       if (socket.userType !== "provider") return;
       const { latitude, longitude } = data;
-      const Provider = require("./models/ServiceProvider");
+      const Provider = require("../models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
         "currentLocation.coordinates": [longitude, latitude],
         lastLocationUpdate: new Date(),
@@ -182,7 +182,7 @@ io.on("connection", (socket) => {
     try {
       if (socket.userType !== "provider") return;
       const { isAvailable } = data;
-      const Provider = require("./models/ServiceProvider");
+      const Provider = require("../models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
         "availability.isAvailable": isAvailable,
         isOnline: true,
@@ -197,7 +197,7 @@ io.on("connection", (socket) => {
   socket.on("join_chat", async (data) => {
     try {
       const { bookingId } = data;
-      const chatService = require("./src/services/chat.service");
+      const chatService = require("./modules/chat/chat.service");
       const access = await chatService.canAccessChat(bookingId, socket.userId);
       if (!access.allowed) {
         socket.emit("error", {
@@ -229,7 +229,7 @@ io.on("connection", (socket) => {
   socket.on("send_message", async (data) => {
     try {
       const { bookingId, message, messageType, attachments } = data;
-      const chatService = require("./src/services/chat.service");
+      const chatService = require("./modules/chat/chat.service");
       const userModel = socket.userType === "provider" ? "Provider" : "Buyer";
       const result = await chatService.sendMessage(
         bookingId,
@@ -266,7 +266,7 @@ io.on("connection", (socket) => {
   socket.on("mark_read", async (data) => {
     try {
       const { bookingId } = data;
-      const chatService = require("./src/services/chat.service");
+      const chatService = require("./modules/chat/chat.service");
       await chatService.markAsRead(bookingId, socket.userId);
       const chatRoom = `booking:${bookingId}`;
       socket.to(chatRoom).emit("messages_read", {
@@ -401,7 +401,7 @@ io.on("connection", (socket) => {
     console.log(`   User: ${socket.userId}`);
     if (socket.userType === "provider") {
       try {
-        const Provider = require("./models/ServiceProvider");
+        const Provider = require("../models/ServiceProvider");
         await Provider.findByIdAndUpdate(socket.userId, {
           isOnline: false,
           lastSeen: new Date(),

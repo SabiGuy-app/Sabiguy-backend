@@ -1,3 +1,5 @@
+const chatService = require("./chat.service");
+
 class ChatController {
   async sendMessage(req, res) {
     try {

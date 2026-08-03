@@ -309,7 +309,7 @@ class ProviderController {
       const providerId = req.user.id;
 
       // Get wallet balance (more accurate!)
-      const walletService = require("../src/services/wallet.service");
+      const walletService = require("../wallet/wallet.service");
       const walletBalance = await walletService.getBalance(
         providerId,
         "Provider",

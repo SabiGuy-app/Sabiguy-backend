@@ -2,6 +2,7 @@ const { OAuth2Client } = require("google-auth-library");
 const dotenv = require("dotenv");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const axios = require("axios");
 const Provider = require("../../../models/ServiceProvider");
 const Buyer = require("../../../models/ServiceUser");
 const Admin = require("../admin/Admin.model");
