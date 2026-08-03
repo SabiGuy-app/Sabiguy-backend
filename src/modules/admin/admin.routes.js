@@ -46,7 +46,7 @@ const adminPaymentVerifyLimiter = rateLimit({
 /**
  * @swagger
  * tags:
- *   name: Admin
+ *   name: Admins
  *   description: Admin endpoints
  */
 
