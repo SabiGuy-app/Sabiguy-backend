@@ -17,6 +17,7 @@ const adminRoutes = require('./modules/admin/admin.routes');
 const supportChatbotRoutes = require('./modules/supportChatbot/chatbot.routes');
 const fcmRoutes = require('./modules/fcm/fcm.routes');
 const callRoutes = require('./modules/call/call.routes');
+const businessRoutes = require('./modules/business/business.routes');
 
 const createApp = () => {
   const app = express();
@@ -25,18 +26,20 @@ const createApp = () => {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(morgan('dev'));
-  app.use(cors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3001',
-      'https://sabi-admin-two.vercel.app',
-      'https://sabiguy.vercel.app',
-      'https://www.sabiguy.com',
-    ],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-  }));
+  app.use(
+    cors({
+      origin: [
+        'http://localhost:5173',
+        'http://localhost:3001',
+        'https://sabi-admin-two.vercel.app',
+        'https://sabiguy.vercel.app',
+        'https://www.sabiguy.com',
+      ],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true,
+    }),
+  );
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/file', filesRoutes);
@@ -53,6 +56,7 @@ const createApp = () => {
   app.use('/api/v1/support-chatbot', supportChatbotRoutes);
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v1/call', callRoutes);
+  app.use('/api/v1/businesses', businessRoutes);
 
   app.get('/api-docs/swagger.json', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
