@@ -42,6 +42,12 @@ BusinessName: { type: String },
     plateNumber: { type: String },
     type: { type: String },
     image: { type: String },
+    // Driver currently assigned to this vehicle, if any (see assumptions note).
+    assignedDriver: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Provider",
+      default: null,
+    },
   },
 ],
    drivers: [

@@ -9,7 +9,7 @@ const notificationSchema = new mongoose.Schema({
   recipientModel: {
     type: String,
     required: true,
-    enum: ['Buyer', 'Provider']
+    enum: ['Buyer', 'Provider', 'Business']
   },
   type: {
     type: String,
@@ -34,7 +34,10 @@ const notificationSchema = new mongoose.Schema({
       'booking_status_updated',
       'booking_disputed',
       'booking_auto_completed',
-      'booking_completed_awaiting_acceptance'
+      'booking_completed_awaiting_acceptance',
+      'driver_invitation_received',
+      'driver_invitation_accepted',
+      'driver_invitation_rejected'
     ]
   },
   title: {
