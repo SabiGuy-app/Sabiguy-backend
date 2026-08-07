@@ -196,6 +196,36 @@ const sendKycDisputeEmail = async (email, data = {}) => {
   }
 };
 
+const sendDriverInvitationEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+
+  const businessName = data.businessName || "a business";
+
+  sendSmtpEmail.subject = `You've been invited to join ${businessName} as a driver`;
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate("driver-invitation.njk", {
+    driverName: data.driverName || "there",
+    businessName,
+    inviteLink: data.inviteLink,
+    expiryDays: data.expiryDays || 7,
+    year: new Date().getFullYear(),
+    ...data,
+  });
+  sendSmtpEmail.sender = sender;
+
+  try {
+    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log(
+      "Driver invitation email sent. Message ID:",
+      result.body.messageId,
+    );
+    return { success: true, messageId: result.body.messageId };
+  } catch (error) {
+    console.error("Driver invitation email error:", error);
+    throw new Error(error.message || "Driver invitation email failed");
+  }
+};
+
 module.exports = {
   sendEmailOtp,
   forgotPasswordOtp,
@@ -204,4 +234,5 @@ module.exports = {
   sendNinSubmittedEmail,
   sendKycVerificationEmail,
   sendKycDisputeEmail,
+  sendDriverInvitationEmail,
 };

@@ -1,6 +1,7 @@
 const admin = require("firebase-admin");
 const Buyer = require("../../models/ServiceUser");
 const Provider = require("../../models/ServiceProvider");
+const Business = require("../modules/business/business.model");
 const Notification = require("../modules/notifications/notification.model");
 
 class NotificationService {
@@ -108,6 +109,11 @@ class NotificationService {
       payment_received: "walletPayments",
       payment_sent: "walletPayments",
       test: "promotions",
+      // Fleet/driver-invitation events don't have a dedicated preference
+      // category yet, so they ride on "bookings" (closest existing fit).
+      driver_invitation_received: "bookings",
+      driver_invitation_accepted: "bookings",
+      driver_invitation_rejected: "bookings",
     };
     return map[type] || "bookings";
   }
@@ -251,6 +257,41 @@ class NotificationService {
     }
   }
 
+  // Business accounts don't have a `notificationPreferences` block on their
+  // model (unlike Buyer/Provider), so this intentionally skips the
+  // preference-gating that notifyUser/notifyProvider do and always creates
+  // the in-app record, sending a push if an fcmToken is present.
+  async notifyBusiness(businessId, data) {
+    try {
+      const notification = await this.createNotification(
+        businessId,
+        "Business",
+        data,
+      );
+
+      const room = `business:${businessId}`;
+      if (this.io && notification) {
+        this.io.to(room).emit("new_notification", notification);
+      }
+
+      await this.sendPushNotification(businessId, "Business", data).catch(
+        (error) => {
+          this.logNotificationError(
+            "notifyBusiness:push",
+            businessId,
+            "Business",
+            error,
+          );
+        },
+      );
+
+      return notification;
+    } catch (error) {
+      this.logNotificationError("notifyBusiness", businessId, "Business", error);
+      throw error;
+    }
+  }
+
   async sendNotification(userId, userModel, data) {
     try {
       const preferences = await this.getPreferences(userId, userModel);
@@ -355,6 +396,10 @@ class NotificationService {
       if (recipientModel === "Buyer") {
         const user = await Buyer.findById(recipientId).select("fcmToken");
         fcmToken = user?.fcmToken;
+      } else if (recipientModel === "Business") {
+        const business =
+          await Business.findById(recipientId).select("fcmToken");
+        fcmToken = business?.fcmToken;
       } else {
         const provider =
           await Provider.findById(recipientId).select("fcmToken");
@@ -421,6 +466,10 @@ class NotificationService {
     try {
       if (recipientModel === "Buyer") {
         await Buyer.findByIdAndUpdate(recipientId, { $unset: { fcmToken: 1 } });
+      } else if (recipientModel === "Business") {
+        await Business.findByIdAndUpdate(recipientId, {
+          $unset: { fcmToken: 1 },
+        });
       } else {
         await Provider.findByIdAndUpdate(recipientId, {
           $unset: { fcmToken: 1 },
@@ -444,6 +493,9 @@ class NotificationService {
       booking_auto_completed: " ⚠️ Booking Auto completed",
       booking_completed_awaiting_acceptance:
         "⚠️ Booking Completed - Awaiting Your Acceptance",
+      driver_invitation_received: "🚚 New Fleet Invitation",
+      driver_invitation_accepted: "✅ Driver Accepted Invitation",
+      driver_invitation_rejected: "❌ Driver Declined Invitation",
     };
 
     return titles[type] || "Notification";
