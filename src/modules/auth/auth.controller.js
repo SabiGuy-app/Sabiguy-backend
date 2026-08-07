@@ -1190,6 +1190,56 @@ exports.changePassword = async (req, res) => {
   }
 };
 
+exports.deleteAccount = async (req, res) => {
+  try {
+    const { id, role } = req.user || {};
+
+    if (!id || !role) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    const Model = roleModelMap[role];
+    if (!Model) {
+      return res.status(403).json({ message: "Invalid role" });
+    }
+
+    const user = await Model.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.isDeleted) {
+      return res.status(400).json({ message: "Account already deleted" });
+    }
+
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    user.isActive = false;
+    user.deactivatedAt = new Date();
+    user.refreshToken = null;
+    user.refreshTokenExpiresAt = null;
+    user.password = null;
+    user.email = null;
+    user.phoneNumber = null;
+    user.fcmToken = null;
+    user.device = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting account",
+      error: error.message,
+    });
+  }
+};
+
 exports.me = async (req, res) => {
   try {
     const { id, role } = req.user || {};
