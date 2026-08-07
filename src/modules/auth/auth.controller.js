@@ -31,6 +31,21 @@ const getRefreshTokenExpiryDate = authService.getRefreshTokenExpiryDate;
 const buildAuthUserPayload = authService.buildAuthUserPayload;
 const { passwordMatches } = authService;
 
+const client = new OAuth2Client();
+
+const getAllowedGoogleClientIds = () => {
+  return [
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_ANDROID_CLIENT_ID,
+    process.env.GOOGLE_IOS_CLIENT_ID,
+  ].filter(Boolean);
+};
+
+const isAllowedGoogleAudience = (audience) => {
+  if (!audience) return false;
+  return getAllowedGoogleClientIds().includes(audience);
+};
+
 exports.googleSignUp = async (req, res) => {
   const { token } = req.body;
 
@@ -46,7 +61,7 @@ exports.googleSignUp = async (req, res) => {
     try {
       const ticket = await client.verifyIdToken({
         idToken: token,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: getAllowedGoogleClientIds(),
       });
       const payload = ticket.getPayload();
       email = payload.email;
@@ -72,7 +87,7 @@ exports.googleSignUp = async (req, res) => {
           },
         );
 
-        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+        if (!isAllowedGoogleAudience(tokenInfoResponse.data.aud)) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
@@ -218,7 +233,7 @@ exports.googleSignUpBuyer = async (req, res) => {
     try {
       const ticket = await client.verifyIdToken({
         idToken: token,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: getAllowedGoogleClientIds(),
       });
 
       const payload = ticket.getPayload();
@@ -242,7 +257,7 @@ exports.googleSignUpBuyer = async (req, res) => {
           { params: { access_token: token } },
         );
 
-        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+        if (!isAllowedGoogleAudience(tokenInfoResponse.data.aud)) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
@@ -379,7 +394,7 @@ exports.googleLogIn = async (req, res) => {
     try {
       const ticket = await client.verifyIdToken({
         idToken: token,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: getAllowedGoogleClientIds(),
       });
       const payload = ticket.getPayload();
       email = payload.email;
@@ -400,11 +415,11 @@ exports.googleLogIn = async (req, res) => {
 
         console.log("Token info:", tokenInfoResponse.data);
 
-        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+        if (!isAllowedGoogleAudience(tokenInfoResponse.data.aud)) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
-        // Get user profile using access token
+        // Get user profile using access token...
         const userInfoResponse = await axios.get(
           "https://www.googleapis.com/oauth2/v3/userinfo",
           {
@@ -1171,6 +1186,56 @@ exports.changePassword = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Error changing password",
+    });
+  }
+};
+
+exports.deleteAccount = async (req, res) => {
+  try {
+    const { id, role } = req.user || {};
+
+    if (!id || !role) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    const Model = roleModelMap[role];
+    if (!Model) {
+      return res.status(403).json({ message: "Invalid role" });
+    }
+
+    const user = await Model.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.isDeleted) {
+      return res.status(400).json({ message: "Account already deleted" });
+    }
+
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    user.isActive = false;
+    user.deactivatedAt = new Date();
+    user.refreshToken = null;
+    user.refreshTokenExpiresAt = null;
+    user.password = null;
+    user.email = null;
+    user.phoneNumber = null;
+    user.fcmToken = null;
+    user.device = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error deleting account",
+      error: error.message,
     });
   }
 };

@@ -14,6 +14,7 @@ const {
   resendOTP,
   changePassword,
   refreshAuthToken,
+  deleteAccount,
   me,
 } = require("./auth.controller.js");
 const authMiddleware = require("../../../middleware/authMiddleware.js");
@@ -446,6 +447,26 @@ router.put(
   changePasswordLimiter,
   changePassword,
 );
+
+/**
+ * @swagger
+ * /api/v1/auth/delete-account:
+ *   delete:
+ *     summary: Delete the authenticated user's account
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *       400:
+ *         description: Account already deleted
+ *       401:
+ *         description: Invalid or missing token
+ *       404:
+ *         description: User not found
+ */
+router.delete("/delete-account", authMiddleware, deleteAccount);
 
 /**
  * @swagger
