@@ -1,39 +1,42 @@
-const Buyer = require("../../models/ServiceUser");
-const Provider = require("../../models/ServiceProvider");
-const Admin = require("../modules/admin/Admin.model");
+const Buyer = require('../../models/ServiceUser');
+const Provider = require('../../models/ServiceProvider');
+const Admin = require('../modules/admin/Admin.model');
+const BusinessOwner = require('../modules/business/business.model');
 
 const EMAIL_MODELS = [
-  { role: "buyer", model: Buyer },
-  { role: "provider", model: Provider },
-  { role: "admin", model: Admin },
+  { role: 'buyer', model: Buyer },
+  { role: 'provider', model: Provider },
+  { role: 'admin', model: Admin },
+  { role: 'businessOwner', model: BusinessOwner },
 ];
 
 const PHONE_MODELS = [
-  { role: "buyer", model: Buyer },
-  { role: "provider", model: Provider },
+  { role: 'buyer', model: Buyer },
+  { role: 'provider', model: Provider },
+  { role: 'businessOwner', model: BusinessOwner },
 ];
 
 const normalizeEmail = (email) =>
-  String(email || "")
+  String(email || '')
     .trim()
     .toLowerCase();
 
 const normalizePhoneNumber = (phoneNumber) =>
-  String(phoneNumber || "")
+  String(phoneNumber || '')
     .trim()
-    .replace(/[\s().-]/g, "");
+    .replace(/[\s().-]/g, '');
 
 const escapeRegex = (value) =>
-  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const buildLoosePhoneRegex = (phoneNumber) =>
   new RegExp(
     `^${String(phoneNumber)
       .trim()
-      .split("")
+      .split('')
       .map((char) => escapeRegex(char))
-      .join("[\\s().-]*")}$`,
-    "i",
+      .join('[\\s().-]*')}$`,
+    'i',
   );
 
 const findByEmailInModel = async (model, email) => {
@@ -44,7 +47,7 @@ const findByEmailInModel = async (model, email) => {
   if (exactMatch) return exactMatch;
 
   return model.findOne({
-    email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, "i"),
+    email: new RegExp(`^${escapeRegex(normalizedEmail)}$`, 'i'),
   });
 };
 
