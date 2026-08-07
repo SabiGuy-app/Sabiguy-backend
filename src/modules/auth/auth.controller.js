@@ -31,6 +31,21 @@ const getRefreshTokenExpiryDate = authService.getRefreshTokenExpiryDate;
 const buildAuthUserPayload = authService.buildAuthUserPayload;
 const { passwordMatches } = authService;
 
+const client = new OAuth2Client();
+
+const getAllowedGoogleClientIds = () => {
+  return [
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_ANDROID_CLIENT_ID,
+    process.env.GOOGLE_IOS_CLIENT_ID,
+  ].filter(Boolean);
+};
+
+const isAllowedGoogleAudience = (audience) => {
+  if (!audience) return false;
+  return getAllowedGoogleClientIds().includes(audience);
+};
+
 exports.googleSignUp = async (req, res) => {
   const { token } = req.body;
 
@@ -46,7 +61,7 @@ exports.googleSignUp = async (req, res) => {
     try {
       const ticket = await client.verifyIdToken({
         idToken: token,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: getAllowedGoogleClientIds(),
       });
       const payload = ticket.getPayload();
       email = payload.email;
@@ -72,7 +87,7 @@ exports.googleSignUp = async (req, res) => {
           },
         );
 
-        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+        if (!isAllowedGoogleAudience(tokenInfoResponse.data.aud)) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
@@ -218,7 +233,7 @@ exports.googleSignUpBuyer = async (req, res) => {
     try {
       const ticket = await client.verifyIdToken({
         idToken: token,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: getAllowedGoogleClientIds(),
       });
 
       const payload = ticket.getPayload();
@@ -242,7 +257,7 @@ exports.googleSignUpBuyer = async (req, res) => {
           { params: { access_token: token } },
         );
 
-        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+        if (!isAllowedGoogleAudience(tokenInfoResponse.data.aud)) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
@@ -379,7 +394,7 @@ exports.googleLogIn = async (req, res) => {
     try {
       const ticket = await client.verifyIdToken({
         idToken: token,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: getAllowedGoogleClientIds(),
       });
       const payload = ticket.getPayload();
       email = payload.email;
@@ -400,11 +415,11 @@ exports.googleLogIn = async (req, res) => {
 
         console.log("Token info:", tokenInfoResponse.data);
 
-        if (tokenInfoResponse.data.aud !== process.env.GOOGLE_CLIENT_ID) {
+        if (!isAllowedGoogleAudience(tokenInfoResponse.data.aud)) {
           return res.status(401).json({ message: "Invalid token audience" });
         }
 
-        // Get user profile using access token
+        // Get user profile using access token...
         const userInfoResponse = await axios.get(
           "https://www.googleapis.com/oauth2/v3/userinfo",
           {
