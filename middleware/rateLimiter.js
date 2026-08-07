@@ -43,3 +43,25 @@ exports.transactionsLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+exports.businessAuthRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 6, // allow 6 OTP requests per window per IP
+  message: {
+    success: false,
+    message: "Too many OTP requests. Try again in 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+exports.businessAuthVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // allow 10 verify attempts per window per IP
+  message: {
+    success: false,
+    message: "Too many login attempts. Try again in 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});

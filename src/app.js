@@ -17,12 +17,13 @@ const adminRoutes = require('./modules/admin/admin.routes');
 const supportChatbotRoutes = require('./modules/supportChatbot/chatbot.routes');
 const fcmRoutes = require('./modules/fcm/fcm.routes');
 const callRoutes = require('./modules/call/call.routes');
+const businessAuthRoutes = require('./modules/business/business.auth.routes');
 const businessRoutes = require('./modules/business/business.routes');
 
 const createApp = () => {
   const app = express();
 
-  app.set('trust proxy', true);
+  app.set('trust proxy', process.env.NODE_ENV === 'development' ? false : true);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(morgan('dev'));
@@ -56,6 +57,7 @@ const createApp = () => {
   app.use('/api/v1/support-chatbot', supportChatbotRoutes);
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v1/call', callRoutes);
+  app.use('/api/v1/business/auth', businessAuthRoutes);
   app.use('/api/v1/businesses', businessRoutes);
 
   app.get('/api-docs/swagger.json', (req, res) => {
