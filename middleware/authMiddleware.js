@@ -2,11 +2,13 @@ const jwt = require("jsonwebtoken");
 const Buyer = require("../models/ServiceUser");
 const Provider = require("../models/ServiceProvider");
 const Admin = require("../src/modules/admin/Admin.model");
+const Business = require("../src/modules/business/business.model");
 
 const roleModelMap = {
   buyer: Buyer,
   provider: Provider,
   admin: Admin,
+  business: Business,
 };
 
 const authMiddleware = async (req, res, next) => {
