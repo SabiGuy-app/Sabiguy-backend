@@ -202,6 +202,8 @@ jobs:
             GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
             METERED_APP_DOMAIN=${{ secrets.METERED_APP_DOMAIN }}
             METERED_API_KEY=${{ secrets.METERED_API_KEY }}
+            GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+            GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}
             ENVEOF
 
       - name: Deploy to EC2
