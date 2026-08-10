@@ -14,7 +14,9 @@ const {
   resendOTP,
   changePassword,
   refreshAuthToken,
-  deleteAccount,
+  initiateAccountDeletion,
+  verifyAccountDeletionOtp,
+  confirmAccountDeletion,
   me,
 } = require("./auth.controller.js");
 const authMiddleware = require("../../../middleware/authMiddleware.js");
@@ -450,23 +452,87 @@ router.put(
 
 /**
  * @swagger
- * /api/v1/auth/delete-account:
- *   delete:
- *     summary: Delete the authenticated user's account
+ * /api/v1/auth/initiate-account-deletion:
+ *   post:
+ *     summary: Send an OTP to the authenticated user to start account deletion
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Account deleted successfully
+ *         description: Account deletion OTP sent successfully
  *       400:
  *         description: Account already deleted
  *       401:
  *         description: Invalid or missing token
- *       404:
- *         description: User not found
  */
-router.delete("/delete-account", authMiddleware, deleteAccount);
+router.post(
+  "/initiate-account-deletion",
+  authMiddleware,
+  initiateAccountDeletion,
+);
+
+/**
+ * @swagger
+ * /api/v1/auth/verify-account-deletion-otp:
+ *   post:
+ *     summary: Verify the OTP sent for account deletion
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [otp]
+ *             properties:
+ *               otp:
+ *                 type: string
+ *                 example: "123456"
+ *     responses:
+ *       200:
+ *         description: OTP verified successfully
+ *       400:
+ *         description: Invalid or expired OTP
+ */
+router.post(
+  "/verify-account-deletion-otp",
+  authMiddleware,
+  verifyAccountDeletionOtp,
+);
+
+/**
+ * @swagger
+ * /api/v1/auth/confirm-account-deletion:
+ *   post:
+ *     summary: Confirm account deletion after OTP verification
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [otp]
+ *             properties:
+ *               otp:
+ *                 type: string
+ *                 example: "123456"
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *       400:
+ *         description: Invalid, expired, or unverified OTP
+ */
+router.post(
+  "/confirm-account-deletion",
+  authMiddleware,
+  confirmAccountDeletion,
+);
 
 /**
  * @swagger
