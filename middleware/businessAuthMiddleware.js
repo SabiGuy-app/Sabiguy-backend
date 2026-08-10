@@ -20,6 +20,9 @@ const businessAuthMiddleware = async (req, res, next) => {
     if (!business) {
       return res.status(404).json({ message: 'Business not found' });
     }
+    if (business.isDeleted) {
+      return res.status(403).json({ message: 'Account deleted' });
+    }
     if (business.isActive === false) {
       return res.status(403).json({ message: 'Account deactivated' });
     }
