@@ -1151,15 +1151,15 @@ exports.confirmAccountDeletion = async (req, res) => {
     user.deletedAt = new Date();
     user.isActive = false;
     user.deactivatedAt = new Date();
-    user.refreshToken = null;
-    user.refreshTokenExpiresAt = null;
-    user.password = null;
-    user.email = null;
-    user.phoneNumber = null;
-    user.fcmToken = null;
+    user.refreshToken = undefined;
+    user.refreshTokenExpiresAt = undefined;
+    user.password = undefined;
+    user.unset("email");
+    user.unset("phoneNumber");
+    user.fcmToken = undefined;
     user.device = undefined;
-    user.accountDeletionOtp = null;
-    user.accountDeletionOtpExpiresAt = null;
+    user.accountDeletionOtp = undefined;
+    user.accountDeletionOtpExpiresAt = undefined;
     user.accountDeletionOtpVerified = false;
 
     await user.save();
