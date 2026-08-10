@@ -239,11 +239,144 @@ const respondToInvitation = async (driverId, { invitationId, action } = {}) => {
   return invitation;
 };
 
+const isValidUrl = (value) => {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+    return true;
+  } catch (err) {
+    return false;
+  }
+};
+
+// 5. Create the authenticated business owner's business profile.
+const addBusinessDetails = async (businessId, payload) => {
+  const {
+    businessName,
+    cacRegistrationNumber,
+    businessAddress,
+    cityOfOperation,
+    cacCertificateUrl,
+    nin,
+  } = payload;
+
+  const requiredFields = {
+    businessName,
+    cacRegistrationNumber,
+    businessAddress,
+    cityOfOperation,
+    cacCertificateUrl,
+    nin,
+  };
+
+  const missingField = Object.entries(requiredFields).find(
+    ([, value]) => value === undefined || value === null || value === "",
+  );
+  if (missingField) {
+    throw new ValidationError(`${missingField[0]} is required`);
+  }
+
+  if (!isValidUrl(cacCertificateUrl)) {
+    throw new ValidationError("cacCertificateUrl must be a valid URL");
+  }
+
+  const business = await businessRepository.findBusinessById(businessId);
+  if (!business || business.isDeleted) {
+    throw new NotFoundError("Business not found");
+  }
+
+  const alreadyOnboarded = Boolean(
+    business.BusinessName || business.regNumber || business.cacFile,
+  );
+  if (alreadyOnboarded) {
+    throw new ConflictError("Business profile already exists for this user");
+  }
+
+  const updated = await businessRepository.saveBusinessDetails(businessId, {
+    BusinessName: businessName,
+    regNumber: cacRegistrationNumber,
+    BusinessAddress: businessAddress,
+    cityOfOperation,
+    cacFile: cacCertificateUrl,
+    ninSlip: nin,
+  });
+
+  return {
+    businessName: updated.BusinessName,
+    cacRegistrationNumber: updated.regNumber,
+    businessAddress: updated.BusinessAddress,
+    cityOfOperation: updated.cityOfOperation,
+    cacCertificateUrl: updated.cacFile,
+    nin: updated.ninSlip,
+  };
+};
+
+// 6. Add one or more vehicles for the authenticated business owner.
+const addVehicleDetails = async (businessId, vehicles) => {
+  if (!Array.isArray(vehicles) || vehicles.length === 0) {
+    throw new ValidationError("vehicles must be a non-empty array");
+  }
+
+  const business = await businessRepository.findBusinessById(businessId);
+  if (!business || business.isDeleted) {
+    throw new NotFoundError("Business not found");
+  }
+
+  const existingPlateNumbers = new Set(
+    business.vehicles.map((vehicle) => vehicle.plateNumber),
+  );
+  const incomingPlateNumbers = new Set();
+  const newVehicles = [];
+
+  vehicles.forEach((vehicle, index) => {
+    const { vehicleName, plateNumber, vehicleType, vehiclePictureUrl } = vehicle;
+
+    const requiredFields = { vehicleName, plateNumber, vehicleType, vehiclePictureUrl };
+    const missingField = Object.entries(requiredFields).find(
+      ([, value]) => value === undefined || value === null || value === "",
+    );
+    if (missingField) {
+      throw new ValidationError(`vehicles[${index}].${missingField[0]} is required`);
+    }
+
+    if (!isValidUrl(vehiclePictureUrl)) {
+      throw new ValidationError(
+        `vehicles[${index}].vehiclePictureUrl must be a valid URL`,
+      );
+    }
+
+    if (existingPlateNumbers.has(plateNumber) || incomingPlateNumbers.has(plateNumber)) {
+      throw new ConflictError(`Duplicate plate number: ${plateNumber}`);
+    }
+
+    incomingPlateNumbers.add(plateNumber);
+    newVehicles.push({
+      name: vehicleName,
+      plateNumber,
+      type: vehicleType,
+      image: vehiclePictureUrl,
+    });
+  });
+
+  const updated = await businessRepository.addVehiclesToBusiness(businessId, newVehicles);
+
+  const createdVehicles = updated.vehicles.slice(-newVehicles.length).map((vehicle) => ({
+    vehicleName: vehicle.name,
+    plateNumber: vehicle.plateNumber,
+    vehicleType: vehicle.type,
+    vehiclePictureUrl: vehicle.image,
+  }));
+
+  return createdVehicles;
+};
+
 module.exports = {
   getBusinessesWithPagination,
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,
+  addBusinessDetails,
+  addVehicleDetails,  
   respondToInvitation,
   ValidationError,
   NotFoundError,

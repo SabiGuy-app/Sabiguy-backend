@@ -202,10 +202,45 @@ const respondToInvitation = async (req, res) => {
   }
 };
 
+// POST /business-details — create the authenticated business owner's profile.
+const addBusinessDetails = async (req, res) => {
+  try {
+    const business = await businessService.addBusinessDetails(req.user.id, req.body);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Business details saved successfully',
+      data: business,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to save business details');
+  }
+};
+
+// POST /vehicle-details — add one or more vehicles for the authenticated business owner.
+const addVehicleDetails = async (req, res) => {
+  try {
+    const vehicles = await businessService.addVehicleDetails(
+      req.user.id,
+      req.body.vehicles,
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Vehicle details saved successfully',
+      data: vehicles,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to save vehicle details');
+  }
+};
+
 module.exports = {
   getAllBusinesses,
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,
   respondToInvitation,
+  addBusinessDetails,
+  addVehicleDetails,
 };
