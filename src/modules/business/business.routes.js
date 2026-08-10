@@ -6,11 +6,140 @@ const {
   getBusinessDrivers,
   getBusinessVehicles,
   respondToInvitation,
+  addBusinessDetails,
+  addVehicleDetails,
 } = require('./business.controller');
 const authMiddleware = require('../../../middleware/authMiddleware');
 const onlyRole = require('../../../middleware/roleMiddleware');
 
 router.get('/getAllBusinesses', authMiddleware, getAllBusinesses);
+
+/**
+ * @swagger
+ * tags:
+ *   name: Business
+ *   description: Business profile and vehicle management routes
+ */
+
+/**
+ * @swagger
+ * /api/v1/businesses/business-details:
+ *   post:
+ *     summary: Create the authenticated business owner's business profile
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - businessName
+ *               - cacRegistrationNumber
+ *               - businessAddress
+ *               - cityOfOperation
+ *               - cacCertificateUrl
+ *               - nin
+ *             properties:
+ *               businessName:
+ *                 type: string
+ *                 example: "ABC Logistics"
+ *               cacRegistrationNumber:
+ *                 type: string
+ *                 example: "RC123456"
+ *               businessAddress:
+ *                 type: string
+ *                 example: "12 Allen Avenue"
+ *               cityOfOperation:
+ *                 type: string
+ *                 example: "Lagos"
+ *               cacCertificateUrl:
+ *                 type: string
+ *                 example: "https://res.cloudinary.com/demo/image/upload/v123456/cac-certificate.pdf"
+ *               nin:
+ *                 type: string
+ *                 example: "12345678901"
+ *     responses:
+ *       201:
+ *         description: Business details created successfully
+ *       400:
+ *         description: Missing or invalid fields
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Business access only
+ *       404:
+ *         description: Business not found
+ *       409:
+ *         description: Business profile already exists for this user
+ */
+router.post(
+  '/business-details',
+  authMiddleware,
+  onlyRole('businessOwner'),
+  addBusinessDetails,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/vehicle-details:
+ *   post:
+ *     summary: Add one or more vehicles for the authenticated business owner
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [vehicles]
+ *             properties:
+ *               vehicles:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - vehicleName
+ *                     - plateNumber
+ *                     - vehicleType
+ *                     - vehiclePictureUrl
+ *                   properties:
+ *                     vehicleName:
+ *                       type: string
+ *                       example: "Toyota Corolla"
+ *                     plateNumber:
+ *                       type: string
+ *                       example: "ABC-123XY"
+ *                     vehicleType:
+ *                       type: string
+ *                       example: "Sedan"
+ *                     vehiclePictureUrl:
+ *                       type: string
+ *                       example: "https://res.cloudinary.com/demo/image/upload/v123456/car1.jpg"
+ *     responses:
+ *       201:
+ *         description: Vehicles created successfully
+ *       400:
+ *         description: Missing or invalid fields in one or more vehicles
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Business access only
+ *       404:
+ *         description: Business not found
+ *       409:
+ *         description: Duplicate plate number
+ */
+router.post(
+  '/vehicle-details',
+  authMiddleware,
+  onlyRole('businessOwner'),
+  addVehicleDetails,
+);
 
 // Business/Fleet management
 router.post(
@@ -19,6 +148,7 @@ router.post(
   onlyRole('business'),
   inviteDriver,
 );
+
 router.get(
   '/drivers',
   authMiddleware,
