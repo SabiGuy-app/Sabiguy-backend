@@ -18,9 +18,15 @@ const serviceProviderSchema = new mongoose.Schema(
     deletedAt: { type: Date, default: null },
     emailVerified: { type: Boolean, default: false },
     otp: { type: String },
+    otpExpiresAt: { type: Date },
+    lastVerificationOtpSentAt: { type: Date, default: null },
     resetOtp: { type: String },
+    accountDeletionOtp: { type: String },
+  accountDeletionOtpExpiresAt: { type: Date },
+  accountDeletionOtpVerified: { type: Boolean, default: false },
     isGoogleUser: { type: Boolean, default: false },
     googleId: String,
+    authMethods: [{ type: String, enum: ['email', 'google'] }],
     refreshToken: { type: String },
     refreshTokenExpiresAt: { type: Date },
     resetOtpExpires: { type: Date },
@@ -108,6 +114,7 @@ const serviceProviderSchema = new mongoose.Schema(
       coordinates: {
         type: [Number], // [longitude, latitude]
         index: "2dsphere",
+        default: [0, 0],
       },
       address: String, // Optional
     },

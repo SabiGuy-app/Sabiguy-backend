@@ -82,4 +82,5 @@ module.exports = {
   getRefreshTokenExpiryDate,
   buildAuthUserPayload,
   passwordMatches,
+  REFRESH_TOKEN_SECRET,
 };

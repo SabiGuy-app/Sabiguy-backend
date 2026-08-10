@@ -82,6 +82,20 @@ const addDriverToBusiness = (businessId, driverId, session) =>
     { $addToSet: { drivers: driverId } },
     { session },
   );
+  
+const saveBusinessDetails = (businessId, details) =>
+  Business.findByIdAndUpdate(
+    businessId,
+    { $set: details },
+    { new: true, runValidators: true },
+  );
+
+const addVehiclesToBusiness = (businessId, vehicles) =>
+  Business.findByIdAndUpdate(
+    businessId,
+    { $push: { vehicles: { $each: vehicles } } },
+    { new: true, runValidators: true },
+  );
 
 module.exports = {
   findBusinessById,
@@ -93,4 +107,6 @@ module.exports = {
   getInvitationsByBusiness,
   getBusinessVehiclesPage,
   addDriverToBusiness,
+  saveBusinessDetails,
+  addVehiclesToBusiness,
 };

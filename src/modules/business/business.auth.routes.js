@@ -9,10 +9,16 @@ const {
   googleLogin,
   refreshAuthToken,
   me,
+  forgotPassword,
+  resendForgotPasswordOtp,
+  verifyResetOtp,
+  resetPassword,
+  changePassword,
 } = require('./business.auth.controller');
 const {
   businessAuthRequestLimiter,
   businessAuthVerifyLimiter,
+  businessChangePasswordLimiter,
 } = require('../../../middleware/rateLimiter');
 const businessAuthMiddleware = require('../../../middleware/businessAuthMiddleware');
 
@@ -50,21 +56,7 @@ const businessAuthMiddleware = require('../../../middleware/businessAuthMiddlewa
  *               phoneNumber:
  *                 type: string
  *                 example: "+2348012345678"
- *               accountType:
- *                 type: string
- *                 example: "Sole Proprietorship"
- *               BusinessName:
- *                 type: string
- *                 example: "Sabi Guy Tech Solutions"
- *               regNumber:
- *                 type: string
- *                 example: "RC1234567"
- *               BusinessAddress:
- *                 type: string
- *                 example: "123 Main Street, Suite 4"
- *               cityOfOperation:
- *                 type: string
- *                 example: "Lagos"
+ *
  *     responses:
  *       200:
  *         description: OTP sent to email. Please verify to complete registration.
@@ -218,6 +210,164 @@ router.post('/google-signup', businessAuthRequestLimiter, googleSignUp);
  *         description: Business account not found
  */
 router.post('/google-login', businessAuthVerifyLimiter, googleLogin);
+
+/**
+ * @swagger
+ * /api/v1/business/auth/forgot-password:
+ *   post:
+ *     summary: Request password reset link/OTP
+ *     tags: [Business-Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "owner@example.com"
+ *     responses:
+ *       201:
+ *         description: Password reset link/OTP sent
+ *       400:
+ *         description: User not found
+ */
+router.post('/forgot-password', businessAuthRequestLimiter, forgotPassword);
+
+/**
+ * @swagger
+ * /api/v1/business/auth/resend-forgot-password-otp:
+ *   post:
+ *     summary: Resend forgot password OTP
+ *     tags: [Business-Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "owner@example.com"
+ *     responses:
+ *       200:
+ *         description: Forgot password OTP resent successfully
+ *       400:
+ *         description: User not found
+ *       429:
+ *         description: Please wait before requesting another OTP
+ */
+router.post(
+  '/resend-forgot-password-otp',
+  businessAuthRequestLimiter,
+  resendForgotPasswordOtp,
+);
+
+/**
+ * @swagger
+ * /api/v1/business/auth/verify-reset-otp:
+ *   post:
+ *     summary: Validate password reset OTP
+ *     tags: [Business-Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, otp]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "owner@example.com"
+ *               otp:
+ *                 type: string
+ *                 example: "44576"
+ *     responses:
+ *       200:
+ *         description: OTP verified successfully
+ *       400:
+ *         description: Invalid or expired OTP
+ */
+router.post('/verify-reset-otp', businessAuthVerifyLimiter, verifyResetOtp);
+
+/**
+ * @swagger
+ * /api/v1/business/auth/reset-password:
+ *   post:
+ *     summary: Reset password using OTP
+ *     tags: [Business-Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, otp, newPassword]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "owner@example.com"
+ *               otp:
+ *                 type: string
+ *                 example: "44576"
+ *               newPassword:
+ *                 type: string
+ *                 example: "newStrongPassword123"
+ *     responses:
+ *       200:
+ *         description: Password reset successful
+ *       400:
+ *         description: Invalid or expired token
+ */
+router.post('/reset-password', businessAuthVerifyLimiter, resetPassword);
+
+/**
+ * @swagger
+ * /api/v1/business/auth/change-password:
+ *   put:
+ *     summary: Change password for authenticated business owner
+ *     tags: [Business-Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [oldPassword, newPassword]
+ *             properties:
+ *               oldPassword:
+ *                 type: string
+ *                 example: "OldPassword@123"
+ *               newPassword:
+ *                 type: string
+ *                 example: "NewPassword@123"
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Old password/new password missing or weak new password
+ *       401:
+ *         description: Old password is incorrect
+ *       404:
+ *         description: User not found
+ */
+router.put(
+  '/change-password',
+  businessAuthMiddleware,
+  businessChangePasswordLimiter,
+  changePassword,
+);
 
 /**
  * @swagger

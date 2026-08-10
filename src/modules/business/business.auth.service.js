@@ -1,40 +1,36 @@
-const { OAuth2Client } = require('google-auth-library');
-const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const Business = require('./business.model');
 const authService = require('../auth/auth.service');
 const {
   sendEmailOtp,
+  forgotPasswordOtp,
+  passwordChangedEmail,
   sendWelcomeEmail,
 } = require('../../config/emailVerification');
 const {
   normalizeEmail,
-  normalizePhoneNumber,
   findUserByEmailAcrossDb,
 } = require('../../services/identity.service');
+const {
+  AppError,
+  googleHelper,
+  passwordHelper,
+  emailHelper,
+  accountHelper,
+} = require('../../shared/utils/auth.helpers');
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const REFRESH_TOKEN_SECRET =
   authService.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET;
-
-class AppError extends Error {
-  constructor(message, status) {
-    super(message);
-    this.status = status;
-  }
-}
-
-const generateOtp = () =>
-  Math.floor(100000 + Math.random() * 900000).toString();
 
 const findBusinessByEmail = async (email, { includePassword = false } = {}) => {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) return null;
   let query = Business.findOne({ email: normalizedEmail });
   if (includePassword) query = query.select('+password');
-  return await query;
+  return query;
 };
+
 const getBusinessProfileById = async (id) => {
   const business = await Business.findById(id).select(
     '-password -otp -emailVerificationExpires -refreshToken -resetOtp -resetOtpExpires',
@@ -44,82 +40,28 @@ const getBusinessProfileById = async (id) => {
   }
   return business;
 };
-const verifyGoogleToken = async (token) => {
-  if (!token || typeof token !== 'string') {
-    throw new AppError('Token is required', 400);
+
+const issueTokens = async (business) => {
+  const token = authService.generateAccessToken(business);
+  const refreshToken = authService.generateRefreshToken(business);
+  business.refreshToken = refreshToken;
+  business.refreshTokenExpiresAt =
+    authService.getRefreshTokenExpiryDate(refreshToken);
+  await business.save();
+  return { token, refreshToken };
+};
+
+const guardAccountStatus = (business) => {
+  if (business.isDeleted) {
+    throw new AppError('Account deleted', 403);
   }
-
-  if (token.startsWith('1//')) {
-    throw new AppError(
-      'Invalid token format: Received a Refresh Token instead of an ID Token or Access Token',
-      400,
-    );
-  }
-
-  try {
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    return {
-      email: payload.email,
-      googleId: payload.sub,
-      name:
-        payload.name ||
-        `${payload.given_name || ''} ${payload.family_name || ''}`.trim(),
-      picture: payload.picture,
-    };
-  } catch (idTokenError) {
-    try {
-      const tokenInfoResponse = await axios.get(
-        'https://www.googleapis.com/oauth2/v3/tokeninfo',
-        {
-          params: { access_token: token },
-        },
-      );
-
-      const audience =
-        tokenInfoResponse.data.aud || tokenInfoResponse.data.issued_to;
-      if (audience !== process.env.GOOGLE_CLIENT_ID) {
-        throw new AppError('Invalid token audience', 401);
-      }
-
-      const userInfoResponse = await axios.get(
-        'https://www.googleapis.com/oauth2/v3/userinfo',
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const info = userInfoResponse.data;
-      return {
-        email: info.email,
-        googleId: info.sub,
-        name:
-          info.name ||
-          `${info.given_name || ''} ${info.family_name || ''}`.trim(),
-        picture: info.picture,
-      };
-    } catch (accessTokenError) {
-      throw new AppError('Invalid or expired Google token', 401);
-    }
+  if (business.isActive === false) {
+    throw new AppError('Account deactivated', 403);
   }
 };
 
-const registerBusiness = async ({
-  email,
-  password,
-  fullName,
-  phoneNumber,
-  accountType,
-  BusinessName,
-  regNumber,
-  BusinessAddress,
-  cityOfOperation,
-}) => {
+const registerBusiness = async ({ email, password, fullName, phoneNumber }) => {
   const normalizedEmail = normalizeEmail(email);
-  const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
   if (!normalizedEmail || !password) {
     throw new AppError('Email and password are required', 400);
@@ -131,7 +73,7 @@ const registerBusiness = async ({
       existingEmail.role === 'businessOwner' &&
       !existingEmail.user.emailVerified
     ) {
-      const otp = generateOtp();
+      const otp = accountHelper.generateOtp();
       existingEmail.user.otp = otp;
       existingEmail.user.emailVerificationExpires = new Date(
         Date.now() + 10 * 60 * 1000,
@@ -146,33 +88,33 @@ const registerBusiness = async ({
     throw new AppError('Email already in use', 400);
   }
 
-  if (normalizedPhoneNumber) {
-    const existingPhone = await Business.findOne({
-      phoneNumber: normalizedPhoneNumber,
-    });
-    if (existingPhone) {
-      throw new AppError('Phone number already in use', 400);
+  if (phoneNumber) {
+    const { normalizePhoneNumber } = require('../../services/identity.service');
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    if (normalizedPhoneNumber) {
+      const existingPhone = await Business.findOne({
+        phoneNumber: normalizedPhoneNumber,
+      });
+      if (existingPhone) {
+        throw new AppError('Phone number already in use', 400);
+      }
     }
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const otp = generateOtp();
+  const hashedPassword = await passwordHelper.hash(password);
+  const otp = accountHelper.generateOtp();
   const emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000);
 
   const newBusiness = new Business({
     email: normalizedEmail,
     password: hashedPassword,
     fullName,
-    phoneNumber: normalizedPhoneNumber || phoneNumber,
-    accountType,
-    BusinessName,
-    regNumber,
-    BusinessAddress,
-    cityOfOperation,
+    phoneNumber: phoneNumber || undefined,
     otp,
     emailVerificationExpires,
     emailVerified: false,
     role: 'businessOwner',
+    authMethods: ['email'],
   });
 
   await newBusiness.save();
@@ -186,7 +128,6 @@ const registerBusiness = async ({
   };
 };
 
-// FIX: Combined email lookup with OTP validation to prevent cross-account validation collisions
 const verifyBusinessEmail = async (email, otp) => {
   if (!email || !otp) {
     throw new AppError('Email and OTP are required', 400);
@@ -210,15 +151,11 @@ const verifyBusinessEmail = async (email, otp) => {
   business.otp = null;
   business.emailVerificationExpires = null;
   business.kycLevel = 1;
+  accountHelper.addAuthMethod(business, 'email');
   await business.save();
 
-  await sendWelcomeEmail(business.email, {
-    firstName: business.fullName
-      ? business.fullName.trim().split(/\s+/)[0]
-      : 'there',
-    year: new Date().getFullYear(),
-    ctaUrl: process.env.FRONTEND_URL || '',
-    ctaText: 'Open SabiGuy',
+  await emailHelper.sendWelcomeSafe(business.email, {
+    firstName: accountHelper.getFirstName(business.fullName),
     role: business.role,
   });
 
@@ -240,9 +177,19 @@ const resendBusinessOtp = async (email) => {
     throw new AppError('Email already verified', 400);
   }
 
-  const otp = generateOtp();
+  // Rate-limit: 1 OTP per 60 seconds
+  const now = new Date();
+  const lastSent = business.lastVerificationOtpSentAt
+    ? new Date(business.lastVerificationOtpSentAt)
+    : null;
+  if (lastSent && now.getTime() - lastSent.getTime() < 60 * 1000) {
+    throw new AppError('Please wait before requesting another OTP', 429);
+  }
+
+  const otp = accountHelper.generateOtp();
   business.otp = otp;
   business.emailVerificationExpires = new Date(Date.now() + 10 * 60 * 1000);
+  business.lastVerificationOtpSentAt = now;
   await business.save();
   await sendEmailOtp(normalizedEmail, otp);
 
@@ -255,44 +202,31 @@ const loginBusiness = async ({ email, password }) => {
     throw new AppError('Email and password are required', 400);
   }
 
-  const business = await findBusinessByEmail(normalizedEmail, {
-    includePassword: true,
-  });
+  const business = await findBusinessByEmail(normalizedEmail);
   if (!business) {
     throw new AppError('Invalid credentials', 400);
   }
 
-  if (business.isDeleted) {
-    throw new AppError('Account deleted', 403);
-  }
-
-  if (business.isActive === false) {
-    throw new AppError('Account deactivated', 403);
-  }
+  guardAccountStatus(business);
 
   if (!business.emailVerified) {
     throw new AppError('Please verify your email before logging in', 403);
   }
 
+  // Google-only user trying email/password login
   if (business.isGoogleUser && !business.password) {
     throw new AppError(
-      'You signed up with Google. Please log in using Google.',
+      "This account was created with Google. Please log in with Google, or use 'Forgot Password' to set a password.",
       400,
     );
   }
 
-  const isMatch = await bcrypt.compare(password, business.password);
+  const isMatch = await passwordHelper.compare(password, business.password);
   if (!isMatch) {
     throw new AppError('Invalid credentials', 400);
   }
 
-  const token = authService.generateAccessToken(business);
-  const refreshToken = authService.generateRefreshToken(business);
-
-  business.refreshToken = refreshToken;
-  business.refreshTokenExpiresAt =
-    authService.getRefreshTokenExpiryDate(refreshToken);
-  await business.save();
+  const { token, refreshToken } = await issueTokens(business);
 
   return {
     message: 'Login successful',
@@ -302,12 +236,13 @@ const loginBusiness = async ({ email, password }) => {
   };
 };
 
-const googleSignUpBusiness = async (token) => {
+const googleAuthBusiness = async (token) => {
   if (!token) {
     throw new AppError('Token is required', 400);
   }
 
-  const { email, googleId, name } = await verifyGoogleToken(token);
+  const { email, googleId, name, picture } =
+    await googleHelper.verifyToken(token);
   const normalizedEmail = normalizeEmail(email);
 
   if (!normalizedEmail) {
@@ -317,109 +252,260 @@ const googleSignUpBusiness = async (token) => {
   let business = await Business.findOne({ email: normalizedEmail });
 
   if (business) {
+    guardAccountStatus(business);
+
+    let message = 'Login successful';
+
+    // Case 1: Unverified account — verify + link Google
     if (!business.emailVerified) {
-      // Fix: Securely bridge unverified local user into Google auth context safely
       business.emailVerified = true;
       business.otp = null;
       business.emailVerificationExpires = null;
-      business.isGoogleUser = true;
-      business.googleId = googleId;
-    } else if (!business.isGoogleUser) {
-      // Fix: Broken error message string corrected
+      message = 'Email verified and account linked successfully.';
+    }
+
+    // Case 2: Existing email-only user — link Google account
+    if (!business.isGoogleUser) {
+      accountHelper.linkGoogleAccount(business, googleId);
+      message = 'Google account linked successfully.';
+    } else if (business.googleId && business.googleId !== googleId) {
+      // Case 3: Google ID mismatch
       throw new AppError(
-        'Email already in use with regular password login.',
-        400,
+        'Google account mismatch. Please use the correct Google account.',
+        401,
       );
     }
-    // Note: If they are already a verified Google user, we just allow them to get new tokens below.
-  } else {
-    const existingGlobalUser = await findUserByEmailAcrossDb(normalizedEmail);
-    if (existingGlobalUser) {
-      throw new AppError('Email already in use', 400);
+
+    // Update profile picture if missing
+    if (!business.profilePicture && picture) {
+      business.profilePicture = picture;
     }
 
-    business = new Business({
-      email: normalizedEmail,
-      password: null,
-      fullName: name,
-      isGoogleUser: true,
-      googleId,
-      emailVerified: true,
-      role: 'businessOwner',
-    });
+    const { token: jwtToken, refreshToken } = await issueTokens(business);
+
+    return {
+      message,
+      token: jwtToken,
+      refreshToken,
+      user: authService.buildAuthUserPayload(business),
+      newUser: false,
+    };
   }
 
-  const jwtToken = authService.generateAccessToken(business);
-  const refreshToken = authService.generateRefreshToken(business);
-
-  business.refreshToken = refreshToken;
-  business.refreshTokenExpiresAt =
-    authService.getRefreshTokenExpiryDate(refreshToken);
-  await business.save();
-
-  // Non-blocking mail trigger optimization recommended here
-  try {
-    await sendWelcomeEmail(normalizedEmail, {
-      firstName: name ? name.trim().split(/\s+/)[0] : 'there',
-      year: new Date().getFullYear(),
-      ctaUrl: process.env.FRONTEND_URL || '',
-      ctaText: 'Open SabiGuy',
-      role: business.role,
-    });
-  } catch (emailError) {
-    console.error('Welcome email failed to dispatch:', emailError);
+  // No business account — check if email is used by another role
+  const existingGlobalUser = await findUserByEmailAcrossDb(normalizedEmail);
+  if (existingGlobalUser) {
+    throw new AppError('Email already in use by another account type', 400);
   }
+
+  // Create new business with Google
+  business = new Business({
+    email: normalizedEmail,
+    password: null,
+    fullName: name,
+    isGoogleUser: true,
+    googleId,
+    emailVerified: true,
+    profilePicture: picture,
+    role: 'businessOwner',
+    authMethods: ['google'],
+  });
+
+  const { token: jwtToken, refreshToken } = await issueTokens(business);
+
+  await emailHelper.sendWelcomeSafe(normalizedEmail, {
+    firstName: accountHelper.getFirstName(name),
+    role: business.role,
+  });
 
   return {
     message: 'Signup successful via Google.',
     token: jwtToken,
     refreshToken,
     user: authService.buildAuthUserPayload(business),
+    newUser: true,
   };
 };
-const googleLogInBusiness = async (token) => {
-  if (!token) {
-    throw new AppError('Token is required', 400);
-  }
-  const { email, googleId } = await verifyGoogleToken(token);
+
+// Both google-signup and google-login call the same unified handler
+const googleSignUpBusiness = googleAuthBusiness;
+const googleLogInBusiness = googleAuthBusiness;
+
+// ─── Forgot Password ────────────────────────────────────────────────────────
+
+const forgotBusinessPassword = async (email) => {
   const normalizedEmail = normalizeEmail(email);
-  const business = await findBusinessByEmail(normalizedEmail, {
-    includePassword: true,
-  });
+  if (!normalizedEmail) {
+    throw new AppError('Email is required', 400);
+  }
+
+  const business = await findBusinessByEmail(normalizedEmail);
   if (!business) {
-    throw new AppError('Business not found', 404);
+    throw new AppError('User not found, please check the email', 400);
   }
-  if (business.isDeleted) {
-    throw new AppError('Account deleted', 403);
+
+  const otp = accountHelper.generateOtp();
+  business.resetOtp = otp;
+  business.resetOtpExpires = Date.now() + 10 * 60 * 1000; // 10 min
+  await business.save();
+  await forgotPasswordOtp(normalizedEmail, otp);
+
+  return { message: 'Forgot password OTP sent to email' };
+};
+
+const resendForgotBusinessPasswordOtp = async (email) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw new AppError('Email is required', 400);
   }
-  if (business.isActive === false) {
-    throw new AppError('Account deactivated', 403);
+
+  const business = await findBusinessByEmail(normalizedEmail);
+  if (!business) {
+    throw new AppError('User not found, please check the email', 400);
   }
-  if (!business.isGoogleUser) {
+
+  // Rate-limit: 1 OTP per 60 seconds
+  const now = new Date();
+  const lastSent = business.lastResetOtpSentAt
+    ? new Date(business.lastResetOtpSentAt)
+    : null;
+  if (lastSent && now.getTime() - lastSent.getTime() < 60 * 1000) {
+    throw new AppError('Please wait before requesting another OTP', 429);
+  }
+
+  const otp = accountHelper.generateOtp();
+  business.resetOtp = otp;
+  business.resetOtpExpires = Date.now() + 10 * 60 * 1000; // 10 min
+  business.lastResetOtpSentAt = now;
+  await business.save();
+  await forgotPasswordOtp(normalizedEmail, otp);
+
+  return { message: 'Forgot password OTP resent to email' };
+};
+
+const verifyBusinessResetOtp = async (email, otp) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !otp) {
+    throw new AppError('Email and OTP are required', 400);
+  }
+
+  const business = await findBusinessByEmail(normalizedEmail);
+  if (!business) {
+    throw new AppError('User not found, please check the email', 400);
+  }
+
+  if (
+    !otp ||
+    business.resetOtp !== otp ||
+    business.resetOtpExpires < Date.now()
+  ) {
+    throw new AppError('Invalid or expired OTP', 400);
+  }
+
+  return { message: 'OTP verified successfully' };
+};
+
+const resetBusinessPassword = async (email, otp, newPassword) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !otp || !newPassword) {
+    throw new AppError('Email, OTP, and new password are required', 400);
+  }
+
+  const business = await findBusinessByEmail(normalizedEmail);
+  if (!business) {
+    throw new AppError('User not found, please check the email', 400);
+  }
+
+  if (business.resetOtp !== otp || business.resetOtpExpires < Date.now()) {
+    throw new AppError('Invalid or expired OTP', 400);
+  }
+
+  business.password = await passwordHelper.hash(newPassword);
+  business.resetOtp = undefined;
+  business.resetOtpExpires = undefined;
+  accountHelper.addAuthMethod(business, 'email');
+  await business.save();
+
+  // Non-blocking notification
+  const changedAt = accountHelper.formatChangedAt();
+  await emailHelper.sendPasswordChangedSafe(
+    passwordChangedEmail,
+    business.email,
+    {
+      changedAt,
+    },
+  );
+
+  return { message: 'Password reset successful' };
+};
+
+const changeBusinessPassword = async (userId, oldPassword, newPassword) => {
+  if (!newPassword) {
+    throw new AppError('New password is required', 400);
+  }
+
+  const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
+  if (!strongPassword.test(newPassword)) {
     throw new AppError(
-      'This email was registered with a password. Please log in with email/password.',
+      'Password must contain uppercase, lowercase, number, and special character',
       400,
     );
   }
-  if (business.googleId && business.googleId !== googleId) {
-    throw new AppError(
-      'Google account mismatch. Please use the correct Google account.',
-      401,
-    );
+  if (newPassword.length < 8) {
+    throw new AppError('New password must be at least 8 characters long', 400);
   }
-  const jwtToken = authService.generateAccessToken(business);
-  const refreshToken = authService.generateRefreshToken(business);
-  business.refreshToken = refreshToken;
-  business.refreshTokenExpiresAt =
-    authService.getRefreshTokenExpiryDate(refreshToken);
+
+  const business = await Business.findById(userId);
+  if (!business) {
+    throw new AppError('Business not found', 404);
+  }
+
+  // Google-only users setting their first password
+  const isSettingFirstPassword = business.isGoogleUser && !business.password;
+
+  if (isSettingFirstPassword) {
+    if (oldPassword) {
+      throw new AppError(
+        'You are setting your first password. Do not send oldPassword.',
+        400,
+      );
+    }
+  } else {
+    if (!oldPassword) {
+      throw new AppError('Old password is required', 400);
+    }
+    const isMatch = await passwordHelper.compare(
+      oldPassword,
+      business.password,
+    );
+    if (!isMatch) {
+      throw new AppError('Old password is incorrect', 401);
+    }
+  }
+
+  business.password = await passwordHelper.hash(newPassword);
+  accountHelper.addAuthMethod(business, 'email');
   await business.save();
+
+  // Non-blocking notification
+  const changedAt = accountHelper.formatChangedAt();
+  await emailHelper.sendPasswordChangedSafe(
+    passwordChangedEmail,
+    business.email,
+    {
+      changedAt,
+    },
+  );
+
   return {
-    message: 'Login successful',
-    token: jwtToken,
-    refreshToken,
-    user: authService.buildAuthUserPayload(business),
+    message: isSettingFirstPassword
+      ? 'Password set successfully. You can now log in with email and password.'
+      : 'Password changed successfully',
   };
 };
+
+// ─── Refresh Token ───────────────────────────────────────────────────────────
+
 const refreshAuthToken = async (refreshToken) => {
   if (!refreshToken) {
     throw new AppError('refreshToken is required', 400);
@@ -448,6 +534,7 @@ const refreshAuthToken = async (refreshToken) => {
   const token = authService.generateAccessToken(business);
   return { token };
 };
+
 module.exports = {
   registerBusiness,
   verifyBusinessEmail,
@@ -457,4 +544,9 @@ module.exports = {
   googleSignUpBusiness,
   googleLogInBusiness,
   refreshAuthToken,
+  forgotBusinessPassword,
+  resendForgotBusinessPasswordOtp,
+  verifyBusinessResetOtp,
+  resetBusinessPassword,
+  changeBusinessPassword,
 };

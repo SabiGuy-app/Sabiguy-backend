@@ -9,6 +9,7 @@ const roleModelMap = {
   provider: Provider,
   admin: Admin,
   business: Business,
+  businessOwner: Business,
 };
 
 const authMiddleware = async (req, res, next) => {
@@ -26,7 +27,7 @@ const authMiddleware = async (req, res, next) => {
 
     const Model = roleModelMap[role];
     if (!Model) {
-      return res.status(403).json({ message: "Inval role" });
+      return res.status(403).json({ message: "Invalid role" });
     }
 
     const user = await Model.findById(id);

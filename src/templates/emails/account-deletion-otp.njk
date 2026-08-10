@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ brandName }} Account Deletion Confirmation</title>
+</head>
+<body style="margin:0; padding:0; background:#f4f7f4; font-family:Arial,Helvetica,sans-serif; color:#1f2937;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+          <tr>
+            <td align="center" style="background:linear-gradient(150deg, #b91c1c 0%, #dc2626 55%, #991b1b 100%); border-radius:16px 16px 0 0; padding:32px 36px 28px;">
+              {% if logoUrl %}
+              <img src="{{ logoUrl }}" alt="{{ brandName }}" style="max-height:48px; width:auto; display:block; margin:0 auto 16px;" />
+              {% else %}
+              <div style="font-weight:700; font-size:24px; letter-spacing:1px; color:#ffffff; margin-bottom:16px;">{{ brandName }}</div>
+              {% endif %}
+
+              <div style="font-size:36px; margin-bottom:12px;">🗑️</div>
+              <h2 style="margin:0 0 8px; font-size:24px; line-height:1.3; color:#ffffff; font-weight:700;">Confirm account deletion</h2>
+              <p style="margin:0; font-size:14.5px; color:#fee2e2; line-height:1.6;">
+                We received a request to delete your account. Use the code below to confirm it.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background:#f47920; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+          </tr>
+
+          <tr>
+            <td style="background:#ffffff; padding:36px 36px 28px; text-align:center;">
+              <p style="margin:0 0 22px; font-size:15px; line-height:1.7; color:#374151; text-align:left;">
+                If you made this request, enter this one-time code to continue. If you did not request account deletion, you can safely ignore this email.
+              </p>
+
+              <div style="margin:0 auto 24px; display:inline-block; background:#fff7f7; border:2px solid #dc2626; border-radius:12px; padding:18px 32px;">
+                <div style="font-size:11px; letter-spacing:2.5px; text-transform:uppercase; color:#dc2626; font-weight:700; margin-bottom:8px;">Your Confirmation Code</div>
+                <span style="display:block; font-size:34px; letter-spacing:10px; font-weight:700; color:#1a1a1a;">{{ otp }}</span>
+              </div>
+
+              <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:11px 18px; margin-bottom:22px; text-align:left;">
+                <span style="font-size:13.5px; color:#92400e;">
+                  ⏱ This code expires in <strong>{{ expiryMinutes }} minutes</strong>. Please use it promptly.
+                </span>
+              </div>
+
+              <p style="margin:0; font-size:13.5px; line-height:1.7; color:#6b7280; text-align:left;">
+                This action will permanently remove your account and related access. If you did not make this request, no changes will be made unless you complete the confirmation.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background:#1a6b35; border-radius:0 0 16px 16px; padding:22px 36px; text-align:center;">
+              {% if logoUrl %}
+              <img src="{{ logoUrl }}" alt="{{ brandName }}" style="max-height:28px; width:auto; display:block; margin:0 auto 10px; opacity:0.85;" />
+              {% else %}
+              <div style="font-weight:700; font-size:15px; color:#ffffff; margin-bottom:10px; letter-spacing:1px;">{{ brandName }}</div>
+              {% endif %}
+
+              <p style="margin:0 0 6px; font-size:12.5px; color:#bbf7d0; line-height:1.8;">
+                Need help? &nbsp;
+                <a href="mailto:support@sabiguy.com" style="color:#f9c48a; text-decoration:none; font-weight:600;">support@sabiguy.com</a>
+              </p>
+              <p style="margin:8px 0 0; font-size:11px; color:#6ee7a0; letter-spacing:0.3px;">
+                &copy; {{ year }} {{ brandName }}. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
