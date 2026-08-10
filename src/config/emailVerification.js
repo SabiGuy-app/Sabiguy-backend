@@ -55,6 +55,28 @@ const sendEmailOtp = async (email, otp) => {
   }
 };
 
+const sendAccountDeletionOtp = async (email, otp) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+
+  sendSmtpEmail.subject = "SabiGuy Account Deletion Confirmation";
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate("account-deletion-otp.njk", {
+    otp,
+    expiryMinutes: 10,
+    year: new Date().getFullYear(),
+  });
+  sendSmtpEmail.sender = sender;
+
+  try {
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log("Account deletion OTP sent. Message ID:", data.body.messageId);
+    return { success: true, messageId: data.body.messageId };
+  } catch (error) {
+    console.error("Brevo error:", error);
+    throw new Error(error.message || "Account deletion email failed");
+  }
+};
+
 const forgotPasswordOtp = async (email, otp) => {
   const sendSmtpEmail = new brevo.SendSmtpEmail();
 
@@ -231,6 +253,7 @@ module.exports = {
   forgotPasswordOtp,
   passwordChangedEmail,
   sendWelcomeEmail,
+  sendAccountDeletionOtp,
   sendNinSubmittedEmail,
   sendKycVerificationEmail,
   sendKycDisputeEmail,
