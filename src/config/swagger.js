@@ -200,6 +200,13 @@ const options = {
       'business',
       'business.auth.routes.js',
     ),
+    path.join(
+      __dirname,
+      '..',
+      'modules',
+      'business',
+      'business.routes.js',
+    ),
   ],
 };
 

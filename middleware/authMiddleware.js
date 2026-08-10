@@ -9,6 +9,7 @@ const roleModelMap = {
   provider: Provider,
   admin: Admin,
   business: Business,
+  businessOwner: Business,
 };
 
 const authMiddleware = async (req, res, next) => {
