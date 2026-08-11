@@ -1147,22 +1147,28 @@ exports.confirmAccountDeletion = async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
-    user.isDeleted = true;
-    user.deletedAt = new Date();
-    user.isActive = false;
-    user.deactivatedAt = new Date();
-    user.refreshToken = null;
-    user.refreshTokenExpiresAt = null;
-    user.password = null;
-    user.email = null;
-    user.phoneNumber = null;
-    user.fcmToken = null;
-    user.device = undefined;
-    user.accountDeletionOtp = null;
-    user.accountDeletionOtpExpiresAt = null;
-    user.accountDeletionOtpVerified = false;
+    const deletionUpdate = {
+      $set: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        isActive: false,
+        deactivatedAt: new Date(),
+        refreshToken: null,
+        refreshTokenExpiresAt: null,
+        password: null,
+        fcmToken: null,
+        device: undefined,
+        accountDeletionOtp: null,
+        accountDeletionOtpExpiresAt: null,
+        accountDeletionOtpVerified: false,
+      },
+      $unset: {
+        email: "",
+        phoneNumber: "",
+      },
+    };
 
-    await user.save();
+    await user.constructor.updateOne({ _id: user._id }, deletionUpdate);
 
     return res.status(200).json({
       success: true,

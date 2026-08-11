@@ -38,6 +38,9 @@ const serviceUserSchema = new mongoose.Schema({
   kycLevel: { type: Number, default: 0 },
 
   otp: { type: String },
+  accountDeletionOtp: { type: String },
+  accountDeletionOtpExpiresAt: { type: Date },
+  accountDeletionOtpVerified: { type: Boolean, default: false },
   otpExpiresAt: {
     type: Date,
   },
