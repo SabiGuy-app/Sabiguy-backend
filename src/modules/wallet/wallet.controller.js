@@ -50,7 +50,7 @@ class WalletController {
       }
 
       // Initialize Paystack payment for wallet funding
-      const PaymentService = require("../src/services/payment.service.js");
+      const paymentService = require("../payment/payment.service.js");
       const paystackResponse = await axios.post(
         "https://api.paystack.co/transaction/initialize",
         {
