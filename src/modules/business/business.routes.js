@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 const {
   getAllBusinesses,
@@ -8,11 +8,29 @@ const {
   respondToInvitation,
   addBusinessDetails,
   addVehicleDetails,
-} = require('./business.controller');
-const authMiddleware = require('../../../middleware/authMiddleware');
-const onlyRole = require('../../../middleware/roleMiddleware');
+} = require("./business.controller");
+const authMiddleware = require("../../../middleware/authMiddleware");
+const onlyRole = require("../../../middleware/roleMiddleware");
 
-router.get('/getAllBusinesses', authMiddleware, getAllBusinesses);
+/**
+ * @swagger
+ * /api/v1/businesses/getAllBusinesses:
+ *   get:
+ *     summary: Retrieve a list of all businesses
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of businesses retrieved successfully
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Access denied
+ *       500:
+ *         description: Server error
+ */
+router.get("/getAllBusinesses", authMiddleware, getAllBusinesses);
 
 /**
  * @swagger
@@ -76,9 +94,9 @@ router.get('/getAllBusinesses', authMiddleware, getAllBusinesses);
  *         description: Business profile already exists for this user
  */
 router.post(
-  '/business-details',
+  "/business-details",
   authMiddleware,
-  onlyRole('businessOwner'),
+  onlyRole("businessOwner"),
   addBusinessDetails,
 );
 
@@ -135,38 +153,150 @@ router.post(
  *         description: Duplicate plate number
  */
 router.post(
-  '/vehicle-details',
+  "/vehicle-details",
   authMiddleware,
-  onlyRole('businessOwner'),
+  onlyRole("businessOwner"),
   addVehicleDetails,
 );
 
 // Business/Fleet management
+/**
+ * @swagger
+ * /api/v1/businesses/invite-driver:
+ *   post:
+ *     summary: Invite a driver to join the business fleet
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - message
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: driver@example.com
+ *               message:
+ *                 type: string
+ *                 example: "Please join our fleet to start accepting jobs."
+ *     responses:
+ *       200:
+ *         description: Driver invitation sent successfully
+ *       400:
+ *         description: Missing or invalid invitation data
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Business access only
+ *       404:
+ *         description: Driver or business not found
+ */
 router.post(
-  '/invite-driver',
+  "/invite-driver",
   authMiddleware,
-  onlyRole('business'),
+  onlyRole("business"),
   inviteDriver,
 );
 
+/**
+ * @swagger
+ * /api/v1/businesses/drivers:
+ *   get:
+ *     summary: Retrieve drivers for the authenticated business
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Business drivers retrieved successfully
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Business access only
+ *       404:
+ *         description: Business not found
+ */
 router.get(
-  '/drivers',
+  "/drivers",
   authMiddleware,
-  onlyRole('business'),
+  onlyRole("business"),
   getBusinessDrivers,
 );
+
+/**
+ * @swagger
+ * /api/v1/businesses/vehicles:
+ *   get:
+ *     summary: Retrieve vehicles for the authenticated business
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Business vehicles retrieved successfully
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Business access only
+ *       404:
+ *         description: Business not found
+ */
 router.get(
-  '/vehicles',
+  "/vehicles",
   authMiddleware,
-  onlyRole('business'),
+  onlyRole("business"),
   getBusinessVehicles,
 );
+
 // Driver-facing: mounted here (rather than under /provider) to keep all
 // fleet-invitation logic in one module.
+/**
+ * @swagger
+ * /api/v1/businesses/driver/invitation/respond:
+ *   post:
+ *     summary: Respond to a fleet invitation as a provider
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - invitationId
+ *               - response
+ *             properties:
+ *               invitationId:
+ *                 type: string
+ *                 example: "inv_123456"
+ *               response:
+ *                 type: string
+ *                 enum: [accept, decline]
+ *                 example: accept
+ *     responses:
+ *       200:
+ *         description: Invitation response recorded successfully
+ *       400:
+ *         description: Missing or invalid response data
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Provider access only
+ *       404:
+ *         description: Invitation not found
+ */
 router.post(
-  '/driver/invitation/respond',
+  "/driver/invitation/respond",
   authMiddleware,
-  onlyRole('provider'),
+  onlyRole("provider"),
   respondToInvitation,
 );
 
