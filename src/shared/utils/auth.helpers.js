@@ -1,7 +1,10 @@
-const { OAuth2Client } = require("google-auth-library");
-const axios = require("axios");
-const bcrypt = require("bcryptjs");
-const { sendWelcomeEmail } = require("../../config/emailVerification");
+const { OAuth2Client } = require('google-auth-library');
+const axios = require('axios');
+const bcrypt = require('bcryptjs');
+const {
+  sendWelcomeEmail,
+  sendBusinessWelcomeMail,
+} = require('../../config/emailVerification');
 
 const allowedGoogleClientIds = [
   process.env.GOOGLE_CLIENT_ID,
@@ -100,16 +103,32 @@ const comparePassword = async (candidate, storedHash) => {
 const sendWelcomeEmailSafe = async (email, data = {}) => {
   try {
     await sendWelcomeEmail(email, {
-      firstName: data.firstName || "there",
+      firstName: data.firstName || 'there',
       year: new Date().getFullYear(),
-      ctaUrl: process.env.FRONTEND_URL || "",
-      ctaText: "Open SabiGuy",
-      role: data.role || "user",
+      ctaUrl: process.env.FRONTEND_URL || '',
+      ctaText: 'Open SabiGuy',
+      role: data.role || 'user',
       ...data,
     });
     return true;
   } catch (err) {
-    console.error("Welcome email failed to dispatch:", err);
+    console.error('Welcome email failed to dispatch:', err);
+    return false;
+  }
+};
+
+const sendBusinessWelcomeEmailSafe = async (email, data) => {
+  try {
+    await sendBusinessWelcomeMail(email, {
+      firstName: data.firstName || 'there',
+      year: new Date().getFullYear(),
+      ctaUrl: process.env.FRONTEND_URL || '',
+      ctaText: 'Open SabiGuy',
+      ...data,
+    });
+    return true;
+  } catch (err) {
+    console.error('Business Welcome email failed to dispatch:', err);
     return false;
   }
 };
@@ -167,6 +186,7 @@ const passwordHelper = {
 };
 
 const emailHelper = {
+  sendBusinessWelcomeEmailSafe,
   sendWelcomeSafe: sendWelcomeEmailSafe,
   sendPasswordChangedSafe: passwordChangedEmailSafe,
 };

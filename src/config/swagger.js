@@ -192,7 +192,7 @@ const options = {
     path.join(__dirname, '..', 'modules', 'files', 'files.routes.js'),
     path.join(__dirname, '..', 'modules', 'users', 'users.routes.js'),
     path.join(__dirname, '..', 'modules', 'wallet', 'wallet.routes.js'),
-    path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
+    // path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
     path.join(
       __dirname,
       '..',
@@ -200,13 +200,7 @@ const options = {
       'business',
       'business.auth.routes.js',
     ),
-    path.join(
-      __dirname,
-      '..',
-      'modules',
-      'business',
-      'business.routes.js',
-    ),
+    path.join(__dirname, '..', 'modules', 'business', 'business.routes.js'),
   ],
 };
 
