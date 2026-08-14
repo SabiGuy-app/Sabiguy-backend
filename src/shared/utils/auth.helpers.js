@@ -1,7 +1,10 @@
 const { OAuth2Client } = require('google-auth-library');
 const axios = require('axios');
 const bcrypt = require('bcryptjs');
-const { sendWelcomeEmail } = require('../../config/emailVerification');
+const {
+  sendWelcomeEmail,
+  sendBusinessWelcomeMail,
+} = require('../../config/emailVerification');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -106,6 +109,22 @@ const sendWelcomeEmailSafe = async (email, data = {}) => {
   }
 };
 
+const sendBusinessWelcomeEmailSafe = async (email, data) => {
+  try {
+    await sendBusinessWelcomeMail(email, {
+      firstName: data.firstName || 'there',
+      year: new Date().getFullYear(),
+      ctaUrl: process.env.FRONTEND_URL || '',
+      ctaText: 'Open SabiGuy',
+      ...data,
+    });
+    return true;
+  } catch (err) {
+    console.error('Business Welcome email failed to dispatch:', err);
+    return false;
+  }
+};
+
 const getFirstName = (fullName) =>
   fullName ? fullName.trim().split(/\s+/)[0] : 'there';
 
@@ -159,6 +178,7 @@ const passwordHelper = {
 };
 
 const emailHelper = {
+  sendBusinessWelcomeEmailSafe,
   sendWelcomeSafe: sendWelcomeEmailSafe,
   sendPasswordChangedSafe: passwordChangedEmailSafe,
 };

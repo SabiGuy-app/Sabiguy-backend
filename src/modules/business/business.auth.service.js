@@ -154,7 +154,7 @@ const verifyBusinessEmail = async (email, otp) => {
   accountHelper.addAuthMethod(business, 'email');
   await business.save();
 
-  await emailHelper.sendWelcomeSafe(business.email, {
+  await emailHelper.sendBusinessWelcomeEmailSafe(business.email, {
     firstName: accountHelper.getFirstName(business.fullName),
     role: business.role,
   });
@@ -313,7 +313,7 @@ const googleAuthBusiness = async (token) => {
 
   const { token: jwtToken, refreshToken } = await issueTokens(business);
 
-  await emailHelper.sendWelcomeSafe(normalizedEmail, {
+  await emailHelper.sendBusinessWelcomeEmailSafe(normalizedEmail, {
     firstName: accountHelper.getFirstName(name),
     role: business.role,
   });
