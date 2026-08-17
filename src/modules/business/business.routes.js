@@ -14,6 +14,13 @@ const onlyRole = require("../../../middleware/roleMiddleware");
 
 /**
  * @swagger
+ * tags:
+ *   name: Business
+ *   description: Business profile and vehicle management routes
+ */
+
+/**
+ * @swagger
  * /api/v1/businesses/getAllBusinesses:
  *   get:
  *     summary: Retrieve a list of all businesses
@@ -31,13 +38,6 @@ const onlyRole = require("../../../middleware/roleMiddleware");
  *         description: Server error
  */
 router.get("/getAllBusinesses", authMiddleware, getAllBusinesses);
-
-/**
- * @swagger
- * tags:
- *   name: Business
- *   description: Business profile and vehicle management routes
- */
 
 /**
  * @swagger

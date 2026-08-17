@@ -46,9 +46,9 @@ const router = express.Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, password, name, phoneNumber, address]
+ *             required: [email, password, phoneNumber, city, fullName]
  *             properties:
- *               name:
+ *               fullName:
  *                 type: string
  *                 example: "John Doe"
  *               email:
@@ -59,8 +59,8 @@ const router = express.Router();
  *                 example: "strongpassword123"
  *               phoneNumber:
  *                 type: string
- *                 example: 12345678
- *               address:
+ *                 example: "+2348012345678"
+ *               city:
  *                 type: string
  *                 example: "Ibadan"
  *     responses:
@@ -84,9 +84,9 @@ router.post("/buyer", registerBuyer);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, email, password, phoneNumber]
+ *             required: [fullName, email, password, phoneNumber]
  *             properties:
- *               name:
+ *               fullName:
  *                 type: string
  *                 example: "Queen"
  *               email:
@@ -178,9 +178,9 @@ router.post("/", login);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [idToken]
+ *             required: [token]
  *             properties:
- *               idToken:
+ *               token:
  *                 type: string
  *                 example: "google-oauth-id-token"
  *     responses:
@@ -204,9 +204,9 @@ router.post("/google-provider", googleSignUp);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [idToken]
+ *             required: [token]
  *             properties:
- *               idToken:
+ *               token:
  *                 type: string
  *     responses:
  *       201:
@@ -229,9 +229,9 @@ router.post("/google", googleSignUpBuyer);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [idToken]
+ *             required: [token]
  *             properties:
- *               idToken:
+ *               token:
  *                 type: string
  *                 example: "google-oauth-id-token"
  *     responses:
