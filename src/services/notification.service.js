@@ -205,7 +205,11 @@ class NotificationService {
       }
 
       if (decision.allowPush) {
-        await this.sendPushNotification(userId, "Buyer", data);
+        try {
+          await this.sendPushNotification(userId, "Buyer", data);
+        } catch (error) {
+          this.logNotificationError("notifyUser:push", userId, "Buyer", error);
+        }
       }
 
       return notification;
@@ -242,7 +246,16 @@ class NotificationService {
       }
 
       if (decision.allowPush) {
-        await this.sendPushNotification(providerId, "Provider", data);
+        try {
+          await this.sendPushNotification(providerId, "Provider", data);
+        } catch (error) {
+          this.logNotificationError(
+            "notifyProvider:push",
+            providerId,
+            "Provider",
+            error,
+          );
+        }
       }
 
       return notification;
@@ -320,7 +333,16 @@ class NotificationService {
       }
 
       if (decision.allowPush) {
-        await this.sendPushNotification(userId, userModel, data);
+        try {
+          await this.sendPushNotification(userId, userModel, data);
+        } catch (error) {
+          this.logNotificationError(
+            "sendNotification:push",
+            userId,
+            userModel,
+            error,
+          );
+        }
       }
 
       return notification;
