@@ -45,7 +45,7 @@ User's question: ${message}`;
 
     const completion = await groq.chat.completions.create({
       messages,
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       temperature: 0.5, // Lower temperature for more factual responses
       max_tokens: 2048,
       top_p: 0.9,
@@ -103,7 +103,7 @@ Return ONLY valid JSON:
 
       const completion = await groq.chat.completions.create({
         messages: [{ role: "user", content: intentPrompt }],
-        model: "llama-3.3-70b-versatile",
+        model: "openai/gpt-oss-120b",
         temperature: 0.3,
         max_tokens: 512,
         response_format: { type: "json_object" }, // Force JSON response
@@ -296,7 +296,7 @@ Return ONLY valid JSON:
 
       const completion = await groq.chat.completions.create({
         messages: [{ role: "user", content: faqPrompt }],
-        model: "llama-3.3-70b-versatile",
+        model: "openai/gpt-oss-120b",
         temperature: 0.2,
         max_tokens: 256,
         response_format: { type: "json_object" },
