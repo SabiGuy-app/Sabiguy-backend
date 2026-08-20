@@ -2,6 +2,14 @@ const express = require("express");
 const router = express.Router();
 const WalletController = require("./wallet.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
+
+/**
+ * @swagger
+ * tags:
+ *   name: Wallet
+ *   description: Wallet balance, funding, and transaction endpoints
+ */
+
 /**
  * @swagger
  * /api/v1/wallet/balance:
