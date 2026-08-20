@@ -7,6 +7,13 @@ const { transactionsLimiter } = require("../../../middleware/rateLimiter.js");
 
 /**
  * @swagger
+ * tags:
+ *   name: Transactions
+ *   description: Transaction history and reporting endpoints
+ */
+
+/**
+ * @swagger
  * /api/v1/transactions:
  *   get:
  *     summary: Get all transactions with pagination, filtering, and sorting

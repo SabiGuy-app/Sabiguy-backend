@@ -6,6 +6,13 @@ const onlyRole = require("../../../middleware/roleMiddleware");
 
 /**
  * @swagger
+ * tags:
+ *   name: Payment
+ *   description: Payment processing and escrow management routes
+ */
+
+/**
+ * @swagger
  * /api/v1/payment/initialize:
  *   post:
  *     summary: Initialize payment for a booking (Escrow)

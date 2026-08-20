@@ -2,6 +2,14 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../../../middleware/authMiddleware");
 const notificationController = require("./notifications.controller");
+
+/**
+ * @swagger
+ * tags:
+ *   name: Notifications
+ *   description: Push and in-app notification endpoints
+ */
+
 /**
  * @swagger
  * /api/v1/notifications:
@@ -19,7 +27,6 @@ const notificationController = require("./notifications.controller");
  *         description: Page number
  *       - in: query
  *         name: limit
- *         enum: [pending_providers, awaiting_provider_acceptance, provider_selected, provider_accepted, payment_pending, paid_escrow, in-progress, completed, cancelled, user_accepted_completion, funds_released]
  *         schema:
  *           type: integer
  *           default: 20
