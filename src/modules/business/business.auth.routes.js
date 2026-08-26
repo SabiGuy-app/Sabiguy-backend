@@ -42,7 +42,7 @@ const businessAuthMiddleware = require('../../../middleware/businessAuthMiddlewa
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, password]
+ *             required: [email, password, accountType]
  *             properties:
  *               email:
  *                 type: string
@@ -56,6 +56,10 @@ const businessAuthMiddleware = require('../../../middleware/businessAuthMiddlewa
  *               phoneNumber:
  *                 type: string
  *                 example: "+2348012345678"
+ *               accountType:
+ *                 type: string
+ *                 enum: [individual, business]
+ *                 example: "business"
  *
  *     responses:
  *       200:
