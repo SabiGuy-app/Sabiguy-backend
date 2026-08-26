@@ -60,11 +60,14 @@ const guardAccountStatus = (business) => {
   }
 };
 
-const registerBusiness = async ({ email, password, fullName, phoneNumber }) => {
+const registerBusiness = async ({ email, password, fullName, phoneNumber, accountType }) => {
   const normalizedEmail = normalizeEmail(email);
 
   if (!normalizedEmail || !password) {
     throw new AppError('Email and password are required', 400);
+  }
+   if (!accountType || !["individual", "business"].includes(accountType)) {
+    throw new AppError('accountType is required and must be "individual" or "business"', 400);
   }
 
   const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
@@ -110,6 +113,7 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber }) => {
     password: hashedPassword,
     fullName,
     phoneNumber: phoneNumber || undefined,
+    accountType,
     otp,
     emailVerificationExpires,
     emailVerified: false,
