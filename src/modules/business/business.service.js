@@ -299,6 +299,7 @@ const addBusinessDetails = async (businessId, payload) => {
     cityOfOperation,
     cacFile: cacCertificateUrl,
     ninSlip: nin,
+    kycLevel: Math.max(business.kycLevel || 0, 2),
   });
 
   return {
@@ -358,7 +359,14 @@ const addVehicleDetails = async (businessId, vehicles) => {
     });
   });
 
-  const updated = await businessRepository.addVehiclesToBusiness(businessId, newVehicles);
+  const updated = await businessRepository.addVehiclesToBusiness(
+    businessId,
+    newVehicles,
+    {
+      kycCompleted: true,
+      kycLevel: Math.max(business.kycLevel || 0, 3),
+    },
+  );
 
   const createdVehicles = updated.vehicles.slice(-newVehicles.length).map((vehicle) => ({
     vehicleName: vehicle.name,

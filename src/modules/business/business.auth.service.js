@@ -119,6 +119,8 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber, accoun
     emailVerified: false,
     role: 'businessOwner',
     authMethods: ['email'],
+    kycLevel: 1,
+    
   });
 
   await newBusiness.save();
