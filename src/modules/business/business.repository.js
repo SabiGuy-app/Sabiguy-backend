@@ -90,10 +90,13 @@ const saveBusinessDetails = (businessId, details) =>
     { new: true, runValidators: true },
   );
 
-const addVehiclesToBusiness = (businessId, vehicles) =>
+const addVehiclesToBusiness = (businessId, vehicles, updates = {}) =>
   Business.findByIdAndUpdate(
     businessId,
-    { $push: { vehicles: { $each: vehicles } } },
+    {
+      $push: { vehicles: { $each: vehicles } },
+      $set: updates,
+    },
     { new: true, runValidators: true },
   );
 
