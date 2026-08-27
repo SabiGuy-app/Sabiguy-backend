@@ -309,13 +309,6 @@ exports.registerBuyer = async (req, res) => {
   const normalizedEmail = normalizeEmail(email);
   const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
-  // const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
-  // if (!isValidPassword) {
-  //   return res.status(400).json({
-  //     message:
-  //       'Password must be at least 8 characters long and include a letter, number, and special character',
-  //   });
-  // }
   try {
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
@@ -399,13 +392,6 @@ exports.registerProvider = async (req, res) => {
   const { email, password, phoneNumber, fullName } = req.body;
   const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
-  // const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
-  // if (!isValidPassword) {
-  //   return res.status(400).json({
-  //     message:
-  //       'Password must be at least 8 characters long and include a letter, number, and special character',
-  //   });
-  // }
   try {
     const normalizedEmail = normalizeEmail(email);
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
