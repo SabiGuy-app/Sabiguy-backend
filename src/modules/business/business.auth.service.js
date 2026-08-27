@@ -315,6 +315,7 @@ const googleAuthBusiness = async (token) => {
     profilePicture: picture,
     role: 'businessOwner',
     authMethods: ['google'],
+    kycLevel: 1,
   });
 
   const { token: jwtToken, refreshToken } = await issueTokens(business);

@@ -84,7 +84,7 @@ router.post("/buyer", registerBuyer);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [fullName, email, password, phoneNumber]
+ *             required: [fullName, email, password, phoneNumber, accountType]
  *             properties:
  *               fullName:
  *                 type: string
@@ -98,6 +98,10 @@ router.post("/buyer", registerBuyer);
  *               phoneNumber:
  *                 type: string
  *                 example: "12345678"
+ *               accountType:
+ *                 type: string
+ *                 enum: [individual, business]
+ *                 example: "business"
  *     responses:
  *       201:
  *         description: Provider registered successfully
@@ -178,11 +182,15 @@ router.post("/", login);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [token]
+ *             required: [token, accountType]
  *             properties:
  *               token:
  *                 type: string
  *                 example: "google-oauth-id-token"
+ *               accountType:
+ *                 type: string
+ *                 enum: [individual, business]
+ *                 example: "business"
  *     responses:
  *       201:
  *         description: Provider registered via Google

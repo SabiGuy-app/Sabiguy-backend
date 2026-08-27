@@ -39,14 +39,27 @@ const getRefreshTokenExpiryDate = authService.getRefreshTokenExpiryDate;
 const buildAuthUserPayload = authService.buildAuthUserPayload;
 const { passwordMatches } = authService;
 
+const VALID_PROVIDER_ACCOUNT_TYPES = ["individual", "business"];
+
+const assertValidProviderAccountType = (accountType) => {
+  if (!accountType || !VALID_PROVIDER_ACCOUNT_TYPES.includes(accountType)) {
+    throw new AppError(
+      'accountType is required and must be "individual" or "business"',
+      400,
+    );
+  }
+};
+
 exports.googleSignUp = async (req, res) => {
-  const { token } = req.body;
+  const { token, accountType } = req.body;
 
   if (!token) {
     return res.status(400).json({ message: "Token is required" });
   }
 
   try {
+    assertValidProviderAccountType(accountType);
+
     const { email, googleId, name, picture } =
       await googleHelper.verifyToken(token);
     const normalizedEmail = normalizeEmail(email);
@@ -66,6 +79,9 @@ exports.googleSignUp = async (req, res) => {
 
         // Link the account (updates isGoogleUser, googleId, authMethods)
         accountHelper.linkGoogleAccount(user, googleId);
+        if (!user.accountType) {
+          user.accountType = accountType;
+        }
         await user.save();
 
         // Send welcome email if they weren't verified previously
@@ -108,6 +124,7 @@ exports.googleSignUp = async (req, res) => {
       googleId,
       profilePicture: picture,
       role: "provider",
+      accountType,
       kycLevel: 1,
     });
 
@@ -309,13 +326,6 @@ exports.registerBuyer = async (req, res) => {
   const normalizedEmail = normalizeEmail(email);
   const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
-  // const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
-  // if (!isValidPassword) {
-  //   return res.status(400).json({
-  //     message:
-  //       'Password must be at least 8 characters long and include a letter, number, and special character',
-  //   });
-  // }
   try {
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
@@ -396,17 +406,12 @@ exports.registerBuyer = async (req, res) => {
 };
 
 exports.registerProvider = async (req, res) => {
-  const { email, password, phoneNumber, fullName } = req.body;
+  const { email, password, phoneNumber, fullName, accountType } = req.body;
   const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
-  // const isValidPassword = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(password);
-  // if (!isValidPassword) {
-  //   return res.status(400).json({
-  //     message:
-  //       'Password must be at least 8 characters long and include a letter, number, and special character',
-  //   });
-  // }
   try {
+    assertValidProviderAccountType(accountType);
+
     const normalizedEmail = normalizeEmail(email);
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
@@ -452,6 +457,7 @@ exports.registerProvider = async (req, res) => {
       otpExpiresAt,
       isVerified: false,
       fullName,
+      accountType,
       phoneNumber: normalizedPhoneNumber || phoneNumber,
       role: "provider",
       authMethods: ["email"],
