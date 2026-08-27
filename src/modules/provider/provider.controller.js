@@ -19,7 +19,7 @@ class ProviderController {
       }
 
       provider.accountType = accountType;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
+      // provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
       await provider.save();
 
       res.status(200).json({
@@ -47,7 +47,7 @@ class ProviderController {
       provider.address = address;
       provider.ninSlip = ninSlip;
       provider.profilePicture = imageUrl;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
 
       await provider.save();
 
@@ -75,7 +75,6 @@ class ProviderController {
       provider.regNumber = regNumber;
       provider.BusinessAddress = BusinessAddress;
       provider.cacFile = cacFile;
-      // provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
 
       await provider.save();
 
@@ -167,7 +166,7 @@ class ProviderController {
         }
       });
       provider.kycCompleted = true;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 5);
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
 
       await provider.save();
 
@@ -229,7 +228,7 @@ class ProviderController {
 
       // Update the provider's profile picture
       provider.profilePicture = imageUrl;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
 
       await provider.save();
 
