@@ -25,7 +25,7 @@ const upload = multer({ dest: 'uploads/' });
  *         required: true
  *         schema:
  *           type: string
- *         description: User email (provider or buyer)
+ *         description: User email (provider, buyer, or businessOwner)
  *         example: user@example.com
  *       - in: path
  *         name: category
