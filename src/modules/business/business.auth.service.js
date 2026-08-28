@@ -42,6 +42,10 @@ const getBusinessProfileById = async (id) => {
 };
 
 const issueTokens = async (business) => {
+  if (!business.accountType) {
+    business.accountType = 'business';
+  }
+
   const token = authService.generateAccessToken(business);
   const refreshToken = authService.generateRefreshToken(business);
   business.refreshToken = refreshToken;
