@@ -1197,6 +1197,9 @@ class ProviderController {
       const totalDurationMinutes =
         providerETAMinutes + booking.estimatedDuration.value;
 
+      const acceptedAt = new Date();
+      const paymentDeadlineMinutes = 30;
+
       const updatedBooking = await Booking.findOneAndUpdate(
         {
           _id: bookingId,
@@ -1212,7 +1215,11 @@ class ProviderController {
           providerId,
           status: "provider_selected",
 
-          acceptedAt: new Date(),
+          acceptedAt,
+          paymentDeadlineAt: new Date(
+            acceptedAt.getTime() + paymentDeadlineMinutes * 60 * 1000,
+          ),
+          expiredAt: null,
           distanceFromPickup: {
             value: parseFloat(distanceFromPickupKm.toFixed(2)),
             unit: "km",
