@@ -3,9 +3,17 @@ const Provider = require("../../../models/ServiceProvider");
 const Buyer = require("../../../models/ServiceUser");
 const Business = require ("../business/business.model")
 
-exports.findProviderByEmail = (email) => Provider.findOne({ email });
-exports.findBuyerByEmail = (email) => Buyer.findOne({ email });
-exports.findBusinessByEmail = (email) => Business.findOne({ email });
+const normalizeEmail = (email) =>
+  String(email || "")
+    .trim()
+    .toLowerCase();
+
+exports.findProviderByEmail = (email) =>
+  Provider.findOne({ email: normalizeEmail(email) });
+exports.findBuyerByEmail = (email) =>
+  Buyer.findOne({ email: normalizeEmail(email) });
+exports.findBusinessByEmail = (email) =>
+  Business.findOne({ email: normalizeEmail(email) });
 
 exports.createFile = (filePayload) => File.create(filePayload);
 
