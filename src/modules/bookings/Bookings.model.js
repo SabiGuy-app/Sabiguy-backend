@@ -221,12 +221,22 @@ const bookingSchema = new mongoose.Schema(
         "enroute_to_dropoff",
         "arrived_at_dropoff",
         "completed", // Service completed
+        "expired", // Payment window expired before user paid
         "cancelled", // Cancelled
         "user_accepted_completion",
         "funds_released", // Payment released to provider
         "disputed", // Dispute raised
       ],
       default: "pending_providers",
+    },
+
+    paymentDeadlineAt: {
+      type: Date,
+      default: null,
+    },
+    expiredAt: {
+      type: Date,
+      default: null,
     },
 
     payment: {

@@ -14,6 +14,31 @@ class paymentService {
     this.MAX_BANK_WITHDRAWAL_AMOUNT = 10000;
   }
 
+  async enforcePaymentWindow(booking) {
+    if (!booking) {
+      throw new Error("Booking not found");
+    }
+
+    if (booking.status === "expired") {
+      throw new Error(
+        "This booking expired before payment was completed. Please create a new booking.",
+      );
+    }
+
+    if (
+      booking.paymentDeadlineAt &&
+      new Date(booking.paymentDeadlineAt).getTime() < Date.now()
+    ) {
+      booking.status = "expired";
+      booking.expiredAt = new Date();
+      await booking.save();
+
+      throw new Error(
+        "This booking expired before payment was completed. Please create a new booking.",
+      );
+    }
+  }
+
   resolvePaymentBreakdown(booking) {
     const pricingBreakdown = booking?.pricingBreakdown ?? {};
     const baseBreakdown = pricingBreakdown.breakdown ?? pricingBreakdown;
@@ -97,6 +122,8 @@ class paymentService {
       if (booking.status === "paid_escrow") {
         throw new Error("Booking already paid for");
       }
+
+      await this.enforcePaymentWindow(booking);
 
       if (
         booking.status !== "provider_selected" &&
@@ -407,6 +434,10 @@ class paymentService {
           transaction,
         };
       }
+
+      const bookingBeforeVerify = await Booking.findById(transaction.bookingId);
+      await this.enforcePaymentWindow(bookingBeforeVerify);
+
       const paystackResponse = await axios.get(
         `${this.paystackBaseURL}/transaction/verify/${reference}`,
         {
@@ -453,6 +484,7 @@ class paymentService {
           "payment.paidAt": new Date(),
           "payment.escrowAmount":
             transaction.breakdown?.totalAmount ?? transaction.amount ?? 0,
+          paymentDeadlineAt: null,
         },
         { new: true },
       )
