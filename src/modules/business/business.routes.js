@@ -5,6 +5,7 @@ const {
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,
+  getBusinessByEmail,
   respondToInvitation,
   addBusinessDetails,
   addVehicleDetails,
@@ -98,6 +99,40 @@ router.post(
   authMiddleware,
   onlyRole("businessOwner"),
   addBusinessDetails,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/by-email:
+ *   get:
+ *     summary: Get a business profile by email
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: owner@example.com
+ *     responses:
+ *       200:
+ *         description: Business fetched successfully
+ *       400:
+ *         description: Missing email
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Business access only
+ *       404:
+ *         description: Business not found
+ */
+router.get(
+  "/by-email",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  getBusinessByEmail,
 );
 
 /**

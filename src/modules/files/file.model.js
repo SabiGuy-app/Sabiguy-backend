@@ -12,6 +12,7 @@ email:  String,
 category:  String,
 provider: { type: mongoose.Schema.Types.ObjectId, ref: "Provider", default: null },
 buyer: { type: mongoose.Schema.Types.ObjectId, ref: "Buyer", default: null },
+business: { type: mongoose.Schema.Types.ObjectId, ref: "Business", default: null },
 //   admin: { type: mongoose.Schema.Types.ObjectId, ref: "Admin", default: null },
 
 });

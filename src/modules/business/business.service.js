@@ -167,6 +167,21 @@ const getBusinessDrivers = async (businessId, { status, skip, limit } = {}) => {
 const getBusinessVehicles = (businessId, { skip, limit } = {}) =>
   businessRepository.getBusinessVehiclesPage(businessId, { skip, limit });
 
+const getBusinessByEmail = async (email) => {
+  if (!email || typeof email !== "string") {
+    throw new ValidationError("email is required");
+  }
+
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const business = await businessRepository.findBusinessByEmail(normalizedEmail);
+
+  if (!business || business.isDeleted) {
+    throw new NotFoundError("Business not found");
+  }
+
+  return business;
+};
+
 // 4. Confirm or reject a pending driver invitation.
 const respondToInvitation = async (driverId, { invitationId, action } = {}) => {
   if (!invitationId || !mongoose.Types.ObjectId.isValid(invitationId)) {
@@ -383,6 +398,7 @@ module.exports = {
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,
+  getBusinessByEmail,
   addBusinessDetails,
   addVehicleDetails,  
   respondToInvitation,
