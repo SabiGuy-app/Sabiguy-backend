@@ -179,6 +179,21 @@ const getBusinessVehicles = async (req, res) => {
   }
 };
 
+const getBusinessByEmail = async (req, res) => {
+  try {
+    const email = req.query.email || req.params.email;
+    const business = await businessService.getBusinessByEmail(email);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Business fetched successfully',
+      data: business,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to fetch business');
+  }
+};
+
 // POST /driver/invitation/respond — driver accepts or rejects a pending invitation.
 const respondToInvitation = async (req, res) => {
   try {
@@ -235,12 +250,63 @@ const addVehicleDetails = async (req, res) => {
   }
 };
 
+  const  getKycLevel = async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const authEmail = req.user?.email
+        ? String(req.user.email).trim().toLowerCase()
+        : null;
+      if (authEmail && authEmail !== normalizedEmail) {
+        return res
+          .status(403)
+          .json({ message: "Email does not match authenticated user" });
+      }
+
+      const business = await Business.findOne({
+        email: normalizedEmail,
+      }).select("kycLevel kycCompleted kycVerified");
+      if (!business) {
+        return res.status(200).json({ message: "This is a new customer" });
+      }
+
+      const token = jwt.sign(
+        { id: business._id, role: "businessOwner", email: normalizedEmail },
+        process.env.JWT_SECRET,
+        { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          kycLevel: business.kycLevel || 0,
+          kycCompleted: !!business.kycCompleted,
+          kycVerified: !!business.kycVerified,
+          token,
+        },
+      });
+    } catch (error) {
+      console.error("Get KYC level error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching KYC level",
+        error: error.message,
+      });
+    }
+  }
+
 module.exports = {
   getAllBusinesses,
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,
+  getBusinessByEmail,
   respondToInvitation,
   addBusinessDetails,
   addVehicleDetails,
+  getKycLevel
 };

@@ -36,8 +36,13 @@ exports.uploadFile = async ({ email, rawCategory, file }) => {
     throw new ValidationError("Email is compulsory");
   }
 
-  let user = await filesRepository.findProviderByEmail(email);
-  let role = "provider";
+  let user = await filesRepository.findBusinessByEmail(email);
+  let role = "businessOwner";
+
+  if (!user) {
+    user = await filesRepository.findProviderByEmail(email);
+    role = "provider";
+  }
 
   if (!user) {
     user = await filesRepository.findBuyerByEmail(email);
@@ -66,12 +71,15 @@ exports.uploadFile = async ({ email, rawCategory, file }) => {
     url: result.secure_url,
     resource_type: result.resource_type,
     email,
+    category,
   };
 
   if (role === "provider") {
     filePayload.provider = user._id;
   } else if (role === "buyer") {
     filePayload.buyer = user._id;
+  } else if (role === "businessOwner") {
+    filePayload.business = user._id;
   }
 
   const savedFile = await filesRepository.createFile(filePayload);
@@ -80,6 +88,8 @@ exports.uploadFile = async ({ email, rawCategory, file }) => {
     await filesRepository.pushFileToProvider(user._id, savedFile._id);
   } else if (role === "buyer") {
     await filesRepository.pushFileToBuyer(user._id, savedFile._id);
+  } else if (role === "businessOwner") {
+    await filesRepository.pushFileToBusiness(user._id, savedFile._id);
   }
 
   return savedFile;
