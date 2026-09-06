@@ -213,6 +213,7 @@ const bookingSchema = new mongoose.Schema(
         "awaiting_provider_acceptance", // Transport: waiting for fastest finger
         "provider_selected", // Provider selected/accepted
         "payment_pending", // Awaiting payment
+        "booking_expired", // No provider accepted within the acceptance window
         "paid_escrow",
         "provider_accepted",
         "accept_selection",

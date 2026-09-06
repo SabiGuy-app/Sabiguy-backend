@@ -9,6 +9,7 @@ const {
   respondToInvitation,
   addBusinessDetails,
   addVehicleDetails,
+  getKycLevel,
 } = require("./business.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
 const onlyRole = require("../../../middleware/roleMiddleware");
@@ -193,6 +194,8 @@ router.post(
   onlyRole("businessOwner"),
   addVehicleDetails,
 );
+
+router.post("/kyc-level", authMiddleware, getKycLevel);
 
 // Business/Fleet management
 /**
