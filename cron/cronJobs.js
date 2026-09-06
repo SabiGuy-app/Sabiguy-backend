@@ -6,9 +6,9 @@
 require("dotenv").config();
 const cron = require("node-cron");
 const connectToDB = require("../utils/db");
-const Booking = require("../models/Bookings");
+const Booking = require("../src/modules/bookings/Bookings.model");
 const notificationService = require("./notificationService");
-const paymentService = require("../src/services/payment.service");
+const paymentService = require("../src/modules/payment/payment.service");
 
 // Connect to database
 connectToDB().catch((err) => {
@@ -39,6 +39,41 @@ function getProviderName(provider) {
 }
 
 /**
+ * EXPIRE PROVIDER ACCEPTANCE BOOKINGS
+ *
+ * Bookings waiting for a provider must be accepted within 10 minutes.
+ * This runs every minute so the status changes shortly after the deadline.
+ */
+cron.schedule("* * * * *", async () => {
+  try {
+    const acceptanceDeadline = new Date(Date.now() - 10 * 60 * 1000);
+    const result = await Booking.updateMany(
+      {
+        status: "awaiting_provider_acceptance",
+        createdAt: { $lte: acceptanceDeadline },
+      },
+      {
+        $set: {
+          status: "booking_expired",
+          expiredAt: new Date(),
+        },
+      },
+    );
+
+    if (result.modifiedCount > 0) {
+      console.log(
+        `[${new Date().toISOString()}] Expired ${result.modifiedCount} booking(s) awaiting provider acceptance`,
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Error expiring provider acceptance bookings:",
+      error.message,
+    );
+  }
+});
+
+/**
  * BOOKING COMPLETION WORKFLOW
  *
  * Cron job to send completion notifications every 30 minutes
@@ -54,7 +89,7 @@ cron.schedule("*/30 * * * *", async () => {
     );
 
     const oneMinuteAgo = new Date(Date.now() - 1 * 60 * 1000);
-  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000); // back to 30 mins
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000); // back to 30 mins
 
     // Find bookings that are 'completed' but not accepted or disputed
     const pendingCompletionBookings = await Booking.find({

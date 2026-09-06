@@ -1199,10 +1199,12 @@ class ProviderController {
 
       const acceptedAt = new Date();
       const paymentDeadlineMinutes = 30;
+      const acceptanceDeadline = new Date(Date.now() - 10 * 60 * 1000);
 
       const updatedBooking = await Booking.findOneAndUpdate(
         {
           _id: bookingId,
+          createdAt: { $gt: acceptanceDeadline },
           $or: [
             { providerId: { $exists: false } }, // fastest finger — no one accepted yet
             { providerId: providerId }, // user selection — rider already chose this provider

@@ -100,6 +100,24 @@ const comparePassword = async (candidate, storedHash) => {
   return bcrypt.compare(candidate, storedHash);
 };
 
+const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
+const MIN_PASSWORD_LENGTH = 8;
+
+const validatePasswordStrength = (password) => {
+  if (!password || typeof password !== 'string') {
+    throw new AppError('Password is required', 400);
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new AppError('Password must be at least 8 characters long', 400);
+  }
+  if (!STRONG_PASSWORD_REGEX.test(password)) {
+    throw new AppError(
+      'Password must contain uppercase, lowercase, number, and special character',
+      400,
+    );
+  }
+};
+
 const sendWelcomeEmailSafe = async (email, data = {}) => {
   try {
     await sendWelcomeEmail(email, {
@@ -182,6 +200,7 @@ const googleHelper = {
 const passwordHelper = {
   hash: hashPassword,
   compare: comparePassword,
+  validateStrength: validatePasswordStrength,
   SALT_ROUNDS: BCRYPT_SALT_ROUNDS,
 };
 

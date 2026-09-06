@@ -71,6 +71,8 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber }) => {
     throw new AppError('Email and password are required', 400);
   }
 
+  passwordHelper.validateStrength(password);
+
   const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
   if (existingEmail) {
     if (
@@ -420,6 +422,8 @@ const resetBusinessPassword = async (email, otp, newPassword) => {
     throw new AppError('Email, OTP, and new password are required', 400);
   }
 
+  passwordHelper.validateStrength(newPassword);
+
   const business = await findBusinessByEmail(normalizedEmail);
   if (!business) {
     throw new AppError('User not found, please check the email', 400);
@@ -453,16 +457,7 @@ const changeBusinessPassword = async (userId, oldPassword, newPassword) => {
     throw new AppError('New password is required', 400);
   }
 
-  const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
-  if (!strongPassword.test(newPassword)) {
-    throw new AppError(
-      'Password must contain uppercase, lowercase, number, and special character',
-      400,
-    );
-  }
-  if (newPassword.length < 8) {
-    throw new AppError('New password must be at least 8 characters long', 400);
-  }
+  passwordHelper.validateStrength(newPassword);
 
   const business = await Business.findById(userId);
   if (!business) {
