@@ -237,6 +237,76 @@ router.post(
 
 /**
  * @swagger
+ * /api/v1/provider/service-details:
+ *   post:
+ *     summary: Add or update provider service details
+ *     description: Stores services, experience, working days, business hours, and work visuals for the authenticated provider.
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               service:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     serviceName:
+ *                       type: string
+ *                     pricingModel:
+ *                       type: string
+ *                     price:
+ *                       type: string
+ *               yearsOfExperience:
+ *                 type: number
+ *               availableDays:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               businessHours:
+ *                 type: object
+ *                 properties:
+ *                   start:
+ *                     type: string
+ *                   end:
+ *                     type: string
+ *               workVisuals:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     pictures:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     videos:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *     responses:
+ *       200:
+ *         description: Service details added successfully
+ *       400:
+ *         description: Invalid service details payload
+ *       404:
+ *         description: Provider not found
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/service-details",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.addServiceDetails,
+);
+
+/**
+ * @swagger
  * /api/v1/provider/work-visuals:
  *   put:
  *     summary: Upload or update provider work visuals (images and videos)
