@@ -102,10 +102,8 @@ class ProviderController {
         vehicleName,
       } = req.body;
 
-      if (!job && !service) {
-        return res
-          .status(400)
-          .json({ message: "Please provide job or service data" });
+      if (!job) {
+        return res.status(400).json({ message: "Please provide job data" });
       }
 
       const provider = await Provider.findById(req.user.id);
@@ -126,17 +124,17 @@ class ProviderController {
         }));
       }
 
-      if (service) {
-        if (!Array.isArray(service)) {
-          return res.status(400).json({ message: "Service must be an array" });
-        }
+      // if (service) {
+      //   if (!Array.isArray(service)) {
+      //     return res.status(400).json({ message: "Service must be an array" });
+      //   }
 
-        provider.service = service.map((item) => ({
-          serviceName: item.serviceName,
-          pricingModel: item.pricingModel,
-          price: item.price,
-        }));
-      }
+      //   provider.service = service.map((item) => ({
+      //     serviceName: item.serviceName,
+      //     pricingModel: item.pricingModel,
+      //     price: item.price,
+      //   }));
+      // }
 
       if (workVisuals) {
         if (!Array.isArray(workVisuals)) {
@@ -178,6 +176,106 @@ class ProviderController {
     } catch (err) {
       console.error("Update error:", err);
       res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  async addServiceDetails(req, res) {
+    try {
+      const {
+        service,
+        yearsOfExperience,
+        availableDays,
+        businessHours,
+        workVisuals,
+      } = req.body || {};
+
+      if (service !== undefined && !Array.isArray(service)) {
+        return res.status(400).json({ message: "Service must be an array" });
+      }
+
+      if (
+        yearsOfExperience !== undefined &&
+        (typeof yearsOfExperience !== "number" || yearsOfExperience < 0)
+      ) {
+        return res.status(400).json({
+          message: "Years of experience must be a non-negative number",
+        });
+      }
+
+      if (availableDays !== undefined && !Array.isArray(availableDays)) {
+        return res
+          .status(400)
+          .json({ message: "Available days must be an array" });
+      }
+
+      if (
+        businessHours !== undefined &&
+        (typeof businessHours !== "object" ||
+          businessHours === null ||
+          Array.isArray(businessHours))
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Business hours must be an object" });
+      }
+
+      if (workVisuals !== undefined && !Array.isArray(workVisuals)) {
+        return res
+          .status(400)
+          .json({ message: "Work visuals must be an array" });
+      }
+
+      const provider = await Provider.findById(req.user.id);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      if (service !== undefined) {
+        provider.service = service.map((item) => ({
+          serviceName: item.serviceName,
+          pricingModel: item.pricingModel,
+          price: item.price,
+        }));
+      }
+
+      if (yearsOfExperience !== undefined) {
+        provider.yearsOfExperience = yearsOfExperience;
+      }
+
+      if (availableDays !== undefined) {
+        provider.availableDays = availableDays;
+      }
+
+      if (businessHours !== undefined) {
+        provider.businessHours = {
+          start: businessHours.start,
+          end: businessHours.end,
+        };
+      }
+
+      if (workVisuals !== undefined) {
+        provider.workVisuals = workVisuals.map((item) => ({
+          pictures: Array.isArray(item.pictures) ? item.pictures : [],
+          videos: Array.isArray(item.videos) ? item.videos : [],
+        }));
+      }
+
+      await provider.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Service details added successfully",
+        data: {
+          service: provider.service,
+          yearsOfExperience: provider.yearsOfExperience,
+          availableDays: provider.availableDays,
+          businessHours: provider.businessHours,
+          workVisuals: provider.workVisuals,
+        },
+      });
+    } catch (err) {
+      console.error("Add service details error:", err);
+      return res.status(500).json({ success: false, message: err.message });
     }
   }
 
