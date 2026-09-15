@@ -1,6 +1,9 @@
+const jwt = require('jsonwebtoken');
 const { getPagination } = require('../../shared/utils/pagination');
 const Business = require('./business.model');
 const businessService = require('./business.service');
+
+const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '20h';
 
 // Maps the custom service-layer error classes to HTTP status codes so every
 // new handler shares one error-response path instead of repeating if/else

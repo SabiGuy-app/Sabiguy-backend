@@ -79,6 +79,14 @@ const serviceProviderSchema = new mongoose.Schema(
         price: { type: String },
       },
     ],
+
+    yearsOfExperience: { type: Number },
+    availableDays: [{ type: String }],
+    businessHours: {
+      start: { type: String },
+      end: { type: String },
+    },
+    availableDays: [{ type: String }],
     workVisuals: [
       {
         pictures: [{ type: String }],

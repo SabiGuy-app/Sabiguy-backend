@@ -246,7 +246,65 @@ router.post(
   addVehicleDetails,
 );
 
-router.post("/kyc-level", authMiddleware, getKycLevel);
+/**
+ * @swagger
+ * /api/v1/businesses/kyc-level:
+ *   post:
+ *     summary: Get business KYC level
+ *     description: Checks a business account by email and returns its current KYC status. If the email belongs to a new customer, it returns a friendly message without a record.
+ *     tags: [Business]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "business@example.com"
+ *     responses:
+ *       200:
+ *         description: KYC level fetched successfully or business is new
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - type: object
+ *                   properties:
+ *                     success:
+ *                       type: boolean
+ *                       example: true
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         kycLevel:
+ *                           type: number
+ *                           example: 2
+ *                         kycCompleted:
+ *                           type: boolean
+ *                           example: false
+ *                         kycVerified:
+ *                           type: boolean
+ *                           example: false
+ *                         token:
+ *                           type: string
+ *                           example: "eyJhbGciOi..."
+ *                 - type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "This is a new customer"
+ *       400:
+ *         description: Email is required
+ *       403:
+ *         description: Email does not match authenticated user
+ *       500:
+ *         description: Server error
+ */
+router.post("/kyc-level", getKycLevel);
 
 // Business/Fleet management
 /**
