@@ -109,6 +109,11 @@ exports.googleSignUp = async (req, res) => {
       profilePicture: picture,
       role: "provider",
       kycLevel: 1,
+      isOnline: false,
+      availability: {
+        isAvailable: false,
+        lastUpdated: new Date(),
+      },
     });
 
     accountHelper.addAuthMethod(newUser, "google");
@@ -441,6 +446,11 @@ exports.registerProvider = async (req, res) => {
       phoneNumber: normalizedPhoneNumber || phoneNumber,
       role: "provider",
       authMethods: ["email"],
+      isOnline: false,
+      availability: {
+        isAvailable: false,
+        lastUpdated: new Date(),
+      },
     });
 
     await newProvider.save();

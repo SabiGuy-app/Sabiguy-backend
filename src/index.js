@@ -185,7 +185,8 @@ io.on("connection", (socket) => {
       const Provider = require("../models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
         "availability.isAvailable": isAvailable,
-        isOnline: true,
+        "availability.lastUpdated": new Date(),
+        isOnline: isAvailable,
       });
       socket.emit("availability_updated", { isAvailable });
       console.log(`🟢 Provider ${socket.userId} availability: ${isAvailable}`);
@@ -405,6 +406,8 @@ io.on("connection", (socket) => {
         await Provider.findByIdAndUpdate(socket.userId, {
           isOnline: false,
           lastSeen: new Date(),
+          // Keep the provider's chosen availability state intact across reconnects.
+          // Only explicit toggle actions should change availability.isAvailable.
         });
         console.log(`🔴 Provider ${socket.userId} went offline`);
       } catch (error) {

@@ -132,6 +132,11 @@ const serviceProviderSchema = new mongoose.Schema(
       default: Date.now,
     },
 
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+
     availability: {
       isAvailable: {
         type: Boolean,
