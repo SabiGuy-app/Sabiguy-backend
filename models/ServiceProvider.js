@@ -121,7 +121,6 @@ const serviceProviderSchema = new mongoose.Schema(
       },
       coordinates: {
         type: [Number], // [longitude, latitude]
-        index: "2dsphere",
         default: [0, 0],
       },
       address: String, // Optional

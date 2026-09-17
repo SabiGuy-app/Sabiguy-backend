@@ -1094,6 +1094,10 @@ class BookingController {
       let rawProviders = await Provider.aggregate([
         {
           $geoNear: {
+            // The providers collection may have other geospatial indexes.
+            // Select the GeoJSON location index explicitly so MongoDB does not
+            // have to infer which 2dsphere index to use.
+            key: "currentLocation",
             near: {
               type: "Point",
               coordinates: [coordinates.longitude, coordinates.latitude],
