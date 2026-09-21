@@ -288,6 +288,19 @@ router.post(
  *                       type: array
  *                       items:
  *                         type: string
+ *               businessAddress:
+ *                 type: string
+ *                 description: Provider's business address
+ *                 example: "12 Allen Avenue, Ikeja"
+ *               businessName:
+ *                 type: string
+ *                 description: Provider's business name
+ *                 example: "SabiGuy Home Services"
+ *               cacFile:
+ *                 type: string
+ *                 format: uri
+ *                 description: URL of the provider's CAC document
+ *                 example: "https://res.cloudinary.com/demo/raw/upload/v123456/cac.pdf"
  *     responses:
  *       200:
  *         description: Service details added successfully
