@@ -271,6 +271,104 @@ const addVehicleDetails = async (req, res) => {
   }
 };
 
+
+const addServiceDetails = async (req, res) => {
+    try {
+      const {
+        service,
+        availableDays,
+        businessHours,
+        servicePlace,
+        studioImages,
+      } = req.body || {};
+
+      if (service !== undefined && !Array.isArray(service)) {
+        return res.status(400).json({ message: "Service must be an array" });
+      }
+
+      if (availableDays !== undefined && !Array.isArray(availableDays)) {
+        return res
+          .status(400)
+          .json({ message: "Available days must be an array" });
+      }
+
+      if (
+        businessHours !== undefined &&
+        (typeof businessHours !== "object" ||
+          businessHours === null ||
+          Array.isArray(businessHours))
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Business hours must be an object" });
+      }
+
+      if (servicePlace !== undefined && !Array.isArray(servicePlace)) {
+        return res
+          .status(400)
+          .json({ message: "Service place must be an array" });
+      }
+
+      if (studioImages !== undefined && !Array.isArray(studioImages)) {
+        return res
+          .status(400)
+          .json({ message: "Studio images must be an array" });
+      }
+
+      const business = await Business.findById(req.user.id);
+      if (!business) {
+        return res.status(404).json({ message: "Business not found" });
+      }
+
+      if (service !== undefined) {
+        business.service = service.map((item) => ({
+          serviceName: item.serviceName,
+          pricingModel: item.pricingModel,
+          price: item.price,
+        }));
+      }
+
+      if (availableDays !== undefined) {
+        business.availableDays = availableDays;
+      }
+
+      if (businessHours !== undefined) {
+        business.businessHours = {
+          start: businessHours.start,
+          end: businessHours.end,
+        };
+      }
+
+      if (servicePlace !== undefined) {
+        business.servicePlace = servicePlace;
+      }
+
+      if (studioImages !== undefined) {
+        business.studioImages = studioImages.map((item) => ({
+          pictures: Array.isArray(item.pictures) ? item.pictures : [],
+          videos: Array.isArray(item.videos) ? item.videos : [],
+        }));
+      }
+
+      await business.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Service details added successfully",
+        data: {
+          service: business.service,
+          availableDays: business.availableDays,
+          businessHours: business.businessHours,
+          servicePlace: business.servicePlace,
+          studioImages: business.studioImages,
+        },
+      });
+    } catch (err) {
+      console.error("Add service details error:", err);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
   const  getKycLevel = async (req, res) => {
     try {
       const { email } = req.body;

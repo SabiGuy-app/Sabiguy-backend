@@ -47,6 +47,26 @@ const businessSchema = new mongoose.Schema(
     cityOfOperation: { type: String },
     businessCategory: { type: String, required: false, default: null },
     businessPhotos: [{ type: String }],
+    service: [
+      {
+        serviceName: { type: String },
+        pricingModel: { type: String },
+        price: { type: String },
+      },
+    ],
+    availableDays: [{ type: String }],
+    businessHours: {
+      start: { type: String },
+      end: { type: String },
+    },
+    availableDays: [{ type: String }],
+    servicePlace: [{ type: String }],
+    studioImages: [
+      {
+        pictures: [{ type: String }],
+        videos: [{ type: String }],
+      },
+    ],
     vehicles: [
       {
         name: { type: String },

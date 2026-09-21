@@ -87,6 +87,8 @@ const serviceProviderSchema = new mongoose.Schema(
       end: { type: String },
     },
     availableDays: [{ type: String }],
+    servicePlace: [{ type: String }],
+
     workVisuals: [
       {
         pictures: [{ type: String }],

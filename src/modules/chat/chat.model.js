@@ -77,8 +77,7 @@ const chatSchema = new mongoose.Schema ({
   timestamps: true
 });
 
-// Index for efficient queries
-chatSchema.index({ bookingId: 1 });
+// `bookingId` is already indexed by its `unique: true` schema option.
 chatSchema.index({ 'participants.userId': 1 });
 chatSchema.index({ 'messages.createdAt': -1 });
 
