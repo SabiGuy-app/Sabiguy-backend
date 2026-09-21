@@ -19,7 +19,6 @@ class ProviderController {
       }
 
       provider.accountType = accountType;
-      // provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
       await provider.save();
 
       res.status(200).json({
@@ -275,6 +274,10 @@ class ProviderController {
         }));
       }
 
+
+      provider.kycCompleted = true;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4); 
+      
       await provider.save();
 
       return res.status(200).json({
