@@ -187,6 +187,9 @@ class ProviderController {
         availableDays,
         businessHours,
         workVisuals,
+        businessAddress,
+        businessName,
+        cacFile,
       } = req.body || {};
 
       if (service !== undefined && !Array.isArray(service)) {
@@ -231,7 +234,7 @@ class ProviderController {
       }
 
       if (service !== undefined) {
-        provider.service = service.map((item) => ({
+        provider.service = service.map((item = {}) => ({
           serviceName: item.serviceName,
           pricingModel: item.pricingModel,
           price: item.price,
@@ -253,8 +256,20 @@ class ProviderController {
         };
       }
 
+      const businessFields = {
+        BusinessAddress: businessAddress,
+        BusinessName: businessName,
+        cacFile,
+      };
+
+      Object.entries(businessFields).forEach(([key, value]) => {
+        if (value !== undefined) {
+          provider[key] = value;
+        }
+      });
+
       if (workVisuals !== undefined) {
-        provider.workVisuals = workVisuals.map((item) => ({
+        provider.workVisuals = workVisuals.map((item = {}) => ({
           pictures: Array.isArray(item.pictures) ? item.pictures : [],
           videos: Array.isArray(item.videos) ? item.videos : [],
         }));
@@ -270,6 +285,9 @@ class ProviderController {
           yearsOfExperience: provider.yearsOfExperience,
           availableDays: provider.availableDays,
           businessHours: provider.businessHours,
+          businessAddress: provider.BusinessAddress,
+          businessName: provider.BusinessName,
+          cacFile: provider.cacFile,
           workVisuals: provider.workVisuals,
         },
       });

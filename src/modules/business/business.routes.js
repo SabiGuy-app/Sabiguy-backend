@@ -11,6 +11,7 @@ const {
   addBusinessVerification,
   addVehicleDetails,
   getKycLevel,
+  addServiceDetails,
 } = require("./business.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
 const onlyRole = require("../../../middleware/roleMiddleware");
@@ -244,6 +245,95 @@ router.post(
   authMiddleware,
   onlyRole("businessOwner"),
   addVehicleDetails,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/service-details:
+ *   post:
+ *     summary: Add or update business service details
+ *     description: Stores services, working days, business hours, service locations, and studio images for the authenticated business owner. All request properties are optional, so a partial update is supported.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               service:
+ *                 type: array
+ *                 description: Services offered by the business
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     serviceName:
+ *                       type: string
+ *                       example: "Home Cleaning"
+ *                     pricingModel:
+ *                       type: string
+ *                       example: "fixed"
+ *                     price:
+ *                       type: string
+ *                       example: "25000"
+ *               availableDays:
+ *                 type: array
+ *                 description: Days on which the business is available
+ *                 items:
+ *                   type: string
+ *                 example: ["Monday", "Wednesday", "Friday"]
+ *               businessHours:
+ *                 type: object
+ *                 properties:
+ *                   start:
+ *                     type: string
+ *                     example: "08:00"
+ *                   end:
+ *                     type: string
+ *                     example: "18:00"
+ *               servicePlace:
+ *                 type: array
+ *                 description: Places where the business provides services
+ *                 items:
+ *                   type: string
+ *                 example: ["Walk in Salon", "Customer Address"]
+ *               studioImages:
+ *                 type: array
+ *                 description: Business studio images and videos
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     pictures:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["https://res.cloudinary.com/demo/image/upload/v123456/studio.jpg"]
+ *                     videos:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["https://res.cloudinary.com/demo/video/upload/v123456/studio.mp4"]
+ *     responses:
+ *       200:
+ *         description: Service details added successfully
+ *       400:
+ *         description: Invalid service details format
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Business access only
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/service-details",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  addServiceDetails,
 );
 
 /**
