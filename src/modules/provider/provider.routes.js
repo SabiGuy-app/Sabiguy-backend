@@ -162,31 +162,10 @@ router.post("/business", authMiddleware, ProviderController.BusinessInfo);
  *                   properties:
  *                     service:
  *                       type: string
- *                       example: "Makeup"
+ *                       example: "Transport & Logistics or Beauty & Personal Care "
  *                     title:
  *                       type: string
- *                       example: "Bridal Makeup"
- *                     tagLine:
- *                       type: string
- *                       example: "Flawless beauty for your special day"
- *                     startingPrice:
- *                       type: string
- *                       example: "20000"
- *               service:
- *                 type: array
- *                 description: Additional service packages
- *                 items:
- *                   type: object
- *                   properties:
- *                     serviceName:
- *                       type: string
- *                       example: "Home Service Makeup"
- *                     pricingModel:
- *                       type: string
- *                       example: "fixed"
- *                     price:
- *                       type: string
- *                       example: "25000"
+ *                       example: "car driver"
  *               workVisuals:
  *                 type: array
  *                 description: Work visuals to attach to the provider profile
@@ -275,6 +254,12 @@ router.post(
  *                     type: string
  *                   end:
  *                     type: string
+ *               servicePlace:
+ *                 type: array
+ *                 description: Places where the provider offers services
+ *                 items:
+ *                   type: string
+ *                 example: ["Provider's location", "Customer address"]
  *               workVisuals:
  *                 type: array
  *                 items:

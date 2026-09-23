@@ -123,6 +123,12 @@ class paymentService {
         throw new Error("Booking already paid for");
       }
 
+      if (["booking_expired", "expired"].includes(booking.status)) {
+        throw new Error(
+          "This booking has expired. Please create a new booking.",
+        );
+      }
+
       await this.enforcePaymentWindow(booking);
 
       if (
