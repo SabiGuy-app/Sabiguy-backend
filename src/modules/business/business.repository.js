@@ -104,10 +104,10 @@ const saveBusinessVerificationDetails = (businessId, details) =>
     { new: true, runValidators: true },
   );
 
-const saveBusinessServiceDetails = (businessId, details) =>
+const saveBusinessServiceDetails = (businessId, details, updates = {}) =>
   Business.findByIdAndUpdate(
     businessId,
-    { $set: details },
+    { $set: { ...details, ...updates } },
     { new: true, runValidators: true },
   );
 
