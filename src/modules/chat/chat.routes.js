@@ -177,7 +177,7 @@ router.get("/", authMiddleware, chatController.getUserChats);
  * /api/v1/chats/{bookingId}/messages:
  *   get:
  *     summary: Get messages for a specific booking
- *     description: Retrieve chat messages for a specific booking with pagination
+ *     description: Retrieve chat messages for a specific booking with pagination. Chats for released funds are read-only.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []
@@ -279,7 +279,7 @@ router.get("/:bookingId/messages", authMiddleware, chatController.getMessages);
  * /api/v1/chats/{bookingId}/messages:
  *   post:
  *     summary: Send a message (HTTP fallback)
- *     description: Send a chat message via HTTP (alternative to Socket.IO real-time messaging)
+ *     description: Send a chat message via HTTP (alternative to Socket.IO real-time messaging). Chats for released funds are read-only.
  *     tags: [Chat]
  *     security:
  *       - bearerAuth: []

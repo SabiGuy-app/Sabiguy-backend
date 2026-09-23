@@ -5,6 +5,10 @@ const notificationService = require("../../services/notification.service");
 const paymentService = require("../payment/payment.service");
 const geolocationService = require("../../services/geolocation.service");
 const pricingService = require("../../services/pricing.service");
+const {
+  BOOKING_ACCEPTANCE_WINDOW_MS,
+  PAYMENT_WINDOW_MS,
+} = require("../bookings/booking-expiry.config");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 const STALE_LOCATION_MINUTES = Number(process.env.STALE_LOCATION_MINUTES || 10);
@@ -185,6 +189,7 @@ class ProviderController {
         yearsOfExperience,
         availableDays,
         businessHours,
+        servicePlace,
         workVisuals,
         businessAddress,
         businessName,
@@ -221,6 +226,12 @@ class ProviderController {
           .json({ message: "Business hours must be an object" });
       }
 
+      if (servicePlace !== undefined && !Array.isArray(servicePlace)) {
+        return res
+          .status(400)
+          .json({ message: "Service place must be an array" });
+      }
+
       if (workVisuals !== undefined && !Array.isArray(workVisuals)) {
         return res
           .status(400)
@@ -253,6 +264,10 @@ class ProviderController {
           start: businessHours.start,
           end: businessHours.end,
         };
+      }
+
+      if (servicePlace !== undefined) {
+        provider.servicePlace = servicePlace;
       }
 
       const businessFields = {
@@ -288,6 +303,7 @@ class ProviderController {
           yearsOfExperience: provider.yearsOfExperience,
           availableDays: provider.availableDays,
           businessHours: provider.businessHours,
+          servicePlace: provider.servicePlace,
           businessAddress: provider.BusinessAddress,
           businessName: provider.BusinessName,
           cacFile: provider.cacFile,
@@ -1317,8 +1333,9 @@ class ProviderController {
         providerETAMinutes + booking.estimatedDuration.value;
 
       const acceptedAt = new Date();
-      const paymentDeadlineMinutes = 30;
-      const acceptanceDeadline = new Date(Date.now() - 10 * 60 * 1000);
+      const acceptanceDeadline = new Date(
+        Date.now() - BOOKING_ACCEPTANCE_WINDOW_MS,
+      );
 
       const updatedBooking = await Booking.findOneAndUpdate(
         {
@@ -1338,7 +1355,7 @@ class ProviderController {
 
           acceptedAt,
           paymentDeadlineAt: new Date(
-            acceptedAt.getTime() + paymentDeadlineMinutes * 60 * 1000,
+            acceptedAt.getTime() + PAYMENT_WINDOW_MS,
           ),
           expiredAt: null,
           distanceFromPickup: {
@@ -1451,7 +1468,7 @@ class ProviderController {
       await booking.save();
 
       // TODO: Send notification to user
-      await notificationService.notifyUser(booking.providerId, {
+      await notificationService.notifyUser(booking.userId, {
         type: "booking_cancelled",
         title: "❌ Booking Cancelled",
         message: `The provider has cancelled the booking. Reason: ${reason}`,
