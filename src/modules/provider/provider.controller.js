@@ -441,6 +441,14 @@ class ProviderController {
   async getDashboardStats(req, res) {
     try {
       const providerId = req.user.id;
+      const period = String(req.query.period || "week").toLowerCase();
+      const periodDays = { week: 7, month: 30, year: 90 };
+      if (!periodDays[period]) {
+        return res.status(400).json({
+          success: false,
+          message: "period must be one of: week, month, year",
+        });
+      }
 
       // Get wallet balance (more accurate!)
       const walletService = require("../wallet/wallet.service");
@@ -452,6 +460,8 @@ class ProviderController {
       const now = new Date();
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
 
       // Get booking statistics + analytics
       const [
@@ -503,18 +513,29 @@ class ProviderController {
                 { $match: { createdAt: { $gte: thirtyDaysAgo } } },
                 { $group: { _id: null, amount: { $sum: "$providerNet" } } },
               ],
+              dailyWeek: [
+                { $match: { createdAt: { $gte: sevenDaysAgo } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                { $sort: { _id: 1 } },
+              ],
+              dailyMonth: [
+                { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                { $sort: { _id: 1 } },
+              ],
+              monthlyYear: [
+                { $match: { createdAt: { $gte: yearAgo } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                { $sort: { _id: 1 } },
+              ],
             },
           },
         ]),
         Booking.aggregate([
-          {
-            $match: {
-              providerId,
-              acceptedAt: { $exists: true, $ne: null },
-            },
-          },
+          { $match: { providerId, acceptedAt: { $exists: true, $ne: null } } },
           {
             $project: {
+              createdAt: 1,
               responseMinutes: {
                 $divide: [
                   { $subtract: ["$acceptedAt", "$createdAt"] },
@@ -523,13 +544,11 @@ class ProviderController {
               },
             },
           },
-          {
-            $group: {
-              _id: null,
-              averageResponseMinutes: { $avg: "$responseMinutes" },
-              count: { $sum: 1 },
-            },
-          },
+          { $facet: {
+            week: [ { $match: { createdAt: { $gte: sevenDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
+            month: [ { $match: { createdAt: { $gte: thirtyDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
+            year: [ { $match: { createdAt: { $gte: ninetyDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
+          } },
         ]),
         Booking.aggregate([
           { $match: { providerId } },
@@ -557,9 +576,47 @@ class ProviderController {
       const totalRevenue = revenueFacet.total?.[0]?.amount || 0;
       const last7DaysRevenue = revenueFacet.last7Days?.[0]?.amount || 0;
       const last30DaysRevenue = revenueFacet.last30Days?.[0]?.amount || 0;
-
+      const averageFacet = averageResponse?.[0] || {};
+      const averageResponseByPeriod = {
+        week: averageFacet.week?.[0]?.average || 0,
+        month: averageFacet.month?.[0]?.average || 0,
+        threeMonths: averageFacet.year?.[0]?.average || 0,
+      };
       const averageResponseMinutes =
-        averageResponse?.[0]?.averageResponseMinutes || 0;
+        period === "year"
+          ? averageResponseByPeriod.threeMonths
+          : averageResponseByPeriod[period];
+
+      const fillSeries = (rows, startDate, count, unit) => {
+        const amounts = new Map(rows.map((row) => [row._id, row.amount]));
+        return Array.from({ length: count }, (_, index) => {
+          const date = new Date(startDate);
+          if (unit === "day") date.setUTCDate(date.getUTCDate() + index);
+          else date.setUTCMonth(date.getUTCMonth() + index);
+          const key = unit === "day"
+            ? date.toISOString().slice(0, 10)
+            : date.toISOString().slice(0, 7);
+          return { period: key, amount: amounts.get(key) || 0 };
+        });
+      };
+      const weekRevenue = fillSeries(
+        revenueFacet.dailyWeek || [],
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6)),
+        7,
+        "day",
+      );
+      const monthRevenue = fillSeries(
+        revenueFacet.dailyMonth || [],
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29)),
+        30,
+        "day",
+      );
+      const yearRevenue = fillSeries(
+        revenueFacet.monthlyYear || [],
+        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1)),
+        12,
+        "month",
+      );
 
       const dayNames = [
         "Sunday",
@@ -601,9 +658,21 @@ class ProviderController {
             total: totalRevenue,
             last7Days: last7DaysRevenue,
             last30Days: last30DaysRevenue,
+            period,
+            chart: period === "week" ? weekRevenue : period === "month" ? monthRevenue : yearRevenue,
+            byPeriod: {
+              week: weekRevenue,
+              month: monthRevenue,
+              year: yearRevenue,
+            },
           },
           averageResponseTimeMinutes:
             Math.round(averageResponseMinutes * 100) / 100,
+          averageResponseTimeByPeriodMinutes: {
+            week: Math.round(averageResponseByPeriod.week * 100) / 100,
+            month: Math.round(averageResponseByPeriod.month * 100) / 100,
+            threeMonths: Math.round(averageResponseByPeriod.threeMonths * 100) / 100,
+          },
           bookingsByDayOfWeek,
           peakHourAnalysis: {
             peakHour,
@@ -1289,6 +1358,23 @@ class ProviderController {
       }
 
       // 3️⃣ Fetch provider's current location and vehicle data
+      const providerPricingOption = booking.providerPricingOptions?.find(
+        (option) => String(option.providerId) === String(providerId),
+      );
+      const bookingPrice =
+        providerPricingOption?.riderPays ??
+        booking.agreedPrice ??
+        booking.calculatedPrice ??
+        booking.totalAmount ??
+        booking.budget;
+
+      if (Number(bookingPrice) === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "You cannot accept a booking with a price of 0",
+        });
+      }
+
       const providerData = await Provider.findById(providerId).select(
         "currentLocation vehicleProductionYear job lastLocationUpdate",
       );

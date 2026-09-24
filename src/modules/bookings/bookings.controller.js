@@ -1979,6 +1979,7 @@ class BookingController {
         subCategory,
         search,
         modeOfDelivery,
+        includeZeroAmount,
         maxDistanceKm,
         minDistanceKm,
         startDate,
@@ -1992,6 +1993,30 @@ class BookingController {
 
       // Build query object
       const query = {};
+
+      if (includeZeroAmount === "false") {
+        query.$expr = {
+          $gt: [
+            {
+              $ifNull: [
+                "$pricingBreakdown.riderPaysFinal",
+                {
+                  $ifNull: [
+                    "$calculatedPrice",
+                    {
+                      $ifNull: [
+                        "$totalAmount",
+                        { $ifNull: ["$agreedPrice", "$budget"] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            0,
+          ],
+        };
+      }
 
       // Filter by status
       if (status) {

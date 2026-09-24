@@ -176,6 +176,13 @@ router.post(
  *         description: Filter by mode of delivery or pickup
  *         example: Car delivery or Car pickup
  *       - in: query
+ *         name: includeZeroAmount
+ *         schema:
+ *           type: boolean
+ *           default: true
+ *         description: Include bookings with a zero naira amount. Set to false to exclude them.
+ *         example: true
+ *       - in: query
  *         name: search
  *         schema:
  *           type: string
