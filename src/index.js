@@ -11,7 +11,6 @@ const redis = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const notificationService = require("./services/notification.service");
 const turnService = require("./modules/call/call.service");
-const { startBookingExpiryJob } = require("./modules/bookings/booking-expiry.job");
 const REDIS_MAX_RECONNECT_ATTEMPTS = Number(
   process.env.REDIS_MAX_RECONNECT_ATTEMPTS || 5,
 );
@@ -130,7 +129,6 @@ const initRedisAdapter = async () => {
 initRedisAdapter();
 
 notificationService.setSocketIO(io);
-startBookingExpiryJob();
 
 // Make Socket.io instance available to routes (for broadcasting from cron)
 app.set("io", io);
@@ -171,6 +169,7 @@ io.on("connection", (socket) => {
       const { latitude, longitude } = data;
       const Provider = require("../models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
+        "currentLocation.type": "Point",
         "currentLocation.coordinates": [longitude, latitude],
         lastLocationUpdate: new Date(),
       });

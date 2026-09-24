@@ -12,8 +12,8 @@ const discountService = require("../../services/discount.service");
 const WalletService = require("../wallet/wallet.service");
 
 const PROVIDER_RADIUS = {
-  Bike: 4, // km -- ~10-15 mins Lagos traffic
-  Car: 9, // km -- ~15-20 mins Lagos traffic
+  bike: 4, // km -- ~10-15 mins Lagos traffic
+  car: 9, // km -- ~15-20 mins Lagos traffic
   default: 7,
 };
 const MAX_PROVIDERS_RETURNED = 6;
@@ -25,6 +25,7 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "cancelled",
   "payment_pending",
   "booking_expired",
+  "expired",
 ]; // Bookings that count towards provider activity
 const DELETABLE_BOOKING_STATUSES = [
   "pending_providers",
@@ -32,6 +33,7 @@ const DELETABLE_BOOKING_STATUSES = [
   "provider_selected",
   "payment_pending",
   "cancelled",
+  "expired",
 ];
 
 class BookingController {
@@ -386,6 +388,42 @@ class BookingController {
     delete bookingObject.providerDistances;
 
     return bookingObject;
+  }
+
+  getNearestProviderPickupSummary(providers = []) {
+    if (!Array.isArray(providers) || providers.length === 0) {
+      return null;
+    }
+
+    const nearestProvider = [...providers].sort((a, b) => {
+      const aDistance = Number(a.distanceFromPickup ?? 0);
+      const bDistance = Number(b.distanceFromPickup ?? 0);
+
+      if (aDistance !== bDistance) return aDistance - bDistance;
+      return (
+        Number(a.providerETA?.value ?? 0) - Number(b.providerETA?.value ?? 0)
+      );
+    })[0];
+
+    const distanceKm = Number(nearestProvider.distanceFromPickup ?? 0);
+    const etaMinutes = Number(nearestProvider.providerETA?.value ?? 0);
+
+    return {
+      providerId: nearestProvider.id ?? nearestProvider.providerId ?? null,
+      distanceFromPickup: {
+        value: Number(distanceKm.toFixed(2)),
+        unit: "km",
+      },
+      estimatedMetersAway: Math.round(distanceKm * 1000),
+      providerETA: {
+        value: etaMinutes,
+        unit: "minutes",
+      },
+      estimatedETA: {
+        value: etaMinutes,
+        unit: "minutes",
+      },
+    };
   }
 
   async createBooking(req, res) {
@@ -781,6 +819,7 @@ class BookingController {
                   distance: booking.distance,
                   estimatedDuration: transportEstimates.estimatedDuration,
                   estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
+                  providerToPickup: null,
                 }
               : {}),
             note: "No providers found matching this service type",
@@ -920,6 +959,9 @@ class BookingController {
           this.notifyProvidersForFastestFinger(booking, enrichedProviders);
           const bookingResponse = this.prepareBookingResponse(booking);
 
+          const providerPickupSummary =
+            this.getNearestProviderPickupSummary(enrichedProviders);
+
           return res.status(201).json({
             success: true,
             message: "Booking created. Looking for a provider near you.",
@@ -932,6 +974,7 @@ class BookingController {
               distance: booking.distance,
               estimatedDuration: transportEstimates.estimatedDuration,
               estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
+              providerToPickup: providerPickupSummary,
               flowType: "fastest_finger",
             },
           });
@@ -941,6 +984,9 @@ class BookingController {
           booking.status = "awaiting_provider_acceptance";
           await booking.save();
           const bookingResponse = this.prepareBookingResponse(booking);
+
+          const providerPickupSummary =
+            this.getNearestProviderPickupSummary(enrichedProviders);
 
           return res.status(201).json({
             success: true,
@@ -952,6 +998,7 @@ class BookingController {
               distance: booking.distance,
               estimatedDuration: transportEstimates.estimatedDuration,
               estimatedArrivalAt: transportEstimates.estimatedArrivalAt,
+              providerToPickup: providerPickupSummary,
               flowType: "user_selection",
             },
           });
@@ -1064,8 +1111,13 @@ class BookingController {
         truck: "truck_driver",
       };
 
-      const radiusKm = modeOfDelivery
-        ? (PROVIDER_RADIUS[modeOfDelivery] ?? PROVIDER_RADIUS.default)
+      const normalizedModeOfDelivery = modeOfDelivery
+        ? String(modeOfDelivery).trim().toLowerCase()
+        : null;
+
+      const radiusKm = normalizedModeOfDelivery
+        ? (PROVIDER_RADIUS[normalizedModeOfDelivery] ??
+          PROVIDER_RADIUS.default)
         : PROVIDER_RADIUS.default;
 
       // Stale location cutoff
@@ -1073,10 +1125,10 @@ class BookingController {
         Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
       );
 
-      const jobQuery = modeOfDelivery
+      const jobQuery = normalizedModeOfDelivery
         ? {
             $elemMatch: {
-              title: modeOfDeliveryMap[modeOfDelivery.toLowerCase()],
+              title: modeOfDeliveryMap[normalizedModeOfDelivery],
             },
           }
         : subCategory
@@ -1153,7 +1205,7 @@ class BookingController {
           // ETA: estimate provider travel time to pickup
           // Bike avg ~15 km/h in Lagos traffic, Car avg ~20 km/h
           const avgSpeedKmh =
-            modeOfDelivery?.toLowerCase() === "bike" ? 15 : 20;
+            normalizedModeOfDelivery === "bike" ? 15 : 20;
           const providerETAMinutes = Math.ceil(
             (distanceFromPickupKm / avgSpeedKmh) * 60,
           );
@@ -1191,7 +1243,7 @@ class BookingController {
         .slice(0, MAX_PROVIDERS_RETURNED);
 
       console.log(
-        `✅ ${providers.length} eligible providers within ${radiusKm}km (${modeOfDelivery ?? serviceType})`,
+        `✅ ${providers.length} eligible providers within ${radiusKm}km (${normalizedModeOfDelivery ?? serviceType})`,
       );
       return providers;
     } catch (error) {

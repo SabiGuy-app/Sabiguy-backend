@@ -1353,6 +1353,7 @@ class ProviderController {
           providerId,
           status: "provider_selected",
 
+          selectedAt: acceptedAt,
           acceptedAt,
           paymentDeadlineAt: new Date(
             acceptedAt.getTime() + PAYMENT_WINDOW_MS,
