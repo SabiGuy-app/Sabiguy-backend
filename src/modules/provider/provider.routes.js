@@ -528,6 +528,14 @@ router.post("/kyc-level", kycLevelLimiter, ProviderController.getKycLevel);
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *           enum: [week, month, year]
+ *           default: week
+ *         description: Select the revenue chart range. The selected average response time uses 7 days for week, 30 days for month, and 3 months for year.
  *     responses:
  *       200:
  *         description: Dashboard statistics retrieved successfully
@@ -568,8 +576,12 @@ router.post("/kyc-level", kycLevelLimiter, ProviderController.getKycLevel);
  *                       example: 100000
  *                     revenueOverview:
  *                       type: object
+ *                       description: Revenue totals and chart series; chart contains the selected period and byPeriod contains daily week/month and monthly year breakdowns.
  *                     averageResponseTimeMinutes:
  *                       type: number
+ *                       description: Average response time for the selected period.
+ *                     averageResponseTimeByPeriodMinutes:
+ *                       type: object
  *                     bookingsByDayOfWeek:
  *                       type: array
  *                     peakHourAnalysis:
