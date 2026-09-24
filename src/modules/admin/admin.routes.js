@@ -266,6 +266,90 @@ router.get(
 
 /**
  * @swagger
+ * /api/v1/admin/providers/by-service:
+ *   get:
+ *     summary: Get providers by job service
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: service
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Exact provider job service name, matched without case sensitivity
+ *         example: Plumbing
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *     responses:
+ *       200:
+ *         description: Providers retrieved successfully
+ *       400:
+ *         description: Missing service query parameter
+ *       403:
+ *         description: Admin access required
+ */
+router.get(
+  "/providers/by-service",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getProvidersByJobService,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/businesses/by-category:
+ *   get:
+ *     summary: Get businesses by category
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: businessCategory
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Exact business category, matched without case sensitivity
+ *         example: Catering
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *     responses:
+ *       200:
+ *         description: Businesses retrieved successfully
+ *       400:
+ *         description: Missing businessCategory query parameter
+ *       403:
+ *         description: Admin access required
+ */
+router.get(
+  "/businesses/by-category",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getBusinessesByCategory,
+);
+
+/**
+ * @swagger
  * /api/v1/admin/online-buyers:
  *   get:
  *     summary: Get online buyers

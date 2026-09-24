@@ -870,6 +870,102 @@ class AdminController {
     }
   }
 
+  async getProvidersByJobService(req, res) {
+    try {
+      const service = String(req.query.service || "").trim();
+      if (!service) {
+        return res.status(400).json({
+          success: false,
+          message: "service query parameter is required",
+        });
+      }
+
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+      const skip = (page - 1) * limit;
+      const escapedService = service.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const query = {
+        "job.service": { $regex: `^${escapedService}$`, $options: "i" },
+        isDeleted: { $ne: true },
+      };
+
+      const [providers, total] = await Promise.all([
+        Provider.find(query)
+          .select("fullName email phoneNumber profilePicture job service rating completedJobs isActive kycVerified createdAt")
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Provider.countDocuments(query),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        service,
+        count: providers.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit) || 1,
+        data: providers,
+      });
+    } catch (error) {
+      console.error("Get providers by job service error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching providers by job service",
+        error: error.message,
+      });
+    }
+  }
+
+  async getBusinessesByCategory(req, res) {
+    try {
+      const businessCategory = String(req.query.businessCategory || "").trim();
+      if (!businessCategory) {
+        return res.status(400).json({
+          success: false,
+          message: "businessCategory query parameter is required",
+        });
+      }
+
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+      const skip = (page - 1) * limit;
+      const escapedCategory = businessCategory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const query = {
+        businessCategory: { $regex: `^${escapedCategory}$`, $options: "i" },
+        isDeleted: { $ne: true },
+      };
+
+      const [businesses, total] = await Promise.all([
+        Business.find(query)
+          .select("fullName BusinessName email phoneNumber profilePicture businessCategory cityOfOperation isActive kycVerified createdAt")
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Business.countDocuments(query),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        businessCategory,
+        count: businesses.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit) || 1,
+        data: businesses,
+      });
+    } catch (error) {
+      console.error("Get businesses by category error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching businesses by category",
+        error: error.message,
+      });
+    }
+  }
+
   async getOnlineProviders(req, res) {
     try {
       const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
