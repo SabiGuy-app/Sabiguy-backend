@@ -5,6 +5,10 @@ const notificationService = require("../../services/notification.service");
 const paymentService = require("../payment/payment.service");
 const geolocationService = require("../../services/geolocation.service");
 const pricingService = require("../../services/pricing.service");
+const {
+  BOOKING_ACCEPTANCE_WINDOW_MS,
+  PAYMENT_WINDOW_MS,
+} = require("../bookings/booking-expiry.config");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 const STALE_LOCATION_MINUTES = Number(process.env.STALE_LOCATION_MINUTES || 10);
@@ -19,7 +23,6 @@ class ProviderController {
       }
 
       provider.accountType = accountType;
-      // provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
       await provider.save();
 
       res.status(200).json({
@@ -186,7 +189,11 @@ class ProviderController {
         yearsOfExperience,
         availableDays,
         businessHours,
+        servicePlace,
         workVisuals,
+        businessAddress,
+        businessName,
+        cacFile,
       } = req.body || {};
 
       if (service !== undefined && !Array.isArray(service)) {
@@ -219,6 +226,12 @@ class ProviderController {
           .json({ message: "Business hours must be an object" });
       }
 
+      if (servicePlace !== undefined && !Array.isArray(servicePlace)) {
+        return res
+          .status(400)
+          .json({ message: "Service place must be an array" });
+      }
+
       if (workVisuals !== undefined && !Array.isArray(workVisuals)) {
         return res
           .status(400)
@@ -231,7 +244,7 @@ class ProviderController {
       }
 
       if (service !== undefined) {
-        provider.service = service.map((item) => ({
+        provider.service = service.map((item = {}) => ({
           serviceName: item.serviceName,
           pricingModel: item.pricingModel,
           price: item.price,
@@ -253,13 +266,33 @@ class ProviderController {
         };
       }
 
+      if (servicePlace !== undefined) {
+        provider.servicePlace = servicePlace;
+      }
+
+      const businessFields = {
+        BusinessAddress: businessAddress,
+        BusinessName: businessName,
+        cacFile,
+      };
+
+      Object.entries(businessFields).forEach(([key, value]) => {
+        if (value !== undefined) {
+          provider[key] = value;
+        }
+      });
+
       if (workVisuals !== undefined) {
-        provider.workVisuals = workVisuals.map((item) => ({
+        provider.workVisuals = workVisuals.map((item = {}) => ({
           pictures: Array.isArray(item.pictures) ? item.pictures : [],
           videos: Array.isArray(item.videos) ? item.videos : [],
         }));
       }
 
+
+      provider.kycCompleted = true;
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4); 
+      
       await provider.save();
 
       return res.status(200).json({
@@ -270,6 +303,10 @@ class ProviderController {
           yearsOfExperience: provider.yearsOfExperience,
           availableDays: provider.availableDays,
           businessHours: provider.businessHours,
+          servicePlace: provider.servicePlace,
+          businessAddress: provider.BusinessAddress,
+          businessName: provider.BusinessName,
+          cacFile: provider.cacFile,
           workVisuals: provider.workVisuals,
         },
       });
@@ -1296,8 +1333,9 @@ class ProviderController {
         providerETAMinutes + booking.estimatedDuration.value;
 
       const acceptedAt = new Date();
-      const paymentDeadlineMinutes = 30;
-      const acceptanceDeadline = new Date(Date.now() - 10 * 60 * 1000);
+      const acceptanceDeadline = new Date(
+        Date.now() - BOOKING_ACCEPTANCE_WINDOW_MS,
+      );
 
       const updatedBooking = await Booking.findOneAndUpdate(
         {
@@ -1315,9 +1353,10 @@ class ProviderController {
           providerId,
           status: "provider_selected",
 
+          selectedAt: acceptedAt,
           acceptedAt,
           paymentDeadlineAt: new Date(
-            acceptedAt.getTime() + paymentDeadlineMinutes * 60 * 1000,
+            acceptedAt.getTime() + PAYMENT_WINDOW_MS,
           ),
           expiredAt: null,
           distanceFromPickup: {
@@ -1430,7 +1469,7 @@ class ProviderController {
       await booking.save();
 
       // TODO: Send notification to user
-      await notificationService.notifyUser(booking.providerId, {
+      await notificationService.notifyUser(booking.userId, {
         type: "booking_cancelled",
         title: "❌ Booking Cancelled",
         message: `The provider has cancelled the booking. Reason: ${reason}`,

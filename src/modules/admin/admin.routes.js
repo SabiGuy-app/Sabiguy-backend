@@ -543,6 +543,48 @@ router.patch(
 
 /**
  * @swagger
+ * /api/v1/admin/businesses/{businessId}/kyc/verify:
+ *   patch:
+ *     summary: Verify business KYC
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: businessId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Business ID
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 example: "Verified business registration documents"
+ *     responses:
+ *       200:
+ *         description: Business KYC verified successfully
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Business not found
+ */
+router.patch(
+  "/businesses/:businessId/kyc/verify",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  adminVerifyKycLimiter,
+  AdminController.verifyBusinessKyc,
+);
+
+/**
+ * @swagger
  * /api/v1/admin/providers/{providerId}/kyc/dispute:
  *   patch:
  *     summary: Reject/dispute provider KYC
@@ -588,6 +630,55 @@ router.patch(
   onlyRole("admin"),
   adminVerifyKycLimiter,
   AdminController.disputeKyc,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/businesses/{businessId}/kyc/dispute:
+ *   patch:
+ *     summary: Reject/dispute business KYC
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: businessId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Business ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: "CAC documents could not be verified"
+ *               note:
+ *                 type: string
+ *                 example: "Please resubmit a clearer copy of the registration documents"
+ *     responses:
+ *       200:
+ *         description: Business KYC disputed successfully
+ *       400:
+ *         description: Missing required fields
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Business not found
+ */
+router.patch(
+  "/businesses/:businessId/kyc/dispute",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  adminVerifyKycLimiter,
+  AdminController.disputeBusinessKyc,
 );
 
 module.exports = router;

@@ -13,7 +13,9 @@ const findBusinessByEmail = (email) =>
   );
 
 const findDriverByEmail = async (email) => {
-  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
   if (!normalizedEmail) return null;
 
   const exactMatch = await Provider.findOne({ email: normalizedEmail });
@@ -87,7 +89,7 @@ const addDriverToBusiness = (businessId, driverId, session) =>
     { $addToSet: { drivers: driverId } },
     { session },
   );
-  
+
 const saveBusinessDetails = (businessId, details) =>
   Business.findByIdAndUpdate(
     businessId,
@@ -99,6 +101,13 @@ const saveBusinessVerificationDetails = (businessId, details) =>
   Business.findByIdAndUpdate(
     businessId,
     { $set: details },
+    { new: true, runValidators: true },
+  );
+
+const saveBusinessServiceDetails = (businessId, details, updates = {}) =>
+  Business.findByIdAndUpdate(
+    businessId,
+    { $set: { ...details, ...updates } },
     { new: true, runValidators: true },
   );
 
@@ -125,5 +134,6 @@ module.exports = {
   addDriverToBusiness,
   saveBusinessDetails,
   saveBusinessVerificationDetails,
+  saveBusinessServiceDetails,
   addVehiclesToBusiness,
 };

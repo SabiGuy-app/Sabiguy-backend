@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const Admin = require("./Admin.model");
 const Provider = require("../../../models/ServiceProvider");
 const Buyer = require("../../../models/ServiceUser");
+const Business = require("../business/business.model");
 const Booking = require("../bookings/Bookings.model.js");
 const Transaction = require("../transactions/transaction.model");
 const WalletService = require("../wallet/wallet.service");
@@ -16,6 +17,8 @@ const {
   sendWelcomeEmail,
   sendKycVerificationEmail,
   sendKycDisputeEmail,
+  sendBusinessKycVerificationEmail,
+  sendBusinessKycDisputeEmail,
 } = require("../../config/emailVerification");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
@@ -312,6 +315,83 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error verifying KYC",
+        error: error.message,
+      });
+    }
+  }
+
+  async verifyBusinessKyc(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { businessId } = req.params;
+      const { note } = req.body || {};
+
+      if (!businessId) {
+        return res.status(400).json({ message: "businessId is required" });
+      }
+
+      const admin = await Admin.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+
+      const business = await Business.findById(businessId);
+      if (!business) {
+        return res.status(404).json({ message: "Business not found" });
+      }
+
+      business.kycCompleted = true;
+      business.kycVerified = true;
+      business.kycVerifiedAt = new Date();
+      business.kycVerifiedBy = {
+        id: admin._id,
+        email: admin.email,
+        fullName: admin.fullName,
+      };
+      business.kycRejected = false;
+      business.kycRejectedAt = null;
+      business.kycRejectedBy = undefined;
+      business.kycRejectionReason = undefined;
+      business.kycRejectionNote = undefined;
+      business.kycLevel = Math.max(business.kycLevel || 0, 2);
+      if (note) business.kycVerificationNote = note;
+
+      await business.save();
+
+      try {
+        await sendBusinessKycVerificationEmail(business.email, {
+          businessName:
+            business.BusinessName || business.fullName || "Business account",
+          note: note || "",
+        });
+      } catch (emailError) {
+        console.error(
+          "Failed to send business KYC verification email:",
+          emailError,
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Business KYC verified successfully",
+        data: {
+          businessId: business._id,
+          kycCompleted: business.kycCompleted,
+          kycVerified: business.kycVerified,
+          kycVerifiedAt: business.kycVerifiedAt,
+          kycVerifiedBy: business.kycVerifiedBy,
+          kycVerificationNote: business.kycVerificationNote,
+          kycLevel: business.kycLevel,
+        },
+      });
+    } catch (error) {
+      console.error("Verify business KYC error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error verifying business KYC",
         error: error.message,
       });
     }
@@ -711,6 +791,80 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error disputing KYC",
+        error: error.message,
+      });
+    }
+  }
+
+  async disputeBusinessKyc(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { businessId } = req.params;
+      const { reason, note } = req.body || {};
+
+      if (!businessId) {
+        return res.status(400).json({ message: "businessId is required" });
+      }
+
+      if (!reason) {
+        return res.status(400).json({ message: "reason is required" });
+      }
+
+      const admin = await Admin.findById(req.user.id);
+      if (!admin) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+
+      const business = await Business.findById(businessId);
+      if (!business) {
+        return res.status(404).json({ message: "Business not found" });
+      }
+
+      business.kycVerified = false;
+      business.kycRejected = true;
+      business.kycRejectedAt = new Date();
+      business.kycRejectedBy = {
+        id: admin._id,
+        email: admin.email,
+        fullName: admin.fullName,
+      };
+      business.kycRejectionReason = reason;
+      if (note) business.kycRejectionNote = note;
+
+      await business.save();
+
+      try {
+        await sendBusinessKycDisputeEmail(business.email, {
+          businessName:
+            business.BusinessName || business.fullName || "Business account",
+          reason,
+          note: note || "",
+        });
+      } catch (emailError) {
+        console.error("Failed to send business KYC dispute email:", emailError);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Business KYC disputed successfully",
+        data: {
+          businessId: business._id,
+          kycVerified: business.kycVerified,
+          kycRejected: business.kycRejected,
+          kycRejectedAt: business.kycRejectedAt,
+          kycRejectedBy: business.kycRejectedBy,
+          kycRejectionReason: business.kycRejectionReason,
+          kycRejectionNote: business.kycRejectionNote,
+        },
+      });
+    } catch (error) {
+      console.error("Dispute business KYC error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error disputing business KYC",
         error: error.message,
       });
     }

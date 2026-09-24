@@ -117,11 +117,12 @@ const serviceProviderSchema = new mongoose.Schema(
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point",
       },
       coordinates: {
         type: [Number], // [longitude, latitude]
-        default: [0, 0],
+        // Used by legacy $near queries on currentLocation.coordinates.
+        // The root currentLocation 2dsphere index below is used by $geoNear.
+        index: "2dsphere",
       },
       address: String, // Optional
     },
@@ -261,6 +262,9 @@ const serviceProviderSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    // Provider records live in the established `providers` collection.
+    // Pinning this prevents accidental pluralization/custom-mapping drift.
+    collection: "providers",
   },
 );
 

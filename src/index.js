@@ -169,6 +169,7 @@ io.on("connection", (socket) => {
       const { latitude, longitude } = data;
       const Provider = require("../models/ServiceProvider");
       await Provider.findByIdAndUpdate(socket.userId, {
+        "currentLocation.type": "Point",
         "currentLocation.coordinates": [longitude, latitude],
         lastLocationUpdate: new Date(),
       });

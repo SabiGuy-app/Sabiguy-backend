@@ -1,9 +1,9 @@
-const jwt = require('jsonwebtoken');
-const { getPagination } = require('../../shared/utils/pagination');
-const Business = require('./business.model');
-const businessService = require('./business.service');
+const jwt = require("jsonwebtoken");
+const { getPagination } = require("../../shared/utils/pagination");
+const Business = require("./business.model");
+const businessService = require("./business.service");
 
-const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '20h';
+const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
 // Maps the custom service-layer error classes to HTTP status codes so every
 // new handler shares one error-response path instead of repeating if/else
@@ -40,18 +40,18 @@ const getAllBusinesses = async (req, res, next) => {
     let filters = {};
     if (req.query.search) {
       filters.$or = [
-        { BusinessName: { $regex: req.query.search, $options: 'i' } },
-        { email: { $regex: req.query.search, $options: 'i' } },
-        { regNumber: { $regex: req.query.search, $options: 'i' } },
+        { BusinessName: { $regex: req.query.search, $options: "i" } },
+        { email: { $regex: req.query.search, $options: "i" } },
+        { regNumber: { $regex: req.query.search, $options: "i" } },
       ];
     }
 
     if (req.query.isActive !== undefined) {
-      filters.isActive = req.query.isActive === 'true';
+      filters.isActive = req.query.isActive === "true";
     }
 
     if (req.query.kycVerified !== undefined) {
-      filters.kycVerified = req.query.kycVerified === 'true';
+      filters.kycVerified = req.query.kycVerified === "true";
     }
 
     // Get businesses with pagination
@@ -61,7 +61,7 @@ const getAllBusinesses = async (req, res, next) => {
     });
 
     const response = {
-      status: 'success',
+      status: "success",
       data: {
         businesses: result.businesses,
         pagination: {
@@ -77,19 +77,22 @@ const getAllBusinesses = async (req, res, next) => {
 
     res.status(200).json(response);
   } catch (error) {
-    console.error('Error in getAllBusinesses controller:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error in getAllBusinesses controller:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
 // POST /invite-driver — business owner invites a registered driver to their fleet.
 const inviteDriver = async (req, res) => {
   try {
-    const invitation = await businessService.inviteDriver(req.user.id, req.body);
+    const invitation = await businessService.inviteDriver(
+      req.user.id,
+      req.body,
+    );
 
     return res.status(201).json({
       success: true,
-      message: 'Driver invitation sent successfully',
+      message: "Driver invitation sent successfully",
       data: {
         invitationId: invitation._id,
         status: invitation.status,
@@ -99,7 +102,7 @@ const inviteDriver = async (req, res) => {
       },
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Failed to send driver invitation');
+    return handleServiceError(res, error, "Failed to send driver invitation");
   }
 };
 
@@ -121,7 +124,7 @@ const getBusinessDrivers = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Drivers fetched successfully',
+      message: "Drivers fetched successfully",
       data: {
         drivers: invitations.map((invitation) => ({
           invitationId: invitation._id,
@@ -142,7 +145,7 @@ const getBusinessDrivers = async (req, res) => {
       },
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Failed to fetch business drivers');
+    return handleServiceError(res, error, "Failed to fetch business drivers");
   }
 };
 
@@ -164,7 +167,7 @@ const getBusinessVehicles = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Vehicles fetched successfully',
+      message: "Vehicles fetched successfully",
       data: {
         vehicles,
         pagination: {
@@ -178,7 +181,7 @@ const getBusinessVehicles = async (req, res) => {
       },
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Failed to fetch business vehicles');
+    return handleServiceError(res, error, "Failed to fetch business vehicles");
   }
 };
 
@@ -189,11 +192,11 @@ const getBusinessByEmail = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Business fetched successfully',
+      message: "Business fetched successfully",
       data: business,
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Failed to fetch business');
+    return handleServiceError(res, error, "Failed to fetch business");
   }
 };
 
@@ -216,22 +219,25 @@ const respondToInvitation = async (req, res) => {
       },
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Failed to respond to invitation');
+    return handleServiceError(res, error, "Failed to respond to invitation");
   }
 };
 
 // POST /business-details — create the authenticated business owner's profile.
 const addBusinessDetails = async (req, res) => {
   try {
-    const business = await businessService.addBusinessDetails(req.user.id, req.body);
+    const business = await businessService.addBusinessDetails(
+      req.user.id,
+      req.body,
+    );
 
     return res.status(201).json({
       success: true,
-      message: 'Business details saved successfully',
+      message: "Business details saved successfully",
       data: business,
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Failed to save business details');
+    return handleServiceError(res, error, "Failed to save business details");
   }
 };
 
@@ -245,11 +251,15 @@ const addBusinessVerification = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Business verification details saved successfully',
+      message: "Business verification details saved successfully",
       data: verification,
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Failed to save business verification details');
+    return handleServiceError(
+      res,
+      error,
+      "Failed to save business verification details",
+    );
   }
 };
 
@@ -263,62 +273,80 @@ const addVehicleDetails = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Vehicle details saved successfully',
+      message: "Vehicle details saved successfully",
       data: vehicles,
     });
   } catch (error) {
-    return handleServiceError(res, error, 'Failed to save vehicle details');
+    return handleServiceError(res, error, "Failed to save vehicle details");
   }
 };
 
-  const  getKycLevel = async (req, res) => {
-    try {
-      const { email } = req.body;
-      if (!email) {
-        return res.status(400).json({ message: "Email is required" });
-      }
+// POST /service-details - add or update service details for the business owner.
+const addServiceDetails = async (req, res) => {
+  try {
+    const serviceDetails = await businessService.addServiceDetails(
+      req.user.id,
+      req.body,
+    );
 
-      const normalizedEmail = String(email).trim().toLowerCase();
-      const authEmail = req.user?.email
-        ? String(req.user.email).trim().toLowerCase()
-        : null;
-      if (authEmail && authEmail !== normalizedEmail) {
-        return res
-          .status(403)
-          .json({ message: "Email does not match authenticated user" });
-      }
-
-      const business = await Business.findOne({
-        email: normalizedEmail,
-      }).select("kycLevel kycCompleted kycVerified");
-      if (!business) {
-        return res.status(200).json({ message: "This is a new customer" });
-      }
-
-      const token = jwt.sign(
-        { id: business._id, role: "businessOwner", email: normalizedEmail },
-        process.env.JWT_SECRET,
-        { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
-      );
-
-      return res.status(200).json({
-        success: true,
-        data: {
-          kycLevel: business.kycLevel || 0,
-          kycCompleted: !!business.kycCompleted,
-          kycVerified: !!business.kycVerified,
-          token,
-        },
-      });
-    } catch (error) {
-      console.error("Get KYC level error:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching KYC level",
-        error: error.message,
-      });
-    }
+    return res.status(200).json({
+      success: true,
+      message: "Service details added successfully",
+      data: serviceDetails,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to save service details");
   }
+};
+
+const getKycLevel = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const authEmail = req.user?.email
+      ? String(req.user.email).trim().toLowerCase()
+      : null;
+    if (authEmail && authEmail !== normalizedEmail) {
+      return res
+        .status(403)
+        .json({ message: "Email does not match authenticated user" });
+    }
+
+    const business = await Business.findOne({
+      email: normalizedEmail,
+    }).select("kycLevel kycCompleted kycVerified");
+    if (!business) {
+      return res.status(200).json({ message: "This is a new customer" });
+    }
+
+    const token = jwt.sign(
+      { id: business._id, role: "businessOwner", email: normalizedEmail },
+      process.env.JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        kycLevel: business.kycLevel || 0,
+        kycCompleted: !!business.kycCompleted,
+        kycVerified: !!business.kycVerified,
+        token,
+      },
+    });
+  } catch (error) {
+    console.error("Get KYC level error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching KYC level",
+      error: error.message,
+    });
+  }
+};
 
 module.exports = {
   getAllBusinesses,
@@ -330,5 +358,6 @@ module.exports = {
   addBusinessDetails,
   addBusinessVerification,
   addVehicleDetails,
-  getKycLevel
+  addServiceDetails,
+  getKycLevel,
 };

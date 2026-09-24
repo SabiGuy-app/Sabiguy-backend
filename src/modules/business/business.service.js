@@ -114,7 +114,8 @@ const inviteDriver = async (businessId, { driverEmail, role } = {}) => {
     invitedBy: business._id,
   });
 
-  const businessName = business.BusinessName || business.fullName || "the business";
+  const businessName =
+    business.BusinessName || business.fullName || "the business";
 
   // Best-effort side effects: an invitation is still valid even if the
   // email/push happens to fail, so these don't roll back the invite.
@@ -173,7 +174,8 @@ const getBusinessByEmail = async (email) => {
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
-  const business = await businessRepository.findBusinessByEmail(normalizedEmail);
+  const business =
+    await businessRepository.findBusinessByEmail(normalizedEmail);
 
   if (!business || business.isDeleted) {
     throw new NotFoundError("Business not found");
@@ -208,7 +210,10 @@ const respondToInvitation = async (driverId, { invitationId, action } = {}) => {
     );
   }
 
-  if (invitation.tokenExpiresAt && invitation.tokenExpiresAt.getTime() < Date.now()) {
+  if (
+    invitation.tokenExpiresAt &&
+    invitation.tokenExpiresAt.getTime() < Date.now()
+  ) {
     invitation.status = "EXPIRED";
     await invitation.save();
     throw new ConflictError("This invitation has expired");
@@ -354,9 +359,7 @@ const addBusinessVerification = async (businessId, payload) => {
 
   businessPhotos.forEach((photoUrl, index) => {
     if (!isValidUrl(photoUrl)) {
-      throw new ValidationError(
-        `businessPhotos[${index}] must be a valid URL`,
-      );
+      throw new ValidationError(`businessPhotos[${index}] must be a valid URL`);
     }
   });
 
@@ -382,6 +385,81 @@ const addBusinessVerification = async (businessId, payload) => {
   };
 };
 
+// 7. Add or update service details for the authenticated business owner.
+const addServiceDetails = async (businessId, payload = {}) => {
+  const { service, availableDays, businessHours, servicePlace, studioImages } =
+    payload;
+
+  if (service !== undefined && !Array.isArray(service)) {
+    throw new ValidationError("service must be an array");
+  }
+
+  if (availableDays !== undefined && !Array.isArray(availableDays)) {
+    throw new ValidationError("availableDays must be an array");
+  }
+
+  if (
+    businessHours !== undefined &&
+    (typeof businessHours !== "object" ||
+      businessHours === null ||
+      Array.isArray(businessHours))
+  ) {
+    throw new ValidationError("businessHours must be an object");
+  }
+
+  if (servicePlace !== undefined && !Array.isArray(servicePlace)) {
+    throw new ValidationError("servicePlace must be an array");
+  }
+
+  if (studioImages !== undefined && !Array.isArray(studioImages)) {
+    throw new ValidationError("studioImages must be an array");
+  }
+
+  const business = await businessRepository.findBusinessById(businessId);
+  if (!business || business.isDeleted) {
+    throw new NotFoundError("Business not found");
+  }
+
+  const details = {};
+  if (service !== undefined) {
+    details.service = service.map((item = {}) => ({
+      serviceName: item.serviceName,
+      pricingModel: item.pricingModel,
+      price: item.price,
+    }));
+  }
+  if (availableDays !== undefined) details.availableDays = availableDays;
+  if (businessHours !== undefined) {
+    details.businessHours = {
+      start: businessHours.start,
+      end: businessHours.end,
+    };
+  }
+  if (servicePlace !== undefined) details.servicePlace = servicePlace;
+  if (studioImages !== undefined) {
+    details.studioImages = studioImages.map((item = {}) => ({
+      pictures: Array.isArray(item.pictures) ? item.pictures : [],
+      videos: Array.isArray(item.videos) ? item.videos : [],
+    }));
+  }
+
+  const updated = await businessRepository.saveBusinessServiceDetails(
+    businessId,
+    details,
+    {
+      kycCompleted: true,
+      kycLevel: Math.max(business.kycLevel || 0, 4),
+    },
+  );
+
+  return {
+    service: updated.service,
+    availableDays: updated.availableDays,
+    businessHours: updated.businessHours,
+    servicePlace: updated.servicePlace,
+    studioImages: updated.studioImages,
+  };
+};
 // 7. Add one or more vehicles for the authenticated business owner.
 const addVehicleDetails = async (businessId, vehicles) => {
   if (!Array.isArray(vehicles) || vehicles.length === 0) {
@@ -400,14 +478,22 @@ const addVehicleDetails = async (businessId, vehicles) => {
   const newVehicles = [];
 
   vehicles.forEach((vehicle, index) => {
-    const { vehicleName, plateNumber, vehicleType, vehiclePictureUrl } = vehicle;
+    const { vehicleName, plateNumber, vehicleType, vehiclePictureUrl } =
+      vehicle;
 
-    const requiredFields = { vehicleName, plateNumber, vehicleType, vehiclePictureUrl };
+    const requiredFields = {
+      vehicleName,
+      plateNumber,
+      vehicleType,
+      vehiclePictureUrl,
+    };
     const missingField = Object.entries(requiredFields).find(
       ([, value]) => value === undefined || value === null || value === "",
     );
     if (missingField) {
-      throw new ValidationError(`vehicles[${index}].${missingField[0]} is required`);
+      throw new ValidationError(
+        `vehicles[${index}].${missingField[0]} is required`,
+      );
     }
 
     if (!isValidUrl(vehiclePictureUrl)) {
@@ -416,7 +502,10 @@ const addVehicleDetails = async (businessId, vehicles) => {
       );
     }
 
-    if (existingPlateNumbers.has(plateNumber) || incomingPlateNumbers.has(plateNumber)) {
+    if (
+      existingPlateNumbers.has(plateNumber) ||
+      incomingPlateNumbers.has(plateNumber)
+    ) {
       throw new ConflictError(`Duplicate plate number: ${plateNumber}`);
     }
 
@@ -438,12 +527,14 @@ const addVehicleDetails = async (businessId, vehicles) => {
     },
   );
 
-  const createdVehicles = updated.vehicles.slice(-newVehicles.length).map((vehicle) => ({
-    vehicleName: vehicle.name,
-    plateNumber: vehicle.plateNumber,
-    vehicleType: vehicle.type,
-    vehiclePictureUrl: vehicle.image,
-  }));
+  const createdVehicles = updated.vehicles
+    .slice(-newVehicles.length)
+    .map((vehicle) => ({
+      vehicleName: vehicle.name,
+      plateNumber: vehicle.plateNumber,
+      vehicleType: vehicle.type,
+      vehiclePictureUrl: vehicle.image,
+    }));
 
   return createdVehicles;
 };
@@ -456,8 +547,10 @@ module.exports = {
   getBusinessByEmail,
   addBusinessDetails,
   addBusinessVerification,
-  addVehicleDetails,  
+  addVehicleDetails,
+  addServiceDetails,
   respondToInvitation,
+
   ValidationError,
   NotFoundError,
   ConflictError,

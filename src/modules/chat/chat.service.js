@@ -13,12 +13,33 @@ const ACTIVE_BOOKING_STATUSES = new Set([
   "enroute_to_dropoff",
   "arrived_at_dropoff",
   "completed",
-]);
-
-const INACTIVE_BOOKING_STATUSES = new Set([
   "user_accepted_completion",
   "funds_released",
 ]);
+
+const INACTIVE_BOOKING_STATUSES = new Set([
+  "user_completion",
+]);
+
+const CHAT_ACCESS_STATUSES = new Set([
+  "provider_accepted",
+  "confirmed",
+  "in_progress",
+  "completed",
+  "awaiting_provider_acceptance",
+  "pending_payment",
+  "paid_escrow",
+  "arrived_at_pickup",
+  "enroute_to_dropoff",
+  "arrived_at_dropoff",
+  "completed",
+  "user_accepted_completion",
+  "funds_released",
+]);
+
+const CHAT_SEND_STATUSES = new Set(
+  [...CHAT_ACCESS_STATUSES].filter((status) => status !== "funds_released"),
+);
 
 class ChatService {
   normalizeBookingStatus(status) {
@@ -67,21 +88,8 @@ class ChatService {
         throw new Error("Booking not found");
       }
 
-      // Define which statuses allow chatting
-      const chatAllowedStatuses = [
-        "provider_accepted",
-        "confirmed",
-        "in_progress",
-        "completed",
-        "awaiting_provider_acceptance",
-        "pending_payment",
-        "paid_escrow",
-        "arrived_at_pickup",
-        "enroute_to_dropoff",
-        "arrived_at_dropoff",
-      ];
-
-      if (!chatAllowedStatuses.includes(booking.status)) {
+      const bookingStatus = this.normalizeBookingStatus(booking.status);
+      if (!CHAT_ACCESS_STATUSES.has(bookingStatus)) {
         throw new Error(
           `Chat not available for booking status: ${booking.status}`,
         );
@@ -106,6 +114,19 @@ class ChatService {
       console.error("Can access chat error:", error);
       throw error;
     }
+  }
+
+  async canSendMessage(bookingId, userId) {
+    const access = await this.canAccessChat(bookingId, userId);
+    const bookingStatus = this.normalizeBookingStatus(access.booking.status);
+
+    if (!CHAT_SEND_STATUSES.has(bookingStatus)) {
+      throw new Error(
+        `Chat is read-only for booking status: ${access.booking.status}`,
+      );
+    }
+
+    return access;
   }
 
   async getOrCreateChat(bookingId, userId = null) {
@@ -166,8 +187,8 @@ class ChatService {
     try {
       const { message, messageType = "text", attachments = [] } = messageData;
 
-      // Check if user can access this chat
-      await this.canAccessChat(bookingId, senderId);
+      // Check if the user can participate and this booking still accepts messages.
+      await this.canSendMessage(bookingId, senderId);
 
       // Get or create chat
       const chat = await this.getOrCreateChat(bookingId, senderId);
@@ -302,6 +323,8 @@ class ChatService {
    */
   async markAsRead(bookingId, userId) {
     try {
+      await this.canAccessChat(bookingId, userId);
+
       const chat = await Chat.findOne({ bookingId });
 
       if (!chat) {
