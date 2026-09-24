@@ -27,7 +27,17 @@ const expireOverdueBookings = async (now = new Date()) => {
         status: {
           $in: ["provider_selected", "provider_accepted", "payment_pending"],
         },
-        paymentDeadlineAt: { $lte: now },
+        $or: [
+          { paymentDeadlineAt: { $lte: now } },
+          {
+            paymentDeadlineAt: { $exists: false },
+            selectedAt: { $lte: new Date(now.getTime() - BOOKING_ACCEPTANCE_WINDOW_MS) },
+          },
+          {
+            paymentDeadlineAt: { $exists: false },
+            acceptedAt: { $lte: new Date(now.getTime() - BOOKING_ACCEPTANCE_WINDOW_MS) },
+          },
+        ],
       },
       {
         $set: {
