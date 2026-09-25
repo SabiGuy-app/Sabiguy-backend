@@ -304,6 +304,11 @@ const bookingSchema = new mongoose.Schema(
       review: String,
       ratedAt: Date,
     },
+    providerRating: {
+      score: Number,
+      review: String,
+      ratedAt: Date,
+    },
     tipAmount: Number,
 
     // Dispute

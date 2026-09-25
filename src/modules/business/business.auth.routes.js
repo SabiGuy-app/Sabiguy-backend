@@ -14,6 +14,7 @@ const {
   verifyResetOtp,
   resetPassword,
   changePassword,
+  confirmPassword,
 } = require('./business.auth.controller');
 const {
   businessAuthRequestLimiter,
@@ -367,6 +368,43 @@ router.put(
   businessAuthMiddleware,
   businessChangePasswordLimiter,
   changePassword,
+);
+
+/**
+ * @swagger
+ * /api/v1/business/auth/confirm-password:
+ *   post:
+ *     summary: Confirm the authenticated business owner's password
+ *     tags: [Business-Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: "CurrentPassword@123"
+ *     responses:
+ *       200:
+ *         description: Password confirmed successfully
+ *       400:
+ *         description: Password missing or not set for this account
+ *       401:
+ *         description: Password is incorrect
+ *       404:
+ *         description: Business not found
+ */
+router.post(
+  '/confirm-password',
+  businessAuthMiddleware,
+  businessChangePasswordLimiter,
+  confirmPassword,
 );
 
 /**

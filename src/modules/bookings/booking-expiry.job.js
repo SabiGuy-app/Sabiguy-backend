@@ -3,26 +3,40 @@ const Booking = require("./Bookings.model");
 const {
   BOOKING_ACCEPTANCE_WINDOW_MS,
 } = require("./booking-expiry.config");
+const { notifyBookingExpiry } = require("./booking-expiry.notification");
+
+const expireBookings = async (filter, status, now) => {
+  const expiredBookings = [];
+
+  while (true) {
+    const booking = await Booking.findOneAndUpdate(
+      filter,
+      { $set: { status, expiredAt: now } },
+      { new: true },
+    );
+
+    if (!booking) break;
+    expiredBookings.push(booking);
+  }
+
+  return expiredBookings;
+};
 
 const expireOverdueBookings = async (now = new Date()) => {
   const acceptanceDeadline = new Date(
     now.getTime() - BOOKING_ACCEPTANCE_WINDOW_MS,
   );
 
-  const [acceptanceResult, paymentResult] = await Promise.all([
-    Booking.updateMany(
+  const [acceptanceBookings, paymentBookings] = await Promise.all([
+    expireBookings(
       {
         status: { $in: ["pending_providers", "awaiting_provider_acceptance"] },
         createdAt: { $lte: acceptanceDeadline },
       },
-      {
-        $set: {
-          status: "booking_expired",
-          expiredAt: now,
-        },
-      },
+      "booking_expired",
+      now,
     ),
-    Booking.updateMany(
+    expireBookings(
       {
         status: {
           $in: ["provider_selected", "provider_accepted", "payment_pending"],
@@ -31,26 +45,27 @@ const expireOverdueBookings = async (now = new Date()) => {
           { paymentDeadlineAt: { $lte: now } },
           {
             paymentDeadlineAt: { $exists: false },
-            selectedAt: { $lte: new Date(now.getTime() - BOOKING_ACCEPTANCE_WINDOW_MS) },
+            selectedAt: { $lte: acceptanceDeadline },
           },
           {
             paymentDeadlineAt: { $exists: false },
-            acceptedAt: { $lte: new Date(now.getTime() - BOOKING_ACCEPTANCE_WINDOW_MS) },
+            acceptedAt: { $lte: acceptanceDeadline },
           },
         ],
       },
-      {
-        $set: {
-          status: "expired",
-          expiredAt: now,
-        },
-      },
+      "expired",
+      now,
     ),
   ]);
 
+  await Promise.all([
+    ...acceptanceBookings.map(notifyBookingExpiry),
+    ...paymentBookings.map(notifyBookingExpiry),
+  ]);
+
   return {
-    acceptanceExpired: acceptanceResult.modifiedCount,
-    paymentExpired: paymentResult.modifiedCount,
+    acceptanceExpired: acceptanceBookings.length,
+    paymentExpired: paymentBookings.length,
   };
 };
 
