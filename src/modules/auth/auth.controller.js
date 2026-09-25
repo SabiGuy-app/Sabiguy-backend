@@ -1014,6 +1014,57 @@ exports.changePassword = async (req, res) => {
   }
 };
 
+exports.confirmPassword = async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password is required",
+      });
+    }
+
+    const Model = roleModelMap[req.user.role];
+    if (!Model) {
+      return res.status(403).json({
+        success: false,
+        message: "Password confirmation is not available for this account type",
+      });
+    }
+
+    const user = await Model.findById(req.user.id).select("+password");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (!user.password) {
+      return res.status(400).json({
+        success: false,
+        message: "No password is set for this account",
+      });
+    }
+
+    const isMatch = await passwordHelper.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Password is incorrect",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Password confirmed successfully",
+    });
+  } catch (error) {
+    console.error("Confirm password error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to confirm password",
+    });
+  }
+};
+
 const getAuthenticatedUserForDeletion = async (req) => {
   const { id, role } = req.user || {};
   if (!id || !role) return null;

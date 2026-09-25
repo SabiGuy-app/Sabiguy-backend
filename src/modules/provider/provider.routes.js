@@ -1046,6 +1046,53 @@ router.patch(
 
 /**
  * @swagger
+ * /api/v1/provider/bookings/{bookingId}/rate-user:
+ *   post:
+ *     summary: Rate a user after completing their booking
+ *     description: The assigned provider may submit one rating for a completed booking.
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [score]
+ *             properties:
+ *               score:
+ *                 type: number
+ *                 minimum: 1
+ *                 maximum: 5
+ *                 example: 5
+ *               review:
+ *                 type: string
+ *                 example: "Clear communication and punctual."
+ *     responses:
+ *       201:
+ *         description: User rated successfully
+ *       400:
+ *         description: Invalid rating score
+ *       404:
+ *         description: Completed booking or user not found
+ *       409:
+ *         description: User has already been rated for this booking
+ */
+router.post(
+  "/bookings/:bookingId/rate-user",
+  authMiddleware,
+  ProviderController.rateUser,
+);
+
+/**
+ * @swagger
  * /api/v1/provider/earnings:
  *   get:
  *     summary: Get provider earnings

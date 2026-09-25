@@ -56,6 +56,22 @@ const serviceUserSchema = new mongoose.Schema({
   googleId: String,
   authMethods: [{ type: String, enum: ['email', 'google'] }],
   profilePicture: { type: String, default: null },
+  rating: {
+    average: { type: Number, default: 0 },
+    count: { type: Number, default: 0 },
+  },
+  reviews: [
+    {
+      bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
+      providerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Provider' },
+      providerName: { type: String },
+      providerAvatar: { type: String },
+      score: { type: Number },
+      review: { type: String },
+      serviceType: { type: String },
+      ratedAt: { type: Date, default: Date.now },
+    },
+  ],
   refreshToken: { type: String },
   refreshTokenExpiresAt: { type: Date },
   role: {
