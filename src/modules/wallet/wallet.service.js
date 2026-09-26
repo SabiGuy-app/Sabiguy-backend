@@ -65,8 +65,8 @@ class WalletService {
 
   async fundUserWallet(userId, amount, reference, notificationService = null) {
     const fundingAmount = Number(amount);
-    if (!Number.isFinite(fundingAmount) || fundingAmount <= 0) {
-      throw new Error("Invalid wallet funding amount");
+    if (!Number.isInteger(fundingAmount) || fundingAmount < 1000) {
+      throw new Error("Minimum wallet funding amount is NGN1,000");
     }
 
     const remainingLimit =

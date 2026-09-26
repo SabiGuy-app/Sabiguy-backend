@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const Provider = require("../../../models/ServiceProvider");
+const Buyer = require("../../../models/ServiceUser");
 const Booking = require("../bookings/Bookings.model.js");
 const notificationService = require("../../services/notification.service");
 const paymentService = require("../payment/payment.service");
@@ -1801,6 +1802,92 @@ class ProviderController {
       return res.status(500).json({
         success: false,
         message: "Error marking job as complete",
+        error: error.message,
+      });
+    }
+  }
+
+  async rateUser(req, res) {
+    try {
+      const providerId = req.user.id;
+      const { bookingId } = req.params;
+      const { score, review } = req.body;
+      const numericScore = Number(score);
+
+      if (!Number.isFinite(numericScore) || numericScore < 1 || numericScore > 5) {
+        return res.status(400).json({
+          success: false,
+          message: "Rating score must be between 1 and 5",
+        });
+      }
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        providerId,
+        status: { $in: ["completed", "user_accepted_completion", "funds_released"] },
+      }).populate("userId", "fullName profilePicture");
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: "Completed booking not found for this provider",
+        });
+      }
+
+      if (booking.providerRating?.score !== undefined) {
+        return res.status(409).json({
+          success: false,
+          message: "User has already been rated for this booking",
+        });
+      }
+
+      const userId = booking.userId?._id || booking.userId;
+      const [provider, user] = await Promise.all([
+        Provider.findById(providerId).select("fullName profilePicture"),
+        Buyer.findById(userId).select("rating reviews"),
+      ]);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      const ratedAt = new Date();
+      booking.providerRating = { score: numericScore, review, ratedAt };
+      await booking.save();
+
+      const currentAverage = user.rating?.average || 0;
+      const currentCount = user.rating?.count || 0;
+      const nextCount = currentCount + 1;
+      const nextAverage =
+        (currentAverage * currentCount + numericScore) / nextCount;
+
+      user.rating.average = Math.round(nextAverage * 100) / 100;
+      user.rating.count = nextCount;
+      user.reviews.push({
+        bookingId: booking._id,
+        providerId,
+        providerName: provider?.fullName,
+        providerAvatar: provider?.profilePicture,
+        score: numericScore,
+        review,
+        serviceType: booking.serviceType,
+        ratedAt,
+      });
+      await user.save();
+
+      return res.status(201).json({
+        success: true,
+        message: "User rated successfully",
+        data: booking.providerRating,
+      });
+    } catch (error) {
+      console.error("Rate user error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to rate user",
         error: error.message,
       });
     }

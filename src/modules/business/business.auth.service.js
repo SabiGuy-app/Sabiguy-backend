@@ -508,6 +508,28 @@ const changeBusinessPassword = async (userId, oldPassword, newPassword) => {
   };
 };
 
+const confirmBusinessPassword = async (userId, password) => {
+  if (!password) {
+    throw new AppError('Password is required', 400);
+  }
+
+  const business = await Business.findById(userId).select('+password');
+  if (!business) {
+    throw new AppError('Business not found', 404);
+  }
+
+  if (!business.password) {
+    throw new AppError('No password is set for this account', 400);
+  }
+
+  const isMatch = await passwordHelper.compare(password, business.password);
+  if (!isMatch) {
+    throw new AppError('Password is incorrect', 401);
+  }
+
+  return { message: 'Password confirmed successfully' };
+};
+
 // ─── Refresh Token ───────────────────────────────────────────────────────────
 
 const refreshAuthToken = async (refreshToken) => {
@@ -553,4 +575,5 @@ module.exports = {
   verifyBusinessResetOtp,
   resetBusinessPassword,
   changeBusinessPassword,
+  confirmBusinessPassword,
 };

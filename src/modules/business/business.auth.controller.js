@@ -154,6 +154,22 @@ const changePassword = async (req, res) => {
   }
 };
 
+const confirmPassword = async (req, res) => {
+  try {
+    const result = await businessAuthService.confirmBusinessPassword(
+      req.user.id,
+      req.body.password,
+    );
+    return res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    console.error('confirmPassword error:', err.message);
+    const status = err.status || 500;
+    return res
+      .status(status)
+      .json({ success: false, message: err.message || 'Internal server error' });
+  }
+};
+
 
 const refreshAuthToken = async (req, res) => {
   try {
@@ -198,4 +214,5 @@ module.exports = {
   verifyResetOtp,
   resetPassword,
   changePassword,
+  confirmPassword,
 };

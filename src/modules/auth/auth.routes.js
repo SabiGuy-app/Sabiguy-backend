@@ -13,6 +13,7 @@ const {
   googleLogIn,
   resendOTP,
   changePassword,
+  confirmPassword,
   refreshAuthToken,
   initiateAccountDeletion,
   verifyAccountDeletionOtp,
@@ -448,6 +449,43 @@ router.put(
   authMiddleware,
   changePasswordLimiter,
   changePassword,
+);
+
+/**
+ * @swagger
+ * /api/v1/auth/confirm-password:
+ *   post:
+ *     summary: Confirm the authenticated user's password
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: "CurrentPassword@123"
+ *     responses:
+ *       200:
+ *         description: Password confirmed successfully
+ *       400:
+ *         description: Password missing or not set for this account
+ *       401:
+ *         description: Password is incorrect
+ *       404:
+ *         description: User not found
+ */
+router.post(
+  "/confirm-password",
+  authMiddleware,
+  changePasswordLimiter,
+  confirmPassword,
 );
 
 /**

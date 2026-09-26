@@ -6,6 +6,7 @@ const Buyer = require("../../../models/ServiceUser.js");
 const notificationService = require("../../services/notification.service.js");
 const Transaction = require("../transactions/transaction.model.js");
 const WalletService = require("../wallet/wallet.service.js");
+const { notifyBookingExpiry } = require("../bookings/booking-expiry.notification");
 
 class paymentService {
   constructor() {
@@ -32,6 +33,7 @@ class paymentService {
       booking.status = "expired";
       booking.expiredAt = new Date();
       await booking.save();
+      await notifyBookingExpiry(booking);
 
       throw new Error(
         "This booking expired before payment was completed. Please create a new booking.",
