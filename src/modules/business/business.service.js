@@ -65,6 +65,19 @@ const getBusinessesWithPagination = async (filters = {}, { skip, limit }) => {
   }
 };
 
+const getBusinessById = async (businessId) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError("Invalid business ID");
+  }
+
+  const business = await businessRepository.findBusinessPublicById(businessId);
+  if (!business || business.isDeleted) {
+    throw new NotFoundError("Business not found");
+  }
+
+  return business;
+};
+
 // 1. Invite a driver to a business/fleet.
 const inviteDriver = async (businessId, { driverEmail, role } = {}) => {
   if (!driverEmail || typeof driverEmail !== "string") {
@@ -541,6 +554,7 @@ const addVehicleDetails = async (businessId, vehicles) => {
 
 module.exports = {
   getBusinessesWithPagination,
+  getBusinessById,
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,

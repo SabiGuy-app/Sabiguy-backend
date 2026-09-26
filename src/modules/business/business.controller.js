@@ -82,6 +82,15 @@ const getAllBusinesses = async (req, res, next) => {
   }
 };
 
+const getBusinessById = async (req, res) => {
+  try {
+    const business = await businessService.getBusinessById(req.params.businessId);
+    return res.status(200).json({ success: true, data: business });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to fetch business");
+  }
+};
+
 // POST /invite-driver — business owner invites a registered driver to their fleet.
 const inviteDriver = async (req, res) => {
   try {
@@ -350,6 +359,7 @@ const getKycLevel = async (req, res) => {
 
 module.exports = {
   getAllBusinesses,
+  getBusinessById,
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,

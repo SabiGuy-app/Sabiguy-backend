@@ -7,6 +7,11 @@ const escapeRegex = (value) =>
 
 const findBusinessById = (businessId) => Business.findById(businessId);
 
+const findBusinessPublicById = (businessId) =>
+  Business.findById(businessId).select(
+    "-password -refreshToken -refreshTokenExpiresAt -otp -resetOtp -resetOtpExpires -fcmToken",
+  );
+
 const findBusinessByEmail = (email) =>
   Business.findOne({ email }).select(
     "-password -refreshToken -refreshTokenExpiresAt -otp -resetOtp -resetOtpExpires -fcmToken",
@@ -123,6 +128,7 @@ const addVehiclesToBusiness = (businessId, vehicles, updates = {}) =>
 
 module.exports = {
   findBusinessById,
+  findBusinessPublicById,
   findBusinessByEmail,
   findDriverByEmail,
   isDriverLinked,
