@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const {
   getAllBusinesses,
+  getBusinessById,
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,
@@ -536,5 +537,32 @@ router.post(
   onlyRole("provider"),
   respondToInvitation,
 );
+
+/**
+ * @swagger
+ * /api/v1/businesses/{businessId}:
+ *   get:
+ *     summary: Get a business by ID
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "507f191e810c19729de860ea"
+ *     responses:
+ *       200:
+ *         description: Business fetched successfully
+ *       400:
+ *         description: Invalid business ID
+ *       401:
+ *         description: Invalid or missing token
+ *       404:
+ *         description: Business not found
+ */
+router.get("/:businessId", authMiddleware, getBusinessById);
 
 module.exports = router;

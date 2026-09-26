@@ -30,19 +30,19 @@ class WalletController {
   async fundWallet(req, res) {
     try {
       const userId = req.user.id;
-      const { amount } = req.body;
+      const numericAmount = Number(req.body.amount);
 
-      if (!amount || amount <= 0) {
+      if (!Number.isInteger(numericAmount) || numericAmount < 1000) {
         return res.status(400).json({
           success: false,
-          message: "Valid amount is required",
+          message: "Minimum wallet funding amount is NGN1,000",
         });
       }
       console.log("AUTH USER:", req.user);
 
       const remainingDailyLimit =
         await WalletService.getRemainingDailyWalletFundingLimit(userId);
-      if (Number(amount) > remainingDailyLimit) {
+      if (numericAmount > remainingDailyLimit) {
         return res.status(400).json({
           success: false,
           message: `Daily wallet funding limit exceeded. You can fund up to NGN${remainingDailyLimit.toLocaleString()} more today.`,
@@ -50,19 +50,18 @@ class WalletController {
       }
 
       // Initialize Paystack payment for wallet funding
-      const paymentService = require("../payment/payment.service.js");
       const paystackResponse = await axios.post(
         "https://api.paystack.co/transaction/initialize",
         {
           email: req.user.email,
-          amount: amount * 100, // Convert to kobo
+          amount: numericAmount * 100, // Convert to kobo
           currency: "NGN",
           reference: WalletService.generateReference("FUND"),
           callback_url: `${process.env.FRONTEND_URL}/wallet/funding/callback`,
           metadata: {
             userId,
             purpose: "wallet_funding",
-            amount,
+            amount: numericAmount,
           },
         },
         {
@@ -73,7 +72,6 @@ class WalletController {
         },
       );
 
-      console.log("email", userId.email);
       if (!paystackResponse.data.status) {
         throw new Error("Failed to initialize wallet funding");
       }
@@ -84,7 +82,7 @@ class WalletController {
         data: {
           authorizationUrl: paystackResponse.data.data.authorization_url,
           reference: paystackResponse.data.data.reference,
-          amount,
+          amount: numericAmount,
         },
       });
     } catch (error) {
