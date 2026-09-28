@@ -215,6 +215,7 @@ const bookingSchema = new mongoose.Schema(
         "payment_pending", // Awaiting payment
         "booking_expired", // No provider accepted within the acceptance window
         "paid_escrow",
+        "paid_escrow_scheduled", // Paid and scheduled for later
         "provider_accepted",
         "accept_selection",
         "in_progress",
@@ -283,6 +284,8 @@ const bookingSchema = new mongoose.Schema(
     startedAt: Date,
     completedAt: Date,
     lastNotifiedAt: { type: Date },
+    scheduledReminder10SentAt: { type: Date, default: null },
+    scheduledReminder5SentAt: { type: Date, default: null },
 
     // Attachments
     attachments: [String],

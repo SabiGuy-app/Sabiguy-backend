@@ -156,7 +156,7 @@ router.post("/email", verifyEmail);
  *                 example: "password123"
  *               role:
  *                 type: string
- *                 enum: [buyer, provider, admin]
+ *                 enum: [buyer, provider, admin, businessOwner]
  *                 description: Optional role to disambiguate accounts
  *     responses:
  *       200:

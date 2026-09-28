@@ -6,6 +6,7 @@ const Booking = require("../bookings/Bookings.model.js");
 
 const ACTIVE_BOOKING_STATUSES = new Set([
   "paid_escrow",
+  "paid_escrow_scheduled",
   "provider_accepted",
   "accept_selection",
   "in_progress",
@@ -17,9 +18,7 @@ const ACTIVE_BOOKING_STATUSES = new Set([
   "funds_released",
 ]);
 
-const INACTIVE_BOOKING_STATUSES = new Set([
-  "user_completion",
-]);
+const INACTIVE_BOOKING_STATUSES = new Set(["user_completion"]);
 
 const CHAT_ACCESS_STATUSES = new Set([
   "provider_accepted",
@@ -29,6 +28,7 @@ const CHAT_ACCESS_STATUSES = new Set([
   "awaiting_provider_acceptance",
   "pending_payment",
   "paid_escrow",
+  "paid_escrow_scheduled",
   "arrived_at_pickup",
   "enroute_to_dropoff",
   "arrived_at_dropoff",

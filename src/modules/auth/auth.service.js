@@ -3,12 +3,14 @@ const bcrypt = require('bcryptjs');
 const Provider = require('../../../models/ServiceProvider');
 const Buyer = require('../../../models/ServiceUser');
 const Admin = require('../admin/Admin.model');
+const BusinessOwner = require('../business/business.model');
 const { findUserByEmailAcrossDb, findUserByPhoneAcrossDb, normalizePhoneNumber } = require('../../services/identity.service');
 
 const roleModelMap = {
   buyer: Buyer,
   provider: Provider,
   admin: Admin,
+  businessOwner: BusinessOwner,
 };
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();

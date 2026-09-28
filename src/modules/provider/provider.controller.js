@@ -10,6 +10,9 @@ const {
   BOOKING_ACCEPTANCE_WINDOW_MS,
   PAYMENT_WINDOW_MS,
 } = require("../bookings/booking-expiry.config");
+const {
+  findProviderScheduleConflict,
+} = require("../bookings/booking-scheduling.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 const STALE_LOCATION_MINUTES = Number(process.env.STALE_LOCATION_MINUTES || 10);
@@ -290,10 +293,9 @@ class ProviderController {
         }));
       }
 
-
       provider.kycCompleted = true;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 4); 
-      
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
+
       await provider.save();
 
       return res.status(200).json({
@@ -462,7 +464,11 @@ class ProviderController {
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      const yearAgo = new Date(
+        now.getFullYear() - 1,
+        now.getMonth(),
+        now.getDate(),
+      );
 
       // Get booking statistics + analytics
       const [
@@ -477,7 +483,9 @@ class ProviderController {
         Booking.countDocuments({ providerId }),
         Booking.countDocuments({
           providerId,
-          status: { $in: ["in_progress", "paid_escrow"] },
+          status: {
+            $in: ["in_progress", "paid_escrow", "paid_escrow_scheduled"],
+          },
         }),
         Booking.countDocuments({
           providerId,
@@ -516,17 +524,38 @@ class ProviderController {
               ],
               dailyWeek: [
                 { $match: { createdAt: { $gte: sevenDaysAgo } } },
-                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                {
+                  $group: {
+                    _id: {
+                      $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                    },
+                    amount: { $sum: "$providerNet" },
+                  },
+                },
                 { $sort: { _id: 1 } },
               ],
               dailyMonth: [
                 { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                {
+                  $group: {
+                    _id: {
+                      $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                    },
+                    amount: { $sum: "$providerNet" },
+                  },
+                },
                 { $sort: { _id: 1 } },
               ],
               monthlyYear: [
                 { $match: { createdAt: { $gte: yearAgo } } },
-                { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                {
+                  $group: {
+                    _id: {
+                      $dateToString: { format: "%Y-%m", date: "$createdAt" },
+                    },
+                    amount: { $sum: "$providerNet" },
+                  },
+                },
                 { $sort: { _id: 1 } },
               ],
             },
@@ -545,11 +574,28 @@ class ProviderController {
               },
             },
           },
-          { $facet: {
-            week: [ { $match: { createdAt: { $gte: sevenDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
-            month: [ { $match: { createdAt: { $gte: thirtyDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
-            year: [ { $match: { createdAt: { $gte: ninetyDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
-          } },
+          {
+            $facet: {
+              week: [
+                { $match: { createdAt: { $gte: sevenDaysAgo } } },
+                {
+                  $group: { _id: null, average: { $avg: "$responseMinutes" } },
+                },
+              ],
+              month: [
+                { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+                {
+                  $group: { _id: null, average: { $avg: "$responseMinutes" } },
+                },
+              ],
+              year: [
+                { $match: { createdAt: { $gte: ninetyDaysAgo } } },
+                {
+                  $group: { _id: null, average: { $avg: "$responseMinutes" } },
+                },
+              ],
+            },
+          },
         ]),
         Booking.aggregate([
           { $match: { providerId } },
@@ -594,21 +640,34 @@ class ProviderController {
           const date = new Date(startDate);
           if (unit === "day") date.setUTCDate(date.getUTCDate() + index);
           else date.setUTCMonth(date.getUTCMonth() + index);
-          const key = unit === "day"
-            ? date.toISOString().slice(0, 10)
-            : date.toISOString().slice(0, 7);
+          const key =
+            unit === "day"
+              ? date.toISOString().slice(0, 10)
+              : date.toISOString().slice(0, 7);
           return { period: key, amount: amounts.get(key) || 0 };
         });
       };
       const weekRevenue = fillSeries(
         revenueFacet.dailyWeek || [],
-        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6)),
+        new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - 6,
+          ),
+        ),
         7,
         "day",
       );
       const monthRevenue = fillSeries(
         revenueFacet.dailyMonth || [],
-        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29)),
+        new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - 29,
+          ),
+        ),
         30,
         "day",
       );
@@ -660,7 +719,12 @@ class ProviderController {
             last7Days: last7DaysRevenue,
             last30Days: last30DaysRevenue,
             period,
-            chart: period === "week" ? weekRevenue : period === "month" ? monthRevenue : yearRevenue,
+            chart:
+              period === "week"
+                ? weekRevenue
+                : period === "month"
+                  ? monthRevenue
+                  : yearRevenue,
             byPeriod: {
               week: weekRevenue,
               month: monthRevenue,
@@ -672,7 +736,8 @@ class ProviderController {
           averageResponseTimeByPeriodMinutes: {
             week: Math.round(averageResponseByPeriod.week * 100) / 100,
             month: Math.round(averageResponseByPeriod.month * 100) / 100,
-            threeMonths: Math.round(averageResponseByPeriod.threeMonths * 100) / 100,
+            threeMonths:
+              Math.round(averageResponseByPeriod.threeMonths * 100) / 100,
           },
           bookingsByDayOfWeek,
           peakHourAnalysis: {
@@ -1358,6 +1423,19 @@ class ProviderController {
         });
       }
 
+      const scheduleConflict = await findProviderScheduleConflict(
+        providerId,
+        booking,
+        { excludeBookingId: booking._id },
+      );
+      if (scheduleConflict) {
+        return res.status(409).json({
+          success: false,
+          message: "You already have a booking during that time",
+          conflictingBookingId: scheduleConflict._id,
+        });
+      }
+
       // 3️⃣ Fetch provider's current location and vehicle data
       const providerPricingOption = booking.providerPricingOptions?.find(
         (option) => String(option.providerId) === String(providerId),
@@ -1442,9 +1520,7 @@ class ProviderController {
 
           selectedAt: acceptedAt,
           acceptedAt,
-          paymentDeadlineAt: new Date(
-            acceptedAt.getTime() + PAYMENT_WINDOW_MS,
-          ),
+          paymentDeadlineAt: new Date(acceptedAt.getTime() + PAYMENT_WINDOW_MS),
           expiredAt: null,
           distanceFromPickup: {
             value: parseFloat(distanceFromPickupKm.toFixed(2)),
@@ -1814,7 +1890,11 @@ class ProviderController {
       const { score, review } = req.body;
       const numericScore = Number(score);
 
-      if (!Number.isFinite(numericScore) || numericScore < 1 || numericScore > 5) {
+      if (
+        !Number.isFinite(numericScore) ||
+        numericScore < 1 ||
+        numericScore > 5
+      ) {
         return res.status(400).json({
           success: false,
           message: "Rating score must be between 1 and 5",
@@ -1824,7 +1904,9 @@ class ProviderController {
       const booking = await Booking.findOne({
         _id: bookingId,
         providerId,
-        status: { $in: ["completed", "user_accepted_completion", "funds_released"] },
+        status: {
+          $in: ["completed", "user_accepted_completion", "funds_released"],
+        },
       }).populate("userId", "fullName profilePicture");
 
       if (!booking) {

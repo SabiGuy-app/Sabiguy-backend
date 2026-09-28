@@ -39,6 +39,27 @@ const getRefreshTokenExpiryDate = authService.getRefreshTokenExpiryDate;
 const buildAuthUserPayload = authService.buildAuthUserPayload;
 const { passwordMatches } = authService;
 
+const authRoles = Object.keys(roleModelMap);
+
+const findUserByRoleAndEmail = async (role, email, options) => {
+  const Model = roleModelMap[role];
+  if (!Model) return null;
+  return findUserByEmail(Model, email, options);
+};
+
+const findUserAcrossRoles = async (email, roles = authRoles) => {
+  for (const role of roles) {
+    const user = await findUserByRoleAndEmail(
+      role,
+      email,
+      role === "admin" ? { includePassword: true } : undefined,
+    );
+    if (user) return { user, role };
+  }
+
+  return { user: null, role: null };
+};
+
 exports.googleSignUp = async (req, res) => {
   const { token } = req.body;
 
@@ -256,10 +277,11 @@ exports.googleLogIn = async (req, res) => {
     const { email, googleId } = await googleHelper.verifyToken(token);
     const normalizedEmail = normalizeEmail(email);
 
-    let user = await findUserByEmail(Provider, normalizedEmail);
-    if (!user) {
-      user = await findUserByEmail(Buyer, normalizedEmail);
-    }
+    const { user } = await findUserAcrossRoles(normalizedEmail, [
+      "provider",
+      "buyer",
+      "businessOwner",
+    ]);
 
     if (!user) {
       return res
@@ -493,6 +515,11 @@ exports.verifyEmail = async (req, res) => {
       user = await Provider.findOne({ otp: otp });
       userType = "provider";
     }
+    if (!user) {
+      const BusinessOwner = roleModelMap.businessOwner;
+      user = await BusinessOwner.findOne({ otp: otp });
+      userType = "businessOwner";
+    }
 
     if (!user) {
       return res.status(400).json({ message: "Invalid or expired OTP." });
@@ -543,13 +570,11 @@ exports.resendOTP = async (req, res) => {
   const normalizedEmail = normalizeEmail(email);
 
   try {
-    let user = await findUserByEmail(Buyer, normalizedEmail);
-    let role = "buyer";
-
-    if (!user) {
-      user = await findUserByEmail(Provider, normalizedEmail);
-      role = "provider";
-    }
+    const { user } = await findUserAcrossRoles(normalizedEmail, [
+      "buyer",
+      "provider",
+      "businessOwner",
+    ]);
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -603,15 +628,14 @@ exports.login = async (req, res) => {
   }
 
   const normalizedEmail = normalizeEmail(email);
-  const allowedRoles = ["buyer", "provider", "admin"];
+  const allowedRoles = authRoles;
 
   const findUserByRole = async (role) => {
-    const Model = roleModelMap[role];
-    if (!Model) return null;
-    if (role === "admin") {
-      return findUserByEmail(Model, normalizedEmail, { includePassword: true });
-    }
-    return findUserByEmail(Model, normalizedEmail);
+    return findUserByRoleAndEmail(
+      role,
+      normalizedEmail,
+      role === "admin" ? { includePassword: true } : undefined,
+    );
   };
 
   try {
@@ -635,6 +659,10 @@ exports.login = async (req, res) => {
       if (!user) {
         user = await findUserByRole("admin");
         role = "admin";
+      }
+      if (!user) {
+        user = await findUserByRole("businessOwner");
+        role = "businessOwner";
       }
     }
 
@@ -704,10 +732,8 @@ exports.refreshAuthToken = async (req, res) => {
   try {
     const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
 
-    let user = await Buyer.findById(decoded.id);
-    if (!user) {
-      user = await Provider.findById(decoded.id);
-    }
+    const Model = roleModelMap[decoded.role];
+    const user = Model ? await Model.findById(decoded.id) : null;
 
     if (!user || user.refreshToken !== refreshToken) {
       return res.status(401).json({
@@ -747,13 +773,11 @@ exports.forgotPassword = async (req, res) => {
   const normalizedEmail = normalizeEmail(email);
 
   try {
-    let user = await findUserByEmail(Buyer, normalizedEmail);
-    let role = "buyer";
-
-    if (!user) {
-      user = await findUserByEmail(Provider, normalizedEmail);
-      role = "provider";
-    }
+    const { user } = await findUserAcrossRoles(normalizedEmail, [
+      "buyer",
+      "provider",
+      "businessOwner",
+    ]);
 
     if (!user) {
       return res
@@ -783,11 +807,11 @@ exports.resendForgotPasswordOtp = async (req, res) => {
   }
 
   try {
-    let user = await findUserByEmail(Buyer, normalizedEmail);
-
-    if (!user) {
-      user = await findUserByEmail(Provider, normalizedEmail);
-    }
+    const { user } = await findUserAcrossRoles(normalizedEmail, [
+      "buyer",
+      "provider",
+      "businessOwner",
+    ]);
 
     if (!user) {
       return res
@@ -829,10 +853,11 @@ exports.verifyResetOtp = async (req, res) => {
   const normalizedEmail = normalizeEmail(email);
 
   try {
-    let user = await findUserByEmail(Buyer, normalizedEmail);
-    if (!user) {
-      user = await findUserByEmail(Provider, normalizedEmail);
-    }
+    const { user } = await findUserAcrossRoles(normalizedEmail, [
+      "buyer",
+      "provider",
+      "businessOwner",
+    ]);
 
     if (!user) {
       return res
@@ -866,13 +891,11 @@ exports.resetPassword = async (req, res) => {
   // }
 
   try {
-    let user = await findUserByEmail(Buyer, normalizedEmail);
-    let role = "buyer";
-
-    if (!user) {
-      user = await findUserByEmail(Provider, normalizedEmail);
-      role = "provider";
-    }
+    const { user } = await findUserAcrossRoles(normalizedEmail, [
+      "buyer",
+      "provider",
+      "businessOwner",
+    ]);
 
     if (!user) {
       return res
@@ -934,11 +957,8 @@ exports.changePassword = async (req, res) => {
     }
 
     // Find user
-    let user = await Buyer.findById(userId).select("+password");
-
-    if (!user) {
-      user = await Provider.findById(userId).select("+password");
-    }
+    const Model = roleModelMap[req.user.role];
+    const user = Model ? await Model.findById(userId).select("+password") : null;
 
     if (!user) {
       return res.status(404).json({

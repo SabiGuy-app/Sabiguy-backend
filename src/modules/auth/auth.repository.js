@@ -1,11 +1,13 @@
 const Provider = require('../../../models/ServiceProvider');
 const Buyer = require('../../../models/ServiceUser');
 const Admin = require('../admin/Admin.model');
+const BusinessOwner = require('../business/business.model');
 
 const roleModelMap = {
   buyer: Buyer,
   provider: Provider,
   admin: Admin,
+  businessOwner: BusinessOwner,
 };
 
 const findByEmail = async (role, email) => {

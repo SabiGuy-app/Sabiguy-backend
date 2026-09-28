@@ -10,6 +10,10 @@ const pricingService = require("../../services/pricing.service");
 const paymentService = require("../payment/payment.service");
 const discountService = require("../../services/discount.service");
 const WalletService = require("../wallet/wallet.service");
+const {
+  findProviderScheduleConflict,
+  getScheduledStartAt,
+} = require("./booking-scheduling.service");
 
 const PROVIDER_RADIUS = {
   bike: 4, // km -- ~10-15 mins Lagos traffic
@@ -22,6 +26,7 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "completed",
   "enroute_to_dropoff",
   "funds_released",
+  "paid_escrow_scheduled",
   "cancelled",
   "payment_pending",
   "booking_expired",
@@ -481,6 +486,30 @@ class BookingController {
           success: false,
           message: "serviceType and scheduleType are required",
         });
+      }
+
+      if (scheduleType === "scheduled") {
+        const scheduledStart = getScheduledStartAt({
+          scheduleType,
+          scheduleDate,
+          scheduledTime,
+          startDate,
+        });
+
+        if (!scheduledStart) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "A valid startDate or scheduleDate is required for scheduled bookings",
+          });
+        }
+
+        if (scheduledStart <= new Date()) {
+          return res.status(400).json({
+            success: false,
+            message: "Scheduled bookings must start in the future",
+          });
+        }
       }
 
       if (
@@ -1116,8 +1145,7 @@ class BookingController {
         : null;
 
       const radiusKm = normalizedModeOfDelivery
-        ? (PROVIDER_RADIUS[normalizedModeOfDelivery] ??
-          PROVIDER_RADIUS.default)
+        ? (PROVIDER_RADIUS[normalizedModeOfDelivery] ?? PROVIDER_RADIUS.default)
         : PROVIDER_RADIUS.default;
 
       // Stale location cutoff
@@ -1204,8 +1232,7 @@ class BookingController {
 
           // ETA: estimate provider travel time to pickup
           // Bike avg ~15 km/h in Lagos traffic, Car avg ~20 km/h
-          const avgSpeedKmh =
-            normalizedModeOfDelivery === "bike" ? 15 : 20;
+          const avgSpeedKmh = normalizedModeOfDelivery === "bike" ? 15 : 20;
           const providerETAMinutes = Math.ceil(
             (distanceFromPickupKm / avgSpeedKmh) * 60,
           );
@@ -1491,7 +1518,9 @@ class BookingController {
 
       await notificationService.notifyProvider(providerId, {
         type: "job_completed_confirmed",
-        title: "Job Completion Confirmed And You got a bonus.🥳",
+        // title: "Job Completion Confirmed And You got a bonus.🥳",
+        title: "Job Completion Confirmed.🥳",
+
         message: `Your customer confirmed completion of the ${booking.serviceType} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
         bookingId: booking._id,
         userId,
@@ -1660,6 +1689,19 @@ class BookingController {
         return res.status(404).json({
           success: false,
           message: "Provider not found",
+        });
+      }
+
+      const scheduleConflict = await findProviderScheduleConflict(
+        providerId,
+        booking,
+        { excludeBookingId: booking._id },
+      );
+      if (scheduleConflict) {
+        return res.status(409).json({
+          success: false,
+          message: "This provider already has a booking during that time",
+          conflictingBookingId: scheduleConflict._id,
         });
       }
 

@@ -4,6 +4,9 @@ const Transaction = require("../transactions/transaction.model");
 const Booking = require("../bookings/Bookings.model.js");
 const Buyer = require("../../../models/ServiceUser");
 const discountService = require("../../services/discount.service");
+const {
+  getPaidBookingStatus,
+} = require("../bookings/booking-scheduling.service");
 
 class WalletService {
   constructor() {
@@ -746,9 +749,13 @@ class WalletService {
       const paymentAlreadyCaptured =
         existingBooking.payment?.paidAt ||
         ["held", "released"].includes(existingBooking.payment?.escrowStatus) ||
-        ["paid_escrow", "in_progress", "completed", "funds_released"].includes(
-          existingBooking.status,
-        );
+        [
+          "paid_escrow",
+          "paid_escrow_scheduled",
+          "in_progress",
+          "completed",
+          "funds_released",
+        ].includes(existingBooking.status);
 
       if (paymentAlreadyCaptured) {
         throw new Error("This booking has already been paid for");
@@ -842,7 +849,7 @@ class WalletService {
       const booking = await Booking.findByIdAndUpdate(
         bookingId,
         {
-          status: "paid_escrow",
+          status: getPaidBookingStatus(existingBooking),
           "payment.method": "wallet",
           "payment.escrowStatus": "held",
           "payment.paidAt": new Date(),
