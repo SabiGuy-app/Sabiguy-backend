@@ -6,7 +6,12 @@ const Buyer = require("../../../models/ServiceUser.js");
 const notificationService = require("../../services/notification.service.js");
 const Transaction = require("../transactions/transaction.model.js");
 const WalletService = require("../wallet/wallet.service.js");
-const { notifyBookingExpiry } = require("../bookings/booking-expiry.notification");
+const {
+  notifyBookingExpiry,
+} = require("../bookings/booking-expiry.notification");
+const {
+  getPaidBookingStatus,
+} = require("../bookings/booking-scheduling.service");
 
 class paymentService {
   constructor() {
@@ -121,7 +126,7 @@ class paymentService {
         throw new Error("Unauthorized: This is not your booking");
       }
 
-      if (booking.status === "paid_escrow") {
+      if (["paid_escrow", "paid_escrow_scheduled"].includes(booking.status)) {
         throw new Error("Booking already paid for");
       }
 
@@ -487,7 +492,7 @@ class paymentService {
       const booking = await Booking.findByIdAndUpdate(
         updatedTransaction.bookingId,
         {
-          status: "paid_escrow",
+          status: getPaidBookingStatus(bookingBeforeVerify),
           "payment.escrowStatus": "held",
           "payment.paidAt": new Date(),
           "payment.escrowAmount":
@@ -1020,8 +1025,11 @@ class paymentService {
       );
 
       // This is redundant with verifyPayment, but good for backup
+      const bookingBeforeUpdate =
+        await Booking.findById(bookingId).select("scheduleType");
+
       await Booking.findByIdAndUpdate(bookingId, {
-        status: "paid_escrow",
+        status: getPaidBookingStatus(bookingBeforeUpdate),
         "payment.escrowStatus": "held",
         "payment.paidAt": new Date(),
       });

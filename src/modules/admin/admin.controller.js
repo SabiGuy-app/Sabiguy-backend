@@ -881,7 +881,10 @@ class AdminController {
       }
 
       const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+      const limit = Math.min(
+        Math.max(parseInt(req.query.limit, 10) || 20, 1),
+        100,
+      );
       const skip = (page - 1) * limit;
       const escapedService = service.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const query = {
@@ -891,7 +894,9 @@ class AdminController {
 
       const [providers, total] = await Promise.all([
         Provider.find(query)
-          .select("fullName email phoneNumber profilePicture job service rating completedJobs isActive kycVerified createdAt")
+          .select(
+            "fullName email phoneNumber profilePicture job service rating completedJobs isActive kycVerified createdAt",
+          )
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit)
@@ -929,9 +934,15 @@ class AdminController {
       }
 
       const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+      const limit = Math.min(
+        Math.max(parseInt(req.query.limit, 10) || 20, 1),
+        100,
+      );
       const skip = (page - 1) * limit;
-      const escapedCategory = businessCategory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escapedCategory = businessCategory.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      );
       const query = {
         businessCategory: { $regex: `^${escapedCategory}$`, $options: "i" },
         isDeleted: { $ne: true },
@@ -939,7 +950,9 @@ class AdminController {
 
       const [businesses, total] = await Promise.all([
         Business.find(query)
-          .select("fullName BusinessName email phoneNumber profilePicture businessCategory cityOfOperation isActive kycVerified createdAt")
+          .select(
+            "fullName BusinessName email phoneNumber profilePicture businessCategory cityOfOperation isActive kycVerified createdAt",
+          )
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit)
@@ -1122,6 +1135,7 @@ class AdminController {
         "provider_selected",
         "payment_pending",
         "paid_escrow",
+        "paid_escrow_scheduled",
         "in_progress",
         "arrived_at_pickup",
         "enroute_to_dropoff",
