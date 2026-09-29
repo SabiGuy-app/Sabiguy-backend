@@ -16,6 +16,8 @@ const {
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 const STALE_LOCATION_MINUTES = Number(process.env.STALE_LOCATION_MINUTES || 10);
+const PROVIDER_DIRECTORY_FIELDS =
+  "fullName email profilePicture job service servicePlace availableDays currentLocation rating reviews completedJobs city BusinessName yearsOfExperience workVisuals availability kycVerified";
 
 class ProviderController {
   async AccountType(req, res) {
@@ -250,8 +252,13 @@ class ProviderController {
       if (service !== undefined) {
         provider.service = service.map((item = {}) => ({
           serviceName: item.serviceName,
-          pricingModel: item.pricingModel,
-          price: item.price,
+          duration: item.duration,
+          pricingModel: {
+            walk_in: item.pricingModel?.walk_in,
+            provider_address: item.pricingModel?.provider_address,
+            customer_address: item.pricingModel?.customer_address,
+          },
+          fixedPrice: item.fixedPrice,
         }));
       }
 
@@ -300,7 +307,10 @@ class ProviderController {
 
       return res.status(200).json({
         success: true,
-        message: "Service details added successfully",
+        message:
+          req.method === "PATCH"
+            ? "Service details updated successfully"
+            : "Service details added successfully",
         data: {
           service: provider.service,
           yearsOfExperience: provider.yearsOfExperience,
@@ -1214,6 +1224,142 @@ class ProviderController {
     }
   }
 
+  async getAllProviders(req, res) {
+    try {
+      const service = String(
+        req.query.service || req.query["job.service"] || "",
+      ).trim();
+      const serviceName = String(req.query.serviceName || "").trim();
+      const price =
+        req.query.price === undefined ? "" : String(req.query.price).trim();
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(
+        Math.max(parseInt(req.query.limit, 10) || 20, 1),
+        100,
+      );
+      const skip = (page - 1) * limit;
+      const query = {
+        isActive: true,
+        isDeleted: { $ne: true },
+      };
+
+      if (req.query.rating !== undefined && req.query.rating !== "") {
+        const minimumRating = Number(req.query.rating);
+        if (
+          !Number.isFinite(minimumRating) ||
+          minimumRating < 0 ||
+          minimumRating > 5
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "rating must be a number between 0 and 5",
+          });
+        }
+        query["rating.average"] = { $gte: minimumRating };
+      }
+
+      if (service && service.toLowerCase() !== "all") {
+        const escapedService = service.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        query["job.service"] = {
+          $regex: `^${escapedService}$`,
+          $options: "i",
+        };
+      }
+
+      const serviceFilter = {};
+      if (serviceName) {
+        const escapedServiceName = serviceName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        );
+        serviceFilter.serviceName = {
+          $regex: `^${escapedServiceName}$`,
+          $options: "i",
+        };
+      }
+      if (price) {
+        const escapedPrice = price.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        serviceFilter.price = {
+          $regex: `^${escapedPrice}$`,
+          $options: "i",
+        };
+      }
+      if (Object.keys(serviceFilter).length > 0) {
+        query.service = { $elemMatch: serviceFilter };
+      }
+
+      const [providers, total] = await Promise.all([
+        Provider.find(query)
+          .select(PROVIDER_DIRECTORY_FIELDS)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Provider.countDocuments(query),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        service: service || "all",
+        serviceName: serviceName || undefined,
+        price: price || undefined,
+        rating:
+          req.query.rating === undefined ? undefined : Number(req.query.rating),
+        count: providers.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit) || 1,
+        data: providers,
+      });
+    } catch (error) {
+      console.error("Get all providers error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching providers",
+        error: error.message,
+      });
+    }
+  }
+
+  async getProviderById(req, res) {
+    try {
+      const { id } = req.params;
+      if (!/^[a-f\d]{24}$/i.test(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid provider ID",
+        });
+      }
+
+      const provider = await Provider.findOne({
+        _id: id,
+        isActive: true,
+        isDeleted: { $ne: true },
+      })
+        .select(PROVIDER_DIRECTORY_FIELDS)
+        .lean();
+
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: provider,
+      });
+    } catch (error) {
+      console.error("Get provider by ID error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching provider",
+        error: error.message,
+      });
+    }
+  }
+
   // async getOnlineProviders(req, res) {
   //   try {
   //     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -1481,8 +1627,16 @@ class ProviderController {
 
       const [providerLng, providerLat] =
         providerData.currentLocation.coordinates;
-      const [pickupLng, pickupLat] =
-        booking.pickupLocation.coordinates.coordinates;
+      const destinationCoordinates =
+        booking.pickupLocation?.coordinates?.coordinates ||
+        booking.location?.coordinates?.coordinates;
+      if (!destinationCoordinates || destinationCoordinates.length !== 2) {
+        return res.status(400).json({
+          success: false,
+          message: "Booking location is unavailable",
+        });
+      }
+      const [pickupLng, pickupLat] = destinationCoordinates;
 
       const distanceFromPickupKm = geolocationService.calculateDistance(
         providerLat,
@@ -1494,8 +1648,9 @@ class ProviderController {
       const providerETAMinutes = Math.ceil(
         (distanceFromPickupKm / avgSpeedKmh) * 60,
       );
-      const totalDurationMinutes =
-        providerETAMinutes + booking.estimatedDuration.value;
+      const serviceDurationMinutes =
+        Number(booking.estimatedDuration?.value) || 60;
+      const totalDurationMinutes = providerETAMinutes + serviceDurationMinutes;
 
       const acceptedAt = new Date();
       const acceptanceDeadline = new Date(
@@ -1533,10 +1688,14 @@ class ProviderController {
           bookingDuration: {
             value: totalDurationMinutes,
             unit: "minutes",
-            breakdown: {
-              providerToPickup: providerETAMinutes,
-              pickupToDropoff: booking.estimatedDuration.value,
-            },
+            ...(booking.pickupLocation
+              ? {
+                  breakdown: {
+                    providerToPickup: providerETAMinutes,
+                    pickupToDropoff: serviceDurationMinutes,
+                  },
+                }
+              : {}),
           },
           estimatedCompletionAt: new Date(
             Date.now() + totalDurationMinutes * 60 * 1000,
@@ -1583,7 +1742,9 @@ class ProviderController {
       await notificationService.notifyUser(updatedBooking.userId, {
         type: "provider_accepted",
         title: "Provider Accepted Your Booking",
-        message: `A provider is on their way to your pickup location`,
+        message: booking.pickupLocation
+          ? "A provider is on their way to your pickup location"
+          : "A provider accepted your service booking",
         bookingId: updatedBooking._id,
         providerId,
         providerETA: providerETAMinutes,
@@ -1727,7 +1888,7 @@ class ProviderController {
         });
       }
 
-      if (booking.status !== "paid_escrow") {
+      if (booking.status !== "paid_escrow" && booking.status !== "paid_escrow_scheduled") {
         return res.status(400).json({
           success: false,
           message: "Payment must be completed before starting job",
@@ -1794,6 +1955,7 @@ class ProviderController {
 
       const updatableCurrentStatuses = [
         "paid_escrow",
+        "paid_escrow_scheduled",
         "in_progress",
         "arrived_at_pickup",
         "enroute_to_dropoff",
@@ -1840,7 +2002,7 @@ class ProviderController {
       const booking = await Booking.findOne({
         _id: bookingId,
         providerId,
-        status: "arrived_at_dropoff",
+        status: { $in: ["arrived_at_dropoff", "in_progress"] },
       });
 
       if (!booking) {

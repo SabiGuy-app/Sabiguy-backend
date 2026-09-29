@@ -20,6 +20,15 @@ const bookingSchema = new mongoose.Schema(
     subCategory: {
       type: String,
     },
+    serviceDetails: {
+      serviceName: String,
+      duration: String,
+      pricingOption: {
+        type: String,
+        enum: ["walk_in", "provider_address", "customer_address", "fixedprice"],
+      },
+      price: Number,
+    },
     title: {
       type: String,
     },

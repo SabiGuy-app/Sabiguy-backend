@@ -1,266 +1,8 @@
-
-
-
-// class PricingService {
-//   constructor() {
-//     // ── Ops-configurable & government-set values ───────────────────────────
-//     this.config = {
-//       // Row 15
-//       fuelPricePerLitre: 1200,
-
-//       // Row 16 – km per litre
-//       efficiency: {
-//         bike: 20,
-//         pre2000: 10,
-//         post2000: 14,
-//       },
-
-//       baseFare: {
-//         bike: 250,
-//         pre2000: 600,
-//         post2000: 900,
-//       },
-
-//       perMinuteRate: {
-//         bike: 15,
-//         pre2000: 25,
-//         post2000: 30,
-//       },
-
-//       marketAdjustment: {
-//         bike: 400,
-//         pre2000: 1000,
-//         post2000: 1500,
-//       },
-
-//       riderPlatformFeePercent: 5,
-
-//       driverPlatformFeePercent: 15,
-
-//       taxRate: 7.5,
-
-//       defaultSurgeMultiplier: 1.0,
-//     };
-//   }
-
-//   // ── Resolve vehicle category ─────────────────────────────────────────────
-//   /**
-//    * @param {number|string|null} vehicleProductionYear
-//    * @param {boolean}            isBike
-//    * @returns {'bike'|'pre2000'|'post2000'}
-//    */
-//   getVehicleCategory(vehicleProductionYear, isBike = false) {
-//     if (isBike) return "bike";
-//     const year = parseInt(vehicleProductionYear, 10);
-//     if (!year || isNaN(year)) return "post2000";
-//     return year <= 2000 ? "pre2000" : "post2000";
-//   }
-
-//   // ── Core pricing calculator ──────────────────────────────────────────────
-//   /**
-//    * @param {number}      distance              - kilometres (from map API)
-//    * @param {string}      subCategory           - booking sub-category string
-//    * @param {string|null} serviceType           - optional service type
-//    * @param {number|null} durationMinutes       - trip duration in minutes (from map API)
-//    * @param {number|null} vehicleProductionYear - year car was manufactured
-//    * @param {boolean}     isBike                - true if the vehicle is a motorcycle
-//    * @param {number}      surgeMultiplier       - dynamic surge (default 1.0 = no surge)
-//    * @returns {object}
-//    */
-//   calculateTransportPrice(
-//     distance,
-//     subCategory,
-//     serviceType = null,
-//     durationMinutes = null,
-//     vehicleProductionYear = null,
-//     isBike = false,
-//     surgeMultiplier = this.config.defaultSurgeMultiplier,
-//   ) {
-//     const {
-//       fuelPricePerLitre,
-//       efficiency,
-//       baseFare,
-//       perMinuteRate,
-//       marketAdjustment,
-//       riderPlatformFeePercent,
-//       driverPlatformFeePercent,
-//       taxRate,
-//     } = this.config;
-
-//     const category = this.getVehicleCategory(vehicleProductionYear, isBike);
-//     const duration = durationMinutes ?? 0;
-
-//     // ── Row 14: Base Fare (BF) ───────────────────────────────────────────
-//     const BF = baseFare[category];
-
-//     // ── Row 17: Per-Km Rate (PK) = Fuel Price ÷ Vehicle Efficiency ──────
-//     const PK = fuelPricePerLitre / efficiency[category];
-
-//     // ── Distance Cost = BF + (PK × distance) ────────────────────────────
-//     const distanceCost = BF + PK * distance;
-
-//     // ── Row 18: Per-Min Rate (PM) – fixed by Operations ─────────────────
-//     const PM = perMinuteRate[category];
-
-//     // ── Time Cost = PM × duration ────────────────────────────────────────
-//     const timeCost = PM * duration;
-
-//     // ── Row 19: Market Adjustment (MA) ───────────────────────────────────
-//     const MA = marketAdjustment[category];
-
-//     // ── Subtotal (pre-fees, pre-surge) ───────────────────────────────────
-//     const subtotal = distanceCost + timeCost + MA;
-
-//     // ── Row 22: Rider Platform Fee ───────────────────────────────────────
-//     const platformFee = this.roundToNearest50(
-//       (subtotal * riderPlatformFeePercent) / 100,
-//     );
-
-//     // ── Pre-surge rider amount ────────────────────────────────────────────
-//     const preSurgeAmount = subtotal + platformFee;
-
-//     // ── Row 25: Surge Multiplier ─────────────────────────────────────────
-//     const effectiveSurge = surgeMultiplier > 0 ? surgeMultiplier : 1.0;
-//     const riderPays = this.roundToNearest50(preSurgeAmount * effectiveSurge);
-
-//     // ── Row 24: Tax (VAT) applied to final rider amount ──────────────────
-//     const tax = this.roundToNearest50((riderPays * taxRate) / 100);
-//     const riderPaysFinal = riderPays + tax;
-
-//     // ── Row 23: Driver Commission ─────────────────────────────────────────
-//     const driverCommission = this.roundToNearest50(
-//       (subtotal * driverPlatformFeePercent) / 100,
-//     );
-
-//     // ── Driver & platform earnings ────────────────────────────────────────
-//     const driverReceives = this.roundToNearest50(subtotal - driverCommission);
-//     // Platform earns the rider platform fee + driver commission; tax is
-//     // collected on behalf of government and remitted separately.
-//     const platformEarns = this.roundToNearest50(platformFee + driverCommission);
-
-//     return {
-//       // Primary price your booking code uses (inclusive of VAT)
-//       calculatedPrice: riderPaysFinal,
-
-//       breakdown: {
-//         baseFare: BF,
-//         distanceCost: this.roundToNearest50(PK * distance), // excludes BF for clarity
-//         timeCost: this.roundToNearest50(timeCost),
-//         marketAdjustment: MA,
-//         subtotal: this.roundToNearest50(subtotal),
-//         platformFee,                          // rider-side fee (5%)
-//         surgeMultiplier: effectiveSurge,
-//         preSurgeFare: this.roundToNearest50(preSurgeAmount),
-//         riderPaysBeforeTax: riderPays,
-//         tax,
-//         riderPaysFinal,                       // === calculatedPrice
-//         driverCommission,                     // provider-side fee (15%)
-//         driverReceives,                       // provider net earnings
-//         platformEarns,                        // total platform earnings
-//       },
-
-//       driverReceives,
-//       driverCommission,
-//       platformEarns,
-
-//       meta: {
-//         vehicleCategory: category,
-//         distanceKm: distance,
-//         durationMinutes: duration,
-//         ratesUsed: {
-//           baseFare: BF,
-//           perKmRate: parseFloat(PK.toFixed(2)),         
-//           perMinuteRate: PM,                             
-//           marketAdjustment: MA,                          
-//           fuelPricePerLitre,                            
-//           efficiencyKmPerLitre: efficiency[category],    
-//           riderPlatformFeePercent,                       
-//           driverPlatformFeePercent,                      
-//           taxRate,                                       
-//           surgeMultiplier: effectiveSurge,               
-//         },
-//       },
-//     };
-//   }
-
-//   // ── Helpers (unchanged from original) ────────────────────────────────────
-//   getTransportCategory(subCategory, serviceType = null) {
-//     const normalizedSubCategory = subCategory
-//       ? String(subCategory).toLowerCase().trim()
-//       : "";
-//     const normalizedServiceType = serviceType
-//       ? String(serviceType).toLowerCase().trim()
-//       : "";
-
-//     const explicitSubCategoryMap = {
-//       "package delivery": "logistics",
-//       "book a ride": "transport",
-//     };
-
-//     if (
-//       normalizedSubCategory &&
-//       explicitSubCategoryMap[normalizedSubCategory]
-//     ) {
-//       return explicitSubCategoryMap[normalizedSubCategory];
-//     }
-
-//     const combined = `${normalizedSubCategory} ${normalizedServiceType}`.trim();
-//     if (!combined) return "transport";
-
-//     for (const [key] of Object.entries(this.config.baseFare)) {
-//       if (combined.includes(key)) return key;
-//     }
-
-//     return "transport";
-//   }
-
-//   calculateServiceFee(amount, percentage = 10) {
-//     return Math.round((amount * percentage) / 100);
-//   }
-
-//   calculateProviderCommission(agreedPrice, percentage = 15) {
-//     return Math.round((agreedPrice * percentage) / 100);
-//   }
-
-//   calculatePricingBreakdown(
-//     agreedPrice,
-//     userFeePercentage = 10,
-//     providerCommissionPercentage = 15,
-//   ) {
-//     const userFee = this.calculateServiceFee(agreedPrice, userFeePercentage);
-//     const commission = this.calculateProviderCommission(
-//       agreedPrice,
-//       providerCommissionPercentage,
-//     );
-
-//     return {
-//       agreedPrice,
-//       userPays: agreedPrice + userFee,
-//       providerReceives: agreedPrice - commission,
-//       platformEarns: userFee + commission,
-//     };
-//   }
-
-//   calculateTotalAmount(agreedPrice, serviceFeePercentage = 10) {
-//     const serviceFee = this.calculateServiceFee(agreedPrice, serviceFeePercentage);
-//     return agreedPrice + serviceFee;
-//   }
-
-//   roundToNearest50(amount) {
-//     return Math.ceil(amount / 50) * 50;
-//   }
-
-//   updateConfig(newConfig) {
-//     this.config = { ...this.config, ...newConfig };
-//   }
-// }
-
-// module.exports = new PricingService();
-
-
 class PricingService {
   constructor() {
 this.config = {
+  serviceBookingRiderFeePercent: 5,
+  serviceBookingProviderCommissionPercent: 7,
   fuelPricePerLitre: 1200,
 
   efficiency: {
@@ -334,6 +76,50 @@ this.config = {
     const year = parseInt(vehicleProductionYear, 10);
     if (!year || isNaN(year)) return "car"; // averaged fallback — no year known
     return year <= 2000 ? "pre2000" : "post2000";
+  }
+
+  calculateServiceBookingPrice(baseFee) {
+    const subtotal = Number(baseFee);
+    if (!Number.isFinite(subtotal) || subtotal < 0) {
+      throw new TypeError("baseFee must be a non-negative number");
+    }
+
+    const serviceFee = Math.round(
+      (subtotal * this.config.serviceBookingRiderFeePercent) / 100,
+    );
+    const providerCommission = Math.round(
+      (subtotal * this.config.serviceBookingProviderCommissionPercent) / 100,
+    );
+    const providerReceives = subtotal - providerCommission;
+    const calculatedPrice = subtotal + serviceFee;
+    const platformEarns = serviceFee + providerCommission;
+
+    return {
+      calculatedPrice,
+      serviceFee,
+      providerCommission,
+      driverReceives: providerReceives,
+      providerReceives,
+      platformEarns,
+      breakdown: {
+        subtotal,
+        platformFee: serviceFee,
+        riderPaysFinal: calculatedPrice,
+        driverCommission: providerCommission,
+        driverReceives: providerReceives,
+        providerReceives,
+        platformEarns,
+        tax: 0,
+      },
+      meta: {
+        pricingModel: "service",
+        ratesUsed: {
+          riderPlatformFeePercent: this.config.serviceBookingRiderFeePercent,
+          providerCommissionPercent:
+            this.config.serviceBookingProviderCommissionPercent,
+        },
+      },
+    };
   }
 
   // ── Core pricing calculator ──────────────────────────────────────────────

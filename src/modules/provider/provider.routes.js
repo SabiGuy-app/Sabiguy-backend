@@ -237,10 +237,19 @@ router.post(
  *                   properties:
  *                     serviceName:
  *                       type: string
+ *                     duration:
+ *                       type: string
  *                     pricingModel:
- *                       type: string
- *                     price:
- *                       type: string
+ *                       type: object
+ *                       properties:
+ *                         walk_in:
+ *                           type: number
+ *                         provider_address:
+ *                           type: number
+ *                         customer_address:
+ *                           type: number
+ *                     fixedPrice:
+ *                       type: number
  *               yearsOfExperience:
  *                 type: number
  *               availableDays:
@@ -297,6 +306,93 @@ router.post(
  *         description: Server error
  */
 router.post(
+  "/service-details",
+  providerUpdateLimiter,
+  authMiddleware,
+  ProviderController.addServiceDetails,
+);
+
+/**
+ * @swagger
+ * /api/v1/provider/service-details:
+ *   patch:
+ *     summary: Update provider service details
+ *     description: Updates only the submitted fields. If service is supplied, it replaces the provider's service list.
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               service:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     serviceName:
+ *                       type: string
+ *                     duration:
+ *                       type: string
+ *                     pricingModel:
+ *                       type: object
+ *                       properties:
+ *                         walk_in:
+ *                           type: number
+ *                         provider_address:
+ *                           type: number
+ *                         customer_address:
+ *                           type: number
+ *                     fixedPrice:
+ *                       type: number
+ *               yearsOfExperience:
+ *                 type: number
+ *               availableDays:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               businessHours:
+ *                 type: object
+ *                 properties:
+ *                   start:
+ *                     type: string
+ *                   end:
+ *                     type: string
+ *               servicePlace:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               workVisuals:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     pictures:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     videos:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *               businessAddress:
+ *                 type: string
+ *               businessName:
+ *                 type: string
+ *               cacFile:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Service details updated successfully
+ *       400:
+ *         description: Invalid service details payload
+ *       404:
+ *         description: Provider not found
+ */
+router.patch(
   "/service-details",
   providerUpdateLimiter,
   authMiddleware,
@@ -636,6 +732,79 @@ router.get(
  */
 router.put("/location", authMiddleware, ProviderController.updateLocation);
 
+/**
+ * @swagger
+ * /api/v1/provider/all:
+ *   get:
+ *     summary: Get providers, optionally filtered by job service
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: service
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Exact, case-insensitive job.service value; use "all" or omit to list all providers
+ *       - name: serviceName
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Exact, case-insensitive service.serviceName value
+ *       - name: price
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Exact service.price value
+ *       - name: rating
+ *         in: query
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *           maximum: 5
+ *         description: Minimum average provider rating
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *     responses:
+ *       200:
+ *         description: Providers retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+router.get("/all", authMiddleware, ProviderController.getAllProviders);
+
+/**
+ * @swagger
+ * /api/v1/provider/{id}:
+ *   get:
+ *     summary: Get a provider profile by ID
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Provider profile retrieved successfully
+ *       400:
+ *         description: Invalid provider ID
+ *       404:
+ *         description: Provider not found
+ */
 // /**
 //  * @swagger
 //  * /api/v1/provider/online:
@@ -1330,5 +1499,7 @@ router.post(
  *         description: Server error
  */
 router.get("/reviews", authMiddleware, ProviderController.getReviews);
+
+router.get("/:id", authMiddleware, ProviderController.getProviderById);
 
 module.exports = router;
