@@ -44,6 +44,8 @@ const DELETABLE_BOOKING_STATUSES = [
 class BookingController {
   constructor() {
     this.createBooking = this.createBooking.bind(this);
+    this.createServiceBooking = this.createServiceBooking.bind(this);
+    this.searchProviders = this.searchProviders.bind(this);
     this.findNearbyProviders = this.findNearbyProviders.bind(this);
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
     this.getAllBookings = this.getAllBookings.bind(this);
@@ -488,6 +490,20 @@ class BookingController {
         });
       }
 
+      const serviceBaseFee = Number(budget);
+      if (
+        !isTransport &&
+        (!Number.isFinite(serviceBaseFee) || serviceBaseFee <= 0)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "budget must be a positive number for service bookings",
+        });
+      }
+      const servicePricing = isTransport
+        ? null
+        : pricingService.calculateServiceBookingPrice(serviceBaseFee);
+
       if (scheduleType === "scheduled") {
         const scheduledStart = getScheduledStartAt({
           scheduleType,
@@ -794,8 +810,19 @@ class BookingController {
           },
         };
 
-        bookingData.agreedPrice = budget;
-        bookingData.totalAmount = budget;
+        bookingData.agreedPrice = serviceBaseFee;
+        bookingData.calculatedPrice = servicePricing.calculatedPrice;
+        bookingData.totalAmount = servicePricing.calculatedPrice;
+        bookingData.serviceFee = servicePricing.serviceFee;
+        bookingData.providerCommission = servicePricing.providerCommission;
+        bookingData.driverReceives = servicePricing.providerReceives;
+        bookingData.providerReceives = servicePricing.providerReceives;
+        bookingData.platformEarns = servicePricing.platformEarns;
+        bookingData.pricingBreakdown = {
+          ...servicePricing.breakdown,
+          pricingModel: servicePricing.meta.pricingModel,
+        };
+        bookingData.pricingMeta = servicePricing.meta;
 
         searchCoordinates = {
           latitude: geo.latitude,
@@ -865,14 +892,16 @@ class BookingController {
         const totalDistanceKm = rideDistanceKm + p.distanceFromPickup;
         const totalDurationMinutes = rideDurationMinutes + p.providerETA.value;
 
-        const pricing = pricingService.calculateTransportPrice(
-          totalDistanceKm,
-          subCategory,
-          serviceType,
-          totalDurationMinutes,
-          p.vehicleProductionYear,
-          isBike,
-        );
+        const pricing = isTransport
+          ? pricingService.calculateTransportPrice(
+              totalDistanceKm,
+              subCategory,
+              serviceType,
+              totalDurationMinutes,
+              p.vehicleProductionYear,
+              isBike,
+            )
+          : servicePricing;
 
         return {
           id: p.id,
@@ -1076,6 +1105,287 @@ class BookingController {
     }
   }
 
+  async createServiceBooking(req, res) {
+    try {
+      const { category, date, time, location, providerId } = req.body || {};
+      const serviceInput = req.body?.service;
+      const requestedService = Array.isArray(serviceInput)
+        ? serviceInput[0]
+        : serviceInput;
+      const serviceName = String(
+        requestedService?.serviceName ?? req.body?.serviceName ?? "",
+      ).trim();
+      const normalizedCategory = String(category || "").trim();
+      const pricingOption = String(
+        req.body?.pricingOption ?? requestedService?.pricingOption ?? "",
+      )
+        .trim()
+        .toLowerCase();
+
+      if (
+        !normalizedCategory ||
+        !serviceName ||
+        !date ||
+        !time ||
+        !location ||
+        !providerId ||
+        !pricingOption
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "category, service.serviceName, pricingOption, date, time, location, and providerId are required",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(providerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid providerId",
+        });
+      }
+
+      const timeMatch = String(time)
+        .trim()
+        .match(/^(\d{1,2}):([0-5]\d)(?:\s*(AM|PM))?$/i);
+      const timeHour = Number(timeMatch?.[1]);
+      const hasMeridiem = Boolean(timeMatch?.[3]);
+      if (
+        !timeMatch ||
+        timeHour < (hasMeridiem ? 1 : 0) ||
+        timeHour > (hasMeridiem ? 12 : 23)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "time must use HH:mm or h:mm AM/PM format",
+        });
+      }
+
+      const scheduleDate = new Date(date);
+      const scheduledStart = getScheduledStartAt({
+        scheduleDate,
+        scheduledTime: String(time).trim(),
+      });
+      if (
+        Number.isNaN(scheduleDate.getTime()) ||
+        !scheduledStart ||
+        scheduledStart <= new Date()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "date and time must specify a valid future appointment",
+        });
+      }
+
+      const provider = await Provider.findOne({
+        _id: providerId,
+        isActive: true,
+        isDeleted: { $ne: true },
+      }).select("fullName job service availability");
+
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
+
+      if (!provider.availability?.isAvailable) {
+        return res.status(409).json({
+          success: false,
+          message: "Provider is currently unavailable",
+        });
+      }
+
+      const categoryMatches = provider.job?.some(
+        (job) =>
+          String(job.service || "")
+            .trim()
+            .toLowerCase() === normalizedCategory.toLowerCase(),
+      );
+      if (!categoryMatches) {
+        return res.status(400).json({
+          success: false,
+          message: "Provider does not offer this category",
+        });
+      }
+
+      const providerService = provider.service?.find(
+        (item) =>
+          String(item.serviceName || "")
+            .trim()
+            .toLowerCase() === serviceName.toLowerCase(),
+      );
+      if (!providerService) {
+        return res.status(400).json({
+          success: false,
+          message: "Provider does not offer this service",
+        });
+      }
+
+      const pricingOptions = [
+        "walk_in",
+        "provider_address",
+        "customer_address",
+        "fixedprice",
+      ];
+      if (!pricingOptions.includes(pricingOption)) {
+        return res.status(400).json({
+          success: false,
+          message: `pricingOption must be one of: ${pricingOptions.join(", ")}`,
+        });
+      }
+
+      const servicePrice = Number(
+        pricingOption === "fixedprice"
+          ? providerService.fixedPrice
+          : providerService.pricingModel?.[pricingOption],
+      );
+      if (!Number.isFinite(servicePrice) || servicePrice <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "The selected pricing option has no valid provider price",
+        });
+      }
+
+      if (this.isTransportLogistics(normalizedCategory, serviceName)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Transport and logistics bookings must use the transport booking endpoint",
+        });
+      }
+
+      const pricing = pricingService.calculateServiceBookingPrice(servicePrice);
+
+      let address =
+        typeof location === "string"
+          ? location.trim()
+          : String(location.address || location.formattedAddress || "").trim();
+      const coordinates = Array.isArray(location?.coordinates)
+        ? location.coordinates
+        : location?.coordinates?.coordinates;
+      let latitude = Number(location?.latitude ?? coordinates?.[1]);
+      let longitude = Number(location?.longitude ?? coordinates?.[0]);
+
+      if (
+        (!Number.isFinite(latitude) || !Number.isFinite(longitude)) &&
+        address
+      ) {
+        const geocodedLocation = await this.geocodeWithFallback(address);
+        latitude = Number(geocodedLocation.latitude);
+        longitude = Number(geocodedLocation.longitude);
+        address = geocodedLocation.formattedAddress || address;
+      }
+
+      if (
+        !Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !Number.isFinite(longitude) ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "location must contain a valid address or coordinates",
+        });
+      }
+
+      const durationMatch = String(providerService.duration || "")
+        .trim()
+        .match(/^(\d+(?:\.\d+)?)\s*(min(?:ute)?s?|m|h(?:ou)?rs?)?$/i);
+      const durationValue = Number(durationMatch?.[1]);
+      const durationUnit = durationMatch?.[2]?.toLowerCase() || "min";
+      const durationMinutes = Number.isFinite(durationValue)
+        ? Math.ceil(durationValue * (durationUnit.startsWith("h") ? 60 : 1))
+        : 60;
+
+      const booking = await Booking.create({
+        userId: req.user.id,
+        providerId,
+        serviceType: normalizedCategory,
+        subCategory: serviceName,
+        title: serviceName,
+        serviceDetails: {
+          serviceName,
+          duration: providerService.duration || null,
+          pricingOption,
+          price: servicePrice,
+        },
+        location: {
+          address: address || `${latitude}, ${longitude}`,
+          formattedAddress: address || undefined,
+          coordinates: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
+        },
+        scheduleType: "scheduled",
+        scheduleDate,
+        scheduledTime: String(time).trim(),
+        estimatedDuration: {
+          value: durationMinutes,
+          unit: "minutes",
+        },
+        budget: servicePrice,
+        agreedPrice: servicePrice,
+        calculatedPrice: pricing.calculatedPrice,
+        totalAmount: pricing.calculatedPrice,
+        serviceFee: pricing.serviceFee,
+        providerCommission: pricing.providerCommission,
+        driverReceives: pricing.providerReceives,
+        providerReceives: pricing.providerReceives,
+        platformEarns: pricing.platformEarns,
+        pricingBreakdown: {
+          ...pricing.breakdown,
+          pricingModel: pricing.meta.pricingModel,
+        },
+        pricingMeta: pricing.meta,
+        status: "awaiting_provider_acceptance",
+      });
+
+      let providerNotified = true;
+      try {
+        await notificationService.notifyProvider(providerId, {
+          type: "new_booking_request",
+          title: "New Service Booking Request",
+          message: `A customer requested ${serviceName} for ${String(date)} at ${String(time)}. Please review and respond.`,
+          bookingId: booking._id,
+          userId: req.user.id,
+          serviceType: normalizedCategory,
+          serviceName,
+          pricingOption,
+          amount: pricing.calculatedPrice,
+          providerReceives: pricing.providerReceives,
+          scheduleDate,
+          scheduledTime: String(time).trim(),
+          address,
+        });
+      } catch (notificationError) {
+        providerNotified = false;
+        console.error(
+          "Notify provider about service booking error:",
+          notificationError,
+        );
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: "Service booking created and sent to provider",
+        providerNotified,
+        data: this.prepareBookingResponse(booking),
+      });
+    } catch (error) {
+      console.error("Create service booking error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error creating service booking",
+        error: error.message,
+      });
+    }
+  }
+
   async getDirectionsWithFallback(origin, destination) {
     try {
       console.log("🗺️ Attempting real directions API");
@@ -1125,11 +1435,99 @@ class BookingController {
     }
   }
 
+  async searchProviders(req, res) {
+    try {
+      const { location } = req.body || {};
+      const normalizedServiceName = String(
+        req.body?.serviceName ?? req.body?.service?.serviceName ?? "",
+      ).trim();
+      const normalizedJobService = String(
+        req.body?.jobService ??
+          req.body?.["job.service"] ??
+          req.body?.job?.service ??
+          "",
+      ).trim();
+
+      if (!normalizedServiceName && !normalizedJobService) {
+        return res.status(400).json({
+          success: false,
+          message: "Provide serviceName, jobService, or both",
+        });
+      }
+
+      let latitude;
+      let longitude;
+      if (typeof location === "string" && location.trim()) {
+        const geocodedLocation = await this.geocodeWithFallback(
+          location.trim(),
+        );
+        latitude = Number(geocodedLocation.latitude);
+        longitude = Number(geocodedLocation.longitude);
+      } else {
+        latitude = Number(
+          location?.latitude ??
+            location?.coordinates?.[1] ??
+            req.body?.latitude,
+        );
+        longitude = Number(
+          location?.longitude ??
+            location?.coordinates?.[0] ??
+            req.body?.longitude,
+        );
+      }
+
+      if (
+        !Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !Number.isFinite(longitude) ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "location must include valid latitude and longitude, or be an address string",
+        });
+      }
+
+      const providers = await this.findNearbyProviders(
+        { latitude, longitude },
+        null,
+        null,
+        null,
+        normalizedServiceName || null,
+        normalizedJobService || null,
+      );
+      const nearbyProviders = providers.map(
+        ({ _raw, ...provider }) => provider,
+      );
+
+      return res.status(200).json({
+        success: true,
+        serviceName: normalizedServiceName || undefined,
+        jobService: normalizedJobService || undefined,
+        location: { latitude, longitude },
+        count: nearbyProviders.length,
+        nearbyProviders,
+      });
+    } catch (error) {
+      console.error("Search nearby providers error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error searching nearby providers",
+        error: error.message,
+      });
+    }
+  }
+
   async findNearbyProviders(
     coordinates,
     serviceType,
     subCategory,
     modeOfDelivery = null,
+    serviceName = null,
+    jobService = null,
   ) {
     try {
       const modeOfDeliveryMap = {
@@ -1153,6 +1551,9 @@ class BookingController {
         Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
       );
 
+      const normalizedJobService = jobService
+        ? String(jobService).trim()
+        : serviceType;
       const jobQuery = normalizedModeOfDelivery
         ? {
             $elemMatch: {
@@ -1160,14 +1561,37 @@ class BookingController {
             },
           }
         : subCategory
-          ? { $elemMatch: { service: serviceType, title: subCategory } }
-          : { $elemMatch: { service: serviceType } };
+          ? {
+              $elemMatch: { service: normalizedJobService, title: subCategory },
+            }
+          : normalizedJobService
+            ? { $elemMatch: { service: normalizedJobService } }
+            : null;
+      const normalizedServiceName = serviceName
+        ? String(serviceName).trim()
+        : null;
+      const serviceNameRegex = normalizedServiceName
+        ? new RegExp(
+            `^${normalizedServiceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            "i",
+          )
+        : null;
+      const providerServiceFilters = [
+        ...(jobQuery ? [{ job: jobQuery }] : []),
+        ...(serviceNameRegex
+          ? [{ service: { $elemMatch: { serviceName: serviceNameRegex } } }]
+          : []),
+      ];
 
       const baseQuery = {
+        isActive: true,
+        isDeleted: { $ne: true },
         "availability.isAvailable": true,
         "currentLocation.coordinates": { $exists: true, $ne: [] },
         lastLocationUpdate: { $gte: staleThreshold }, // Fresh location only
-        job: jobQuery,
+        ...(providerServiceFilters.length === 1
+          ? providerServiceFilters[0]
+          : { $or: providerServiceFilters }),
       };
 
       // ── Geo query ──────────────────────────────────────────────────────────────
@@ -1193,6 +1617,7 @@ class BookingController {
             fullName: 1,
             email: 1,
             profilePicture: 1,
+            service: 1,
             job: 1,
             rating: 1,
             completedJobs: 1,
@@ -1249,7 +1674,16 @@ class BookingController {
             rating: p.rating,
             completedJobs: p.completedJobs,
             startingPrice: p.startingPrice,
-            services: p.job,
+            services: serviceNameRegex
+              ? (p.service || []).filter((item) =>
+                  serviceNameRegex.test(item.serviceName || ""),
+                )
+              : p.job,
+            jobs: normalizedJobService
+              ? (p.job || []).filter(
+                  (item) => item.service === normalizedJobService,
+                )
+              : undefined,
             distanceFromPickup: distanceFromPickupKm, // km
             providerETA: {
               value: providerETAMinutes,
@@ -1363,10 +1797,11 @@ class BookingController {
           .notifyProvider(provider.id, {
             type: "new_booking_request",
             title: "🔔 New Booking Request",
-            message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || "N/A"} km away. Please respond within 2 minutes to accept.`,
+            message: `New ${booking.subCategory} booking nearby - ${booking.distance?.value || "N/A"} km away. Please respond within 2 minutes to accept.`,
             bookingId: booking._id,
             scheduleDate: booking.scheduleDate,
             serviceType: booking.serviceType,
+            subCategory: booking.subCategory,
             pickupAddress: booking.pickupLocation?.address,
             dropoffAddress: booking.dropoffLocation?.address,
             distance: booking.distance?.value,
@@ -1521,7 +1956,7 @@ class BookingController {
         // title: "Job Completion Confirmed And You got a bonus.🥳",
         title: "Job Completion Confirmed.🥳",
 
-        message: `Your customer confirmed completion of the ${booking.serviceType} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
+        message: `Your customer confirmed completion of the ${booking.subCategory} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
         bookingId: booking._id,
         userId,
       });
@@ -1590,7 +2025,7 @@ class BookingController {
           notificationService.notifyProvider(providerId, {
             type: "booking_disputed",
             title: "⚠️ Dispute Raised",
-            message: `A customer has raised a dispute regarding the ${booking.serviceType} booking. Our team will review and contact you shortly.`,
+            message: `A customer has raised a dispute regarding the ${booking.subCategory} booking. Our team will review and contact you shortly.`,
             bookingId: booking._id,
             userId,
             reason,
@@ -1792,9 +2227,9 @@ class BookingController {
       notificationService.notifyProvider(providerId, {
         type: "booking_selected",
         title: "🎉 You've Been Selected!",
-        message: `A customer has selected you for a ${booking.serviceType} booking. Please review the details in Hire Alert and accept or ignore the job within 2 minutes.`,
+        message: `A customer has selected you for a ${booking.subCategory} booking. Please review the details in Hire Alert and accept or ignore the job within 2 minutes.`,
         bookingId: booking._id,
-        serviceType: booking.serviceType,
+        subCategory: booking.subCategory,
         pickupAddress: booking.pickupLocation?.address,
         dropoffAddress: booking.dropoffLocation?.address,
         budget: booking.driverReceives,
@@ -1849,7 +2284,7 @@ class BookingController {
         });
       }
 
-      if (booking.status === "paid_escrow") {
+      if (booking.status === "paid_escrow" || booking.status === "paid_escrow_scheduled") {
         await paymentService.refundPayment(bookingId, reason);
       }
 

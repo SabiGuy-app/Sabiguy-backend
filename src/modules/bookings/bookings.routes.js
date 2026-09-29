@@ -130,6 +130,78 @@ router.post(
 
 /**
  * @swagger
+ * /api/v1/bookings/service:
+ *   post:
+ *     summary: Create a scheduled service booking with a selected provider
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [category, service, pricingOption, date, time, location, providerId]
+ *             properties:
+ *               category:
+ *                 type: string
+ *                 description: Must match the provider's job.service
+ *               service:
+ *                 type: array
+ *                 minItems: 1
+ *                 items:
+ *                   type: object
+ *                   required: [serviceName]
+ *                   properties:
+ *                     serviceName:
+ *                       type: string
+ *               pricingOption:
+ *                 type: string
+ *                 enum: [walk_in, provider_address, customer_address, fixedPrice]
+ *               date:
+ *                 type: string
+ *                 format: date
+ *               time:
+ *                 type: string
+ *                 example: 10:30 AM
+ *               location:
+ *                 oneOf:
+ *                   - type: string
+ *                   - type: object
+ *                     properties:
+ *                       address:
+ *                         type: string
+ *                       latitude:
+ *                         type: number
+ *                       longitude:
+ *                         type: number
+ *                       coordinates:
+ *                         type: array
+ *                         description: GeoJSON coordinate order [longitude, latitude]
+ *                         items:
+ *                           type: number
+ *                         minItems: 2
+ *                         maxItems: 2
+ *               providerId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Booking created and sent to provider for acceptance
+ *       400:
+ *         description: Invalid booking details or provider pricing option
+ *       404:
+ *         description: Provider not found
+ */
+router.post(
+  "/service",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.createServiceBooking,
+);
+
+/**
+ * @swagger
  * /api/v1/bookings:
  *   get:
  *     summary: Get all bookings
@@ -596,6 +668,58 @@ router.get(
  *       500:
  *         description: Server error
  */
+/**
+ * @swagger
+ * /api/v1/bookings/search:
+ *   post:
+ *     summary: Search for nearby providers by service name and location
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - location
+ *             properties:
+ *               location:
+ *                 oneOf:
+ *                   - type: object
+ *                     required: [latitude, longitude]
+ *                     properties:
+ *                       latitude:
+ *                         type: number
+ *                       longitude:
+ *                         type: number
+ *                   - type: string
+ *                     description: Address to geocode
+ *                 example:
+ *                   latitude: 6.5244
+ *                   longitude: 3.3792
+ *               serviceName:
+ *                 type: string
+ *                 example: Hair Styling
+ *                 description: Matches service.serviceName; optional if jobService is provided
+ *               jobService:
+ *                 type: string
+ *                 example: Beauty & Personal Care
+ *                 description: Matches job.service; optional if serviceName is provided
+ *     responses:
+ *       200:
+ *         description: Nearby providers returned successfully
+ *       400:
+ *         description: Invalid location or no service filter provided
+ */
+router.post(
+  "/search",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.searchProviders,
+);
+
 router.get("/:id", authMiddleware, BookingController.getBookingById);
 
 /**
