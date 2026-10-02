@@ -107,6 +107,13 @@ const bookingSchema = new mongoose.Schema(
       isEstimate: { type: Boolean, default: false },
     },
 
+    jobCompletedImages: [
+       {
+        pictures: [{ type: String }],
+        videos: [{ type: String }],
+      },
+    ],
+
     bookingDuration: {
       value: Number,
       unit: { type: String, default: "minutes" },
@@ -218,6 +225,7 @@ const bookingSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
+        "no_provider_available", // No provider available for the service
         "pending_providers", // User created, awaiting provider selection
         "awaiting_provider_acceptance", // Transport: waiting for fastest finger
         "provider_selected", // Provider selected/accepted

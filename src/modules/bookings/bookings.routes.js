@@ -707,6 +707,15 @@ router.get(
  *                 type: string
  *                 example: Beauty & Personal Care
  *                 description: Matches job.service; optional if serviceName is provided
+ *               fixedPrice:
+ *                 type: number
+ *                 minimum: 0
+ *                 description: Exact fixedPrice value for the matching service entry
+ *               rating:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 5
+ *                 description: Minimum provider average rating
  *     responses:
  *       200:
  *         description: Nearby providers returned successfully
