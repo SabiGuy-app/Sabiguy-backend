@@ -1,9 +1,9 @@
 const cron = require("node-cron");
 const Booking = require("./Bookings.model");
-const {
-  BOOKING_ACCEPTANCE_WINDOW_MS,
-} = require("./booking-expiry.config");
+const { BOOKING_ACCEPTANCE_WINDOW_MS } = require("./booking-expiry.config");
 const { notifyBookingExpiry } = require("./booking-expiry.notification");
+const notificationService = require("../../services/notification.service");
+const { getScheduledStartAt } = require("./booking-scheduling.service");
 
 const expireBookings = async (filter, status, now) => {
   const expiredBookings = [];
@@ -69,12 +69,108 @@ const expireOverdueBookings = async (now = new Date()) => {
   };
 };
 
+const processScheduledBookings = async (now = new Date()) => {
+  const bookings = await Booking.find({
+    scheduleType: "scheduled",
+    status: "paid_escrow_scheduled",
+    providerId: { $ne: null },
+  })
+    .select(
+      "scheduleType scheduleDate scheduledTime startDate endDate providerId serviceType scheduledReminder10SentAt scheduledReminder5SentAt",
+    )
+    .lean();
+
+  let activated = 0;
+  let remindersSent = 0;
+
+  for (const booking of bookings) {
+    const scheduledStart = getScheduledStartAt(booking);
+    if (!scheduledStart) continue;
+
+    if (scheduledStart <= now) {
+      const updated = await Booking.findOneAndUpdate(
+        { _id: booking._id, status: "paid_escrow_scheduled" },
+        { $set: { status: "paid_escrow" } },
+        { new: true },
+      );
+      if (updated) activated += 1;
+      continue;
+    }
+
+    const minutesUntilStart =
+      (scheduledStart.getTime() - now.getTime()) / 60000;
+    const reminders = [
+      {
+        minutes: 10,
+        field: "scheduledReminder10SentAt",
+        windowStart: 5,
+      },
+      {
+        minutes: 5,
+        field: "scheduledReminder5SentAt",
+        windowStart: 0,
+      },
+    ];
+
+    for (const reminder of reminders) {
+      if (
+        minutesUntilStart > reminder.minutes ||
+        minutesUntilStart <= reminder.windowStart ||
+        booking[reminder.field]
+      ) {
+        continue;
+      }
+
+      const claimed = await Booking.findOneAndUpdate(
+        {
+          _id: booking._id,
+          status: "paid_escrow_scheduled",
+          [reminder.field]: null,
+        },
+        { $set: { [reminder.field]: now } },
+        { new: true },
+      );
+      if (!claimed) continue;
+
+      try {
+        await notificationService.notifyProvider(booking.providerId, {
+          type: "booking_status_updated",
+          title: `Scheduled booking in ${reminder.minutes} minutes`,
+          message: `Your ${booking.serviceType} booking is scheduled to start in about ${reminder.minutes} minutes.`,
+          bookingId: booking._id,
+          scheduledStartAt: scheduledStart,
+        });
+        remindersSent += 1;
+      } catch (error) {
+        await Booking.updateOne(
+          { _id: booking._id },
+          { $set: { [reminder.field]: null } },
+        );
+        console.error(
+          `Scheduled reminder failed for booking ${booking._id}:`,
+          error.message,
+        );
+      }
+    }
+  }
+
+  return { activated, remindersSent };
+};
+
 const runBookingExpiryJob = async () => {
   try {
-    const result = await expireOverdueBookings();
-    if (result.acceptanceExpired || result.paymentExpired) {
+    const [expiryResult, scheduledResult] = await Promise.all([
+      expireOverdueBookings(),
+      processScheduledBookings(),
+    ]);
+    if (
+      expiryResult.acceptanceExpired ||
+      expiryResult.paymentExpired ||
+      scheduledResult.activated ||
+      scheduledResult.remindersSent
+    ) {
       console.log(
-        `Expired bookings: ${result.acceptanceExpired} acceptance, ${result.paymentExpired} payment.`,
+        `Booking job: ${expiryResult.acceptanceExpired} acceptance expired, ${expiryResult.paymentExpired} payment expired, ${scheduledResult.activated} scheduled activated, ${scheduledResult.remindersSent} reminders sent.`,
       );
     }
   } catch (error) {
@@ -89,5 +185,6 @@ const startBookingExpiryJob = () => {
 
 module.exports = {
   expireOverdueBookings,
+  processScheduledBookings,
   startBookingExpiryJob,
 };

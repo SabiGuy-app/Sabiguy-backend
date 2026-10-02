@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Provider = require('../../../models/ServiceProvider');
 const Buyer = require('../../../models/ServiceUser');
+const Business = require('../business/business.model'); 
 const geolocationService = require('../../services/geolocation.service');
 const { sendNinSubmittedEmail } = require('../../config/emailVerification');
 const { getPagination } = require('../../shared/utils/pagination');
@@ -183,7 +184,8 @@ const getAllUsers = async (req) => {
 const getUserByEmail = async (email) => {
   const buyer = await Buyer.findOne({ email }).select('-password');
   const provider = await Provider.findOne({ email }).select('-password');
-  return buyer || provider;
+  const business = await Business.findOne({ email }).select('-password');
+  return buyer || provider || business;
 };
 
 const getUserById = async (id) => {
@@ -195,7 +197,8 @@ const getUserById = async (id) => {
 
   const buyer = await Buyer.findById(id).select('-password');
   const provider = await Provider.findById(id).select('-password');
-  return buyer || provider;
+  const business = await Business.findById(id).select('-password');
+  return buyer || provider || business;
 };
 
 const uploadUserNin = async (buyerId, ninSlip) => {

@@ -20,6 +20,15 @@ const bookingSchema = new mongoose.Schema(
     subCategory: {
       type: String,
     },
+    serviceDetails: {
+      serviceName: String,
+      duration: String,
+      pricingOption: {
+        type: String,
+        enum: ["walk_in", "provider_address", "customer_address", "fixedprice"],
+      },
+      price: Number,
+    },
     title: {
       type: String,
     },
@@ -97,6 +106,13 @@ const bookingSchema = new mongoose.Schema(
       unit: { type: String, default: "minutes" },
       isEstimate: { type: Boolean, default: false },
     },
+
+    jobCompletedImages: [
+       {
+        pictures: [{ type: String }],
+        videos: [{ type: String }],
+      },
+    ],
 
     bookingDuration: {
       value: Number,
@@ -209,12 +225,14 @@ const bookingSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
+        "no_provider_available", // No provider available for the service
         "pending_providers", // User created, awaiting provider selection
         "awaiting_provider_acceptance", // Transport: waiting for fastest finger
         "provider_selected", // Provider selected/accepted
         "payment_pending", // Awaiting payment
         "booking_expired", // No provider accepted within the acceptance window
         "paid_escrow",
+        "paid_escrow_scheduled", // Paid and scheduled for later
         "provider_accepted",
         "accept_selection",
         "in_progress",
@@ -283,6 +301,8 @@ const bookingSchema = new mongoose.Schema(
     startedAt: Date,
     completedAt: Date,
     lastNotifiedAt: { type: Date },
+    scheduledReminder10SentAt: { type: Date, default: null },
+    scheduledReminder5SentAt: { type: Date, default: null },
 
     // Attachments
     attachments: [String],

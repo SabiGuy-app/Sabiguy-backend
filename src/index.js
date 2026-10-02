@@ -11,6 +11,9 @@ const redis = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const notificationService = require("./services/notification.service");
 const turnService = require("./modules/call/call.service");
+const {
+  startBookingExpiryJob,
+} = require("./modules/bookings/booking-expiry.job");
 const REDIS_MAX_RECONNECT_ATTEMPTS = Number(
   process.env.REDIS_MAX_RECONNECT_ATTEMPTS || 5,
 );
@@ -428,4 +431,6 @@ server.listen(Port, () => {
   console.log(`Server is running on port ${Port}`);
 });
 
-connectToDB();
+connectToDB().then(() => {
+  startBookingExpiryJob();
+});

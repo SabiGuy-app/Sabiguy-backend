@@ -10,9 +10,14 @@ const {
   BOOKING_ACCEPTANCE_WINDOW_MS,
   PAYMENT_WINDOW_MS,
 } = require("../bookings/booking-expiry.config");
+const {
+  findProviderScheduleConflict,
+} = require("../bookings/booking-scheduling.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 const STALE_LOCATION_MINUTES = Number(process.env.STALE_LOCATION_MINUTES || 10);
+const PROVIDER_DIRECTORY_FIELDS =
+  "fullName email profilePicture job service servicePlace availableDays currentLocation rating reviews completedJobs city BusinessName yearsOfExperience workVisuals availability kycVerified";
 
 class ProviderController {
   async AccountType(req, res) {
@@ -247,8 +252,13 @@ class ProviderController {
       if (service !== undefined) {
         provider.service = service.map((item = {}) => ({
           serviceName: item.serviceName,
-          pricingModel: item.pricingModel,
-          price: item.price,
+          duration: item.duration,
+          pricingModel: {
+            walk_in: item.pricingModel?.walk_in,
+            provider_address: item.pricingModel?.provider_address,
+            customer_address: item.pricingModel?.customer_address,
+          },
+          fixedPrice: item.fixedPrice,
         }));
       }
 
@@ -290,15 +300,17 @@ class ProviderController {
         }));
       }
 
-
       provider.kycCompleted = true;
-      provider.kycLevel = Math.max(provider.kycLevel || 0, 4); 
-      
+      provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
+
       await provider.save();
 
       return res.status(200).json({
         success: true,
-        message: "Service details added successfully",
+        message:
+          req.method === "PATCH"
+            ? "Service details updated successfully"
+            : "Service details added successfully",
         data: {
           service: provider.service,
           yearsOfExperience: provider.yearsOfExperience,
@@ -462,7 +474,11 @@ class ProviderController {
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+      const yearAgo = new Date(
+        now.getFullYear() - 1,
+        now.getMonth(),
+        now.getDate(),
+      );
 
       // Get booking statistics + analytics
       const [
@@ -477,7 +493,9 @@ class ProviderController {
         Booking.countDocuments({ providerId }),
         Booking.countDocuments({
           providerId,
-          status: { $in: ["in_progress", "paid_escrow"] },
+          status: {
+            $in: ["in_progress", "paid_escrow", "paid_escrow_scheduled"],
+          },
         }),
         Booking.countDocuments({
           providerId,
@@ -516,17 +534,38 @@ class ProviderController {
               ],
               dailyWeek: [
                 { $match: { createdAt: { $gte: sevenDaysAgo } } },
-                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                {
+                  $group: {
+                    _id: {
+                      $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                    },
+                    amount: { $sum: "$providerNet" },
+                  },
+                },
                 { $sort: { _id: 1 } },
               ],
               dailyMonth: [
                 { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                {
+                  $group: {
+                    _id: {
+                      $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                    },
+                    amount: { $sum: "$providerNet" },
+                  },
+                },
                 { $sort: { _id: 1 } },
               ],
               monthlyYear: [
                 { $match: { createdAt: { $gte: yearAgo } } },
-                { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } }, amount: { $sum: "$providerNet" } } },
+                {
+                  $group: {
+                    _id: {
+                      $dateToString: { format: "%Y-%m", date: "$createdAt" },
+                    },
+                    amount: { $sum: "$providerNet" },
+                  },
+                },
                 { $sort: { _id: 1 } },
               ],
             },
@@ -545,11 +584,28 @@ class ProviderController {
               },
             },
           },
-          { $facet: {
-            week: [ { $match: { createdAt: { $gte: sevenDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
-            month: [ { $match: { createdAt: { $gte: thirtyDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
-            year: [ { $match: { createdAt: { $gte: ninetyDaysAgo } } }, { $group: { _id: null, average: { $avg: "$responseMinutes" } } } ],
-          } },
+          {
+            $facet: {
+              week: [
+                { $match: { createdAt: { $gte: sevenDaysAgo } } },
+                {
+                  $group: { _id: null, average: { $avg: "$responseMinutes" } },
+                },
+              ],
+              month: [
+                { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+                {
+                  $group: { _id: null, average: { $avg: "$responseMinutes" } },
+                },
+              ],
+              year: [
+                { $match: { createdAt: { $gte: ninetyDaysAgo } } },
+                {
+                  $group: { _id: null, average: { $avg: "$responseMinutes" } },
+                },
+              ],
+            },
+          },
         ]),
         Booking.aggregate([
           { $match: { providerId } },
@@ -594,21 +650,34 @@ class ProviderController {
           const date = new Date(startDate);
           if (unit === "day") date.setUTCDate(date.getUTCDate() + index);
           else date.setUTCMonth(date.getUTCMonth() + index);
-          const key = unit === "day"
-            ? date.toISOString().slice(0, 10)
-            : date.toISOString().slice(0, 7);
+          const key =
+            unit === "day"
+              ? date.toISOString().slice(0, 10)
+              : date.toISOString().slice(0, 7);
           return { period: key, amount: amounts.get(key) || 0 };
         });
       };
       const weekRevenue = fillSeries(
         revenueFacet.dailyWeek || [],
-        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6)),
+        new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - 6,
+          ),
+        ),
         7,
         "day",
       );
       const monthRevenue = fillSeries(
         revenueFacet.dailyMonth || [],
-        new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29)),
+        new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate() - 29,
+          ),
+        ),
         30,
         "day",
       );
@@ -660,7 +729,12 @@ class ProviderController {
             last7Days: last7DaysRevenue,
             last30Days: last30DaysRevenue,
             period,
-            chart: period === "week" ? weekRevenue : period === "month" ? monthRevenue : yearRevenue,
+            chart:
+              period === "week"
+                ? weekRevenue
+                : period === "month"
+                  ? monthRevenue
+                  : yearRevenue,
             byPeriod: {
               week: weekRevenue,
               month: monthRevenue,
@@ -672,7 +746,8 @@ class ProviderController {
           averageResponseTimeByPeriodMinutes: {
             week: Math.round(averageResponseByPeriod.week * 100) / 100,
             month: Math.round(averageResponseByPeriod.month * 100) / 100,
-            threeMonths: Math.round(averageResponseByPeriod.threeMonths * 100) / 100,
+            threeMonths:
+              Math.round(averageResponseByPeriod.threeMonths * 100) / 100,
           },
           bookingsByDayOfWeek,
           peakHourAnalysis: {
@@ -1149,6 +1224,142 @@ class ProviderController {
     }
   }
 
+  async getAllProviders(req, res) {
+    try {
+      const service = String(
+        req.query.service || req.query["job.service"] || "",
+      ).trim();
+      const serviceName = String(req.query.serviceName || "").trim();
+      const price =
+        req.query.price === undefined ? "" : String(req.query.price).trim();
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(
+        Math.max(parseInt(req.query.limit, 10) || 20, 1),
+        100,
+      );
+      const skip = (page - 1) * limit;
+      const query = {
+        isActive: true,
+        isDeleted: { $ne: true },
+      };
+
+      if (req.query.rating !== undefined && req.query.rating !== "") {
+        const minimumRating = Number(req.query.rating);
+        if (
+          !Number.isFinite(minimumRating) ||
+          minimumRating < 0 ||
+          minimumRating > 5
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "rating must be a number between 0 and 5",
+          });
+        }
+        query["rating.average"] = { $gte: minimumRating };
+      }
+
+      if (service && service.toLowerCase() !== "all") {
+        const escapedService = service.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        query["job.service"] = {
+          $regex: `^${escapedService}$`,
+          $options: "i",
+        };
+      }
+
+      const serviceFilter = {};
+      if (serviceName) {
+        const escapedServiceName = serviceName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        );
+        serviceFilter.serviceName = {
+          $regex: `^${escapedServiceName}$`,
+          $options: "i",
+        };
+      }
+      if (price) {
+        const escapedPrice = price.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        serviceFilter.price = {
+          $regex: `^${escapedPrice}$`,
+          $options: "i",
+        };
+      }
+      if (Object.keys(serviceFilter).length > 0) {
+        query.service = { $elemMatch: serviceFilter };
+      }
+
+      const [providers, total] = await Promise.all([
+        Provider.find(query)
+          .select(PROVIDER_DIRECTORY_FIELDS)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Provider.countDocuments(query),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        service: service || "all",
+        serviceName: serviceName || undefined,
+        price: price || undefined,
+        rating:
+          req.query.rating === undefined ? undefined : Number(req.query.rating),
+        count: providers.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit) || 1,
+        data: providers,
+      });
+    } catch (error) {
+      console.error("Get all providers error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching providers",
+        error: error.message,
+      });
+    }
+  }
+
+  async getProviderById(req, res) {
+    try {
+      const { id } = req.params;
+      if (!/^[a-f\d]{24}$/i.test(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid provider ID",
+        });
+      }
+
+      const provider = await Provider.findOne({
+        _id: id,
+        isActive: true,
+        isDeleted: { $ne: true },
+      })
+        .select(PROVIDER_DIRECTORY_FIELDS)
+        .lean();
+
+      if (!provider) {
+        return res.status(404).json({
+          success: false,
+          message: "Provider not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: provider,
+      });
+    } catch (error) {
+      console.error("Get provider by ID error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching provider",
+        error: error.message,
+      });
+    }
+  }
+
   // async getOnlineProviders(req, res) {
   //   try {
   //     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -1358,6 +1569,19 @@ class ProviderController {
         });
       }
 
+      const scheduleConflict = await findProviderScheduleConflict(
+        providerId,
+        booking,
+        { excludeBookingId: booking._id },
+      );
+      if (scheduleConflict) {
+        return res.status(409).json({
+          success: false,
+          message: "You already have a booking during that time",
+          conflictingBookingId: scheduleConflict._id,
+        });
+      }
+
       // 3️⃣ Fetch provider's current location and vehicle data
       const providerPricingOption = booking.providerPricingOptions?.find(
         (option) => String(option.providerId) === String(providerId),
@@ -1403,8 +1627,16 @@ class ProviderController {
 
       const [providerLng, providerLat] =
         providerData.currentLocation.coordinates;
-      const [pickupLng, pickupLat] =
-        booking.pickupLocation.coordinates.coordinates;
+      const destinationCoordinates =
+        booking.pickupLocation?.coordinates?.coordinates ||
+        booking.location?.coordinates?.coordinates;
+      if (!destinationCoordinates || destinationCoordinates.length !== 2) {
+        return res.status(400).json({
+          success: false,
+          message: "Booking location is unavailable",
+        });
+      }
+      const [pickupLng, pickupLat] = destinationCoordinates;
 
       const distanceFromPickupKm = geolocationService.calculateDistance(
         providerLat,
@@ -1416,8 +1648,9 @@ class ProviderController {
       const providerETAMinutes = Math.ceil(
         (distanceFromPickupKm / avgSpeedKmh) * 60,
       );
-      const totalDurationMinutes =
-        providerETAMinutes + booking.estimatedDuration.value;
+      const serviceDurationMinutes =
+        Number(booking.estimatedDuration?.value) || 60;
+      const totalDurationMinutes = providerETAMinutes + serviceDurationMinutes;
 
       const acceptedAt = new Date();
       const acceptanceDeadline = new Date(
@@ -1442,9 +1675,7 @@ class ProviderController {
 
           selectedAt: acceptedAt,
           acceptedAt,
-          paymentDeadlineAt: new Date(
-            acceptedAt.getTime() + PAYMENT_WINDOW_MS,
-          ),
+          paymentDeadlineAt: new Date(acceptedAt.getTime() + PAYMENT_WINDOW_MS),
           expiredAt: null,
           distanceFromPickup: {
             value: parseFloat(distanceFromPickupKm.toFixed(2)),
@@ -1457,10 +1688,14 @@ class ProviderController {
           bookingDuration: {
             value: totalDurationMinutes,
             unit: "minutes",
-            breakdown: {
-              providerToPickup: providerETAMinutes,
-              pickupToDropoff: booking.estimatedDuration.value,
-            },
+            ...(booking.pickupLocation
+              ? {
+                  breakdown: {
+                    providerToPickup: providerETAMinutes,
+                    pickupToDropoff: serviceDurationMinutes,
+                  },
+                }
+              : {}),
           },
           estimatedCompletionAt: new Date(
             Date.now() + totalDurationMinutes * 60 * 1000,
@@ -1507,7 +1742,9 @@ class ProviderController {
       await notificationService.notifyUser(updatedBooking.userId, {
         type: "provider_accepted",
         title: "Provider Accepted Your Booking",
-        message: `A provider is on their way to your pickup location`,
+        message: booking.pickupLocation
+          ? "A provider is on their way to your pickup location"
+          : "A provider accepted your service booking",
         bookingId: updatedBooking._id,
         providerId,
         providerETA: providerETAMinutes,
@@ -1651,7 +1888,7 @@ class ProviderController {
         });
       }
 
-      if (booking.status !== "paid_escrow") {
+      if (booking.status !== "paid_escrow" && booking.status !== "paid_escrow_scheduled") {
         return res.status(400).json({
           success: false,
           message: "Payment must be completed before starting job",
@@ -1718,6 +1955,7 @@ class ProviderController {
 
       const updatableCurrentStatuses = [
         "paid_escrow",
+        "paid_escrow_scheduled",
         "in_progress",
         "arrived_at_pickup",
         "enroute_to_dropoff",
@@ -1760,11 +1998,24 @@ class ProviderController {
     try {
       const providerId = req.user.id;
       const { bookingId } = req.params;
+      const { pictures, videos } = req.body || {};
+
+      if (
+        (pictures !== undefined &&
+          (!Array.isArray(pictures) || pictures.some((url) => typeof url !== "string"))) ||
+        (videos !== undefined &&
+          (!Array.isArray(videos) || videos.some((url) => typeof url !== "string")))
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "pictures and videos must be arrays of strings",
+        });
+      }
 
       const booking = await Booking.findOne({
         _id: bookingId,
         providerId,
-        status: "arrived_at_dropoff",
+        status: { $in: ["arrived_at_dropoff", "in_progress"] },
       });
 
       if (!booking) {
@@ -1774,7 +2025,14 @@ class ProviderController {
         });
       }
 
-      ((booking.status = "completed"), (booking.completedAt = new Date()));
+      booking.status = "completed";
+      booking.completedAt = new Date();
+      if (pictures !== undefined || videos !== undefined) {
+        booking.jobCompletedImages.push({
+          pictures: pictures || [],
+          videos: videos || [],
+        });
+      }
       await booking.save();
 
       // Update provider's completed jobs count
@@ -1814,7 +2072,11 @@ class ProviderController {
       const { score, review } = req.body;
       const numericScore = Number(score);
 
-      if (!Number.isFinite(numericScore) || numericScore < 1 || numericScore > 5) {
+      if (
+        !Number.isFinite(numericScore) ||
+        numericScore < 1 ||
+        numericScore > 5
+      ) {
         return res.status(400).json({
           success: false,
           message: "Rating score must be between 1 and 5",
@@ -1824,7 +2086,9 @@ class ProviderController {
       const booking = await Booking.findOne({
         _id: bookingId,
         providerId,
-        status: { $in: ["completed", "user_accepted_completion", "funds_released"] },
+        status: {
+          $in: ["completed", "user_accepted_completion", "funds_released"],
+        },
       }).populate("userId", "fullName profilePicture");
 
       if (!booking) {
