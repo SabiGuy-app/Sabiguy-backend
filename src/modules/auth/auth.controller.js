@@ -286,7 +286,7 @@ exports.googleLogIn = async (req, res) => {
     if (!user) {
       return res
         .status(400)
-        .json({ message: "Account not found. Please sign up" });
+        .json({ message: "Invalid credentials" });
     }
 
     if (user.isDeleted) {
@@ -577,7 +577,7 @@ exports.resendOTP = async (req, res) => {
     ]);
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "If an account exists for this email, you'll receive instructions shortly." });
     }
 
     if (user.emailVerified) {
@@ -781,8 +781,8 @@ exports.forgotPassword = async (req, res) => {
 
     if (!user) {
       return res
-        .status(400)
-        .json({ message: "User not found, please check the email" });
+        .status(200)
+        .json({ message: "If an account exists for this email, you'll receive instructions shortly."});
     }
     const otp = accountHelper.generateOtp();
 
@@ -815,8 +815,8 @@ exports.resendForgotPasswordOtp = async (req, res) => {
 
     if (!user) {
       return res
-        .status(400)
-        .json({ message: "User not found, please check the email" });
+        .status(200)
+        .json({ message: "If an account exists for this email, you'll receive instructions shortly." });
     }
 
     const now = new Date();
@@ -862,7 +862,7 @@ exports.verifyResetOtp = async (req, res) => {
     if (!user) {
       return res
         .status(400)
-        .json({ message: "User not found, please check the email" });
+        .json({ message: "If an account exists for this email, you'll receive instructions shortly."});
     }
 
     if (!otp || user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
@@ -900,7 +900,7 @@ exports.resetPassword = async (req, res) => {
     if (!user) {
       return res
         .status(400)
-        .json({ message: "User not found, please check the email" });
+        .json({ message: "If an account exists for this email, you'll receive instructions shortly." });
     }
     if (user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
@@ -963,7 +963,7 @@ exports.changePassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message: "If an account exists for this email, you'll receive instructions shortly.",
       });
     }
 
@@ -1054,7 +1054,7 @@ exports.confirmPassword = async (req, res) => {
 
     const user = await Model.findById(req.user.id).select("+password");
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res.status(404).json({ success: false, message: "If an account exists for this email, you'll receive instructions shortly." });
     }
 
     if (!user.password) {
@@ -1269,7 +1269,7 @@ exports.me = async (req, res) => {
     );
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "If an account exists for this email, you'll receive instructions shortly." });
     }
 
     return res.status(200).json({

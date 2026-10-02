@@ -862,6 +862,10 @@ class BookingController {
       );
 
       if (!nearbyProviders.length) {
+        if (isTransport) {
+          booking.status = "no_provider_available";
+          await booking.save();
+        }
         const bookingResponse = this.prepareBookingResponse(booking);
         return res.status(201).json({
           success: true,
@@ -1447,6 +1451,22 @@ class BookingController {
           req.body?.job?.service ??
           "",
       ).trim();
+      const fixedPrice = req.body?.fixedPrice ?? req.body?.serviceName?.fixedPrice;
+      const minimumRating = req.body?.rating;
+
+      const parsedFixedPrice =
+        fixedPrice === undefined || fixedPrice === "" ? undefined : Number(fixedPrice);
+      const parsedMinimumRating =
+        minimumRating === undefined || minimumRating === ""
+          ? undefined
+          : Number(minimumRating);
+
+      if (parsedFixedPrice !== undefined && (!Number.isFinite(parsedFixedPrice) || parsedFixedPrice < 0)) {
+        return res.status(400).json({ success: false, message: "fixedPrice must be a non-negative number" });
+      }
+      if (parsedMinimumRating !== undefined && (!Number.isFinite(parsedMinimumRating) || parsedMinimumRating < 0 || parsedMinimumRating > 5)) {
+        return res.status(400).json({ success: false, message: "rating must be a number between 0 and 5" });
+      }
 
       if (!normalizedServiceName && !normalizedJobService) {
         return res.status(400).json({
@@ -1498,6 +1518,8 @@ class BookingController {
         null,
         normalizedServiceName || null,
         normalizedJobService || null,
+        parsedFixedPrice,
+        parsedMinimumRating,
       );
       const nearbyProviders = providers.map(
         ({ _raw, ...provider }) => provider,
@@ -1507,6 +1529,8 @@ class BookingController {
         success: true,
         serviceName: normalizedServiceName || undefined,
         jobService: normalizedJobService || undefined,
+        fixedPrice: parsedFixedPrice,
+        rating: parsedMinimumRating,
         location: { latitude, longitude },
         count: nearbyProviders.length,
         nearbyProviders,
@@ -1528,6 +1552,8 @@ class BookingController {
     modeOfDelivery = null,
     serviceName = null,
     jobService = null,
+    fixedPrice = undefined,
+    minimumRating = undefined,
   ) {
     try {
       const modeOfDeliveryMap = {
@@ -1578,10 +1604,31 @@ class BookingController {
         : null;
       const providerServiceFilters = [
         ...(jobQuery ? [{ job: jobQuery }] : []),
-        ...(serviceNameRegex
-          ? [{ service: { $elemMatch: { serviceName: serviceNameRegex } } }]
+        ...(serviceNameRegex || fixedPrice !== undefined
+          ? [{ service: { $elemMatch: {
+              ...(serviceNameRegex ? { serviceName: serviceNameRegex } : {}),
+              ...(fixedPrice !== undefined ? { fixedPrice } : {}),
+            } } }]
           : []),
       ];
+      const providerServiceQuery =
+        fixedPrice !== undefined
+          ? {
+              $and: [
+                ...(jobQuery ? [{ job: jobQuery }] : []),
+                {
+                  service: {
+                    $elemMatch: {
+                      ...(serviceNameRegex ? { serviceName: serviceNameRegex } : {}),
+                      fixedPrice,
+                    },
+                  },
+                },
+              ],
+            }
+          : providerServiceFilters.length === 1
+            ? providerServiceFilters[0]
+            : { $or: providerServiceFilters };
 
       const baseQuery = {
         isActive: true,
@@ -1589,9 +1636,10 @@ class BookingController {
         "availability.isAvailable": true,
         "currentLocation.coordinates": { $exists: true, $ne: [] },
         lastLocationUpdate: { $gte: staleThreshold }, // Fresh location only
-        ...(providerServiceFilters.length === 1
-          ? providerServiceFilters[0]
-          : { $or: providerServiceFilters }),
+        ...(minimumRating !== undefined
+          ? { "rating.average": { $gte: minimumRating } }
+          : {}),
+        ...providerServiceQuery,
       };
 
       // ── Geo query ──────────────────────────────────────────────────────────────
@@ -1797,11 +1845,10 @@ class BookingController {
           .notifyProvider(provider.id, {
             type: "new_booking_request",
             title: "🔔 New Booking Request",
-            message: `New ${booking.subCategory} booking nearby - ${booking.distance?.value || "N/A"} km away. Please respond within 2 minutes to accept.`,
+            message: `New ${booking.serviceType} booking nearby - ${booking.distance?.value || "N/A"} km away. Please respond within 2 minutes to accept.`,
             bookingId: booking._id,
             scheduleDate: booking.scheduleDate,
             serviceType: booking.serviceType,
-            subCategory: booking.subCategory,
             pickupAddress: booking.pickupLocation?.address,
             dropoffAddress: booking.dropoffLocation?.address,
             distance: booking.distance?.value,
@@ -1956,7 +2003,7 @@ class BookingController {
         // title: "Job Completion Confirmed And You got a bonus.🥳",
         title: "Job Completion Confirmed.🥳",
 
-        message: `Your customer confirmed completion of the ${booking.subCategory} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
+        message: `Your customer confirmed completion of the ${booking.serviceType} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
         bookingId: booking._id,
         userId,
       });
@@ -2025,7 +2072,7 @@ class BookingController {
           notificationService.notifyProvider(providerId, {
             type: "booking_disputed",
             title: "⚠️ Dispute Raised",
-            message: `A customer has raised a dispute regarding the ${booking.subCategory} booking. Our team will review and contact you shortly.`,
+            message: `A customer has raised a dispute regarding the ${booking.serviceType} booking. Our team will review and contact you shortly.`,
             bookingId: booking._id,
             userId,
             reason,
@@ -2227,9 +2274,9 @@ class BookingController {
       notificationService.notifyProvider(providerId, {
         type: "booking_selected",
         title: "🎉 You've Been Selected!",
-        message: `A customer has selected you for a ${booking.subCategory} booking. Please review the details in Hire Alert and accept or ignore the job within 2 minutes.`,
+        message: `A customer has selected you for a ${booking.serviceType} booking. Please review the details in Hire Alert and accept or ignore the job within 2 minutes.`,
         bookingId: booking._id,
-        subCategory: booking.subCategory,
+        serviceType: booking.serviceType,
         pickupAddress: booking.pickupLocation?.address,
         dropoffAddress: booking.dropoffLocation?.address,
         budget: booking.driverReceives,
@@ -2284,7 +2331,7 @@ class BookingController {
         });
       }
 
-      if (booking.status === "paid_escrow" || booking.status === "paid_escrow_scheduled") {
+      if (booking.status === "paid_escrow") {
         await paymentService.refundPayment(bookingId, reason);
       }
 

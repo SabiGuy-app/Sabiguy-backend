@@ -1199,6 +1199,23 @@ router.patch(
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               pictures:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Optional image URLs documenting the completed job
+ *               videos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Optional video URLs documenting the completed job
  *     responses:
  *       200:
  *         description: Job marked as complete

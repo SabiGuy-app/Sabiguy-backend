@@ -1998,6 +1998,19 @@ class ProviderController {
     try {
       const providerId = req.user.id;
       const { bookingId } = req.params;
+      const { pictures, videos } = req.body || {};
+
+      if (
+        (pictures !== undefined &&
+          (!Array.isArray(pictures) || pictures.some((url) => typeof url !== "string"))) ||
+        (videos !== undefined &&
+          (!Array.isArray(videos) || videos.some((url) => typeof url !== "string")))
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "pictures and videos must be arrays of strings",
+        });
+      }
 
       const booking = await Booking.findOne({
         _id: bookingId,
@@ -2012,7 +2025,14 @@ class ProviderController {
         });
       }
 
-      ((booking.status = "completed"), (booking.completedAt = new Date()));
+      booking.status = "completed";
+      booking.completedAt = new Date();
+      if (pictures !== undefined || videos !== undefined) {
+        booking.jobCompletedImages.push({
+          pictures: pictures || [],
+          videos: videos || [],
+        });
+      }
       await booking.save();
 
       // Update provider's completed jobs count
