@@ -812,7 +812,12 @@ router.put(
  *       500:
  *         description: Server error
  */
-router.patch("/:id/cancel", authMiddleware, BookingController.cancelBooking);
+router.patch(
+  "/:id/cancel",
+  authMiddleware,
+  onlyRole("buyer"),
+  BookingController.cancelBooking,
+);
 
 /**
  * @swagger

@@ -266,6 +266,59 @@ router.get(
 
 /**
  * @swagger
+ * /api/v1/admin/bookings/{bookingId}/approve-cancellation:
+ *   patch:
+ *     summary: Approve a booking cancellation
+ *     description: Approves a pending cancellation request, cancels the booking, credits the refund to the buyer's wallet, and sends a separate message to each party.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID with a pending cancellation request
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - buyerMessage
+ *               - providerMessage
+ *             properties:
+ *               buyerMessage:
+ *                 type: string
+ *                 example: Your cancellation is approved. The refund has been credited to your wallet.
+ *               providerMessage:
+ *                 type: string
+ *                 example: This booking has been cancelled following an approved request.
+ *     responses:
+ *       200:
+ *         description: Cancellation approved and refund credited to the buyer's wallet
+ *       400:
+ *         description: Missing messages or invalid refund amount
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: Pending cancellation request not found
+ *       500:
+ *         description: Failed to approve cancellation
+ */
+router.patch(
+  "/bookings/:bookingId/approve-cancellation",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.approveBookingCancellation,
+);
+
+/**
+ * @swagger
  * /api/v1/admin/providers/by-service:
  *   get:
  *     summary: Get providers by job service

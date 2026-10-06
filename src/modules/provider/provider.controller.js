@@ -1773,10 +1773,11 @@ class ProviderController {
       const { bookingId } = req.params;
       const { reason } = req.body;
 
+      const paidReviewStatuses = ["paid_escrow", "paid_escrow_scheduled", "in_progress", "arrived_at_pickup", "enroute_to_dropoff", "arrived_at_dropoff", "disputed"];
       const booking = await Booking.findOne({
         _id: bookingId,
         providerId,
-        status: "provider_selected",
+        status: { $in: ["provider_selected", "provider_accepted", ...paidReviewStatuses] },
       });
 
       if (!booking) {
@@ -1786,10 +1787,33 @@ class ProviderController {
         });
       }
 
+      if (paidReviewStatuses.includes(booking.status)) {
+        if (booking.cancellationRequest?.status === "pending") {
+          return res.status(409).json({ success: false, message: "A cancellation request is already under review" });
+        }
+        booking.cancellationReason = reason;
+        booking.cancellationRequest = { status: "pending", requestedAt: new Date(), requestedBy: providerId };
+        await booking.save();
+        await notificationService.notifyUser(booking.userId, {
+          type: "booking_cancellation_requested",
+          title: "Cancellation Request Received",
+          message: "Your provider has requested to cancel this booking. Our team will review it and get back to you soon.",
+          bookingId: booking._id,
+        });
+        try {
+          const { sendCancellationRequestAdminEmail } = require("../../config/emailVerification");
+          const buyer = await Buyer.findById(booking.userId).select("firstName lastName fullName email").lean();
+          await sendCancellationRequestAdminEmail(booking, reason, buyer || {});
+        } catch (emailError) {
+          console.error("Failed to email admin about provider cancellation request:", emailError.message);
+        }
+        return res.status(200).json({ success: true, message: "Cancellation request submitted for review", data: booking });
+      }
+
       booking.cancellationReason = reason;
-      ((booking.status = "cancelled"),
-        (booking.cancelledBy = providerId),
-        (booking.cancelledByModel = "Provider"));
+      booking.status = "cancelled";
+      booking.cancelledBy = providerId;
+      booking.cancelledByModel = "Provider";
       await booking.save();
 
       // TODO: Send notification to user
@@ -1811,6 +1835,40 @@ class ProviderController {
         message: "Error declining booking",
         error: error.message,
       });
+    }
+  }
+
+  async declineBooking(req, res) {
+    try {
+      const providerId = req.user.id;
+      const { bookingId } = req.params;
+      const { reason } = req.body;
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        status: { $in: ["awaiting_provider_acceptance", "pending_providers"] },
+        $or: [{ providerId }, { notifiedProviders: providerId }],
+      });
+      if (!booking) {
+        return res.status(404).json({ success: false, message: "Booking not found or cannot be declined" });
+      }
+
+      if (String(booking.providerId || "") === String(providerId)) {
+        booking.providerId = undefined;
+      }
+      booking.providerResponse = "declined";
+      await booking.save();
+      await notificationService.notifyUser(booking.userId, {
+        type: "booking_declined",
+        title: "Provider Declined Booking",
+        message: reason?.trim()
+          ? `A provider declined your booking: ${reason.trim()}`
+          : "A provider declined your booking. We’ll continue looking for an available provider.",
+        bookingId: booking._id,
+      });
+      return res.status(200).json({ success: true, message: "Booking declined", data: booking });
+    } catch (error) {
+      console.error("Decline booking error:", error);
+      return res.status(500).json({ success: false, message: "Failed to decline booking", error: error.message });
     }
   }
 
@@ -1898,10 +1956,15 @@ class ProviderController {
       booking.status = "in_progress";
       await booking.save();
 
+      const isTransport =
+        String(booking.serviceType || "").trim().toLowerCase() === "transport";
+
       await notificationService.notifyUser(booking.userId._id, {
         type: "job_started",
-        title: " Enroute to Pickup Location",
-        message: `${booking?.providerId?.fullName || "The rider"} is on their way to you!`,
+        title: isTransport ? "Enroute to Pickup Location" : "Your Service Has Started",
+        message: isTransport
+          ? `${booking?.providerId?.fullName || "The rider"} is on their way to you!`
+          : `${booking?.providerId?.fullName || "Your provider"} has started your ${booking.subCategory?.replace(/_/g, " ") || "service"}.`,
         bookingId: booking._id,
         providerId,
       });
@@ -1998,17 +2061,20 @@ class ProviderController {
     try {
       const providerId = req.user.id;
       const { bookingId } = req.params;
-      const { pictures, videos } = req.body || {};
+      const { pictures, videos, jobCompletedNotes } = req.body || {};
 
       if (
         (pictures !== undefined &&
           (!Array.isArray(pictures) || pictures.some((url) => typeof url !== "string"))) ||
         (videos !== undefined &&
-          (!Array.isArray(videos) || videos.some((url) => typeof url !== "string")))
+          (!Array.isArray(videos) || videos.some((url) => typeof url !== "string"))) ||
+        (jobCompletedNotes !== undefined &&
+          (!Array.isArray(jobCompletedNotes) ||
+            jobCompletedNotes.some((note) => typeof note !== "string")))
       ) {
         return res.status(400).json({
           success: false,
-          message: "pictures and videos must be arrays of strings",
+          message: "pictures, videos, and jobCompletedNotes must be arrays of strings",
         });
       }
 
@@ -2032,6 +2098,9 @@ class ProviderController {
           pictures: pictures || [],
           videos: videos || [],
         });
+      }
+      if (jobCompletedNotes !== undefined) {
+        booking.jobCompletedNotes.push(...jobCompletedNotes);
       }
       await booking.save();
 

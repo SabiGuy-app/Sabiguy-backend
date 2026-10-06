@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../../../middleware/authMiddleware");
+const onlyRole = require("../../../middleware/roleMiddleware");
 const ProviderController = require("./provider.controller");
 const rateLimit = require("express-rate-limit");
 
@@ -1018,8 +1019,8 @@ router.patch("/:id/accept", authMiddleware, ProviderController.acceptBooking);
  * @swagger
  * /api/v1/provider/bookings/{bookingId}/cancel:
  *   patch:
- *     summary: Decline a booking
- *     description: Cancels a booking that was already selected for this provider.
+ *     summary: Cancel an assigned booking
+ *     description: Cancels an unpaid assigned booking or submits a paid booking cancellation for admin review.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -1052,7 +1053,46 @@ router.patch("/:id/accept", authMiddleware, ProviderController.acceptBooking);
 router.patch(
   "/bookings/:bookingId/cancel",
   authMiddleware,
+  onlyRole("provider"),
   ProviderController.cancelBooking,
+);
+
+/**
+ * @swagger
+ * /api/v1/provider/bookings/{bookingId}/decline:
+ *   patch:
+ *     summary: Decline an available booking
+ *     description: Declines a booking only while it is awaiting provider acceptance or pending provider selection.
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Booking declined
+ *       404:
+ *         description: Booking not found or status is not eligible
+ */
+
+router.patch(
+  "/bookings/:bookingId/decline",
+  authMiddleware,
+  onlyRole("provider"),
+  ProviderController.declineBooking,
 );
 
 /**
