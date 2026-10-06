@@ -2003,7 +2003,7 @@ class BookingController {
         // title: "Job Completion Confirmed And You got a bonus.🥳",
         title: "Job Completion Confirmed.🥳",
 
-        message: `Your customer confirmed completion of the ${booking.serviceType} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
+        message: `Your customer confirmed completion of the ${booking.subCategory} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
         bookingId: booking._id,
         userId,
       });
@@ -2310,19 +2310,9 @@ class BookingController {
       const userId = req.user.id;
       const { reason } = req.body;
 
-      const booking = await Booking.findOne({
-        _id: bookingId,
-        userId,
-        status: {
-          $in: [
-            "pending_providers",
-            "awaiting_provider_acceptance",
-            "provider_selected",
-            "paid_escrow",
-            "payment_pending",
-          ],
-        },
-      });
+      const paidStatuses = ["paid_escrow", "paid_escrow_scheduled", "in_progress", "arrived_at_pickup", "enroute_to_dropoff", "arrived_at_dropoff", "disputed"];
+      const cancellableStatuses = ["pending_providers", "awaiting_provider_acceptance", "provider_selected","provider_accepted", "payment_pending", ...paidStatuses, "accept_selection"];
+      const booking = await Booking.findOne({ _id: bookingId, userId, status: { $in: cancellableStatuses } });
 
       if (!booking) {
         return res.status(404).json({
@@ -2331,8 +2321,31 @@ class BookingController {
         });
       }
 
-      if (booking.status === "paid_escrow") {
-        await paymentService.refundPayment(bookingId, reason);
+
+
+      if (paidStatuses.includes(booking.status)) {
+        if (booking.cancellationRequest?.status === "pending") {
+          return res.status(409).json({ success: false, message: "A cancellation request is already under review" });
+        }
+        booking.cancellationReason = reason;
+        booking.cancellationRequest = { status: "pending", requestedAt: new Date(), requestedBy: userId };
+        await booking.save();
+        await notificationService.notifyUser(userId, {
+          type: "booking_cancellation_requested",
+          title: "Cancellation Request Received",
+          message: `Your cancellation request for ${booking.subCategory || booking.serviceType || "this booking"} is in process. Our team will get back to you soon.`,
+          bookingId: booking._id,
+        });
+        try {
+          const { sendCancellationRequestAdminEmail } = require("../../config/emailVerification");
+          const buyer = await Buyer.findById(userId)
+            .select("firstName lastName fullName email")
+            .lean();
+          await sendCancellationRequestAdminEmail(booking, reason, buyer || req.user);
+        } catch (emailError) {
+          console.error("Failed to email admin about cancellation request:", emailError.message);
+        }
+        return res.status(200).json({ success: true, message: "Cancellation request submitted. Our team will get back to you soon.", data: booking });
       }
 
       booking.status = "cancelled";
@@ -2350,6 +2363,12 @@ class BookingController {
           bookingId: booking._id,
         });
       }
+      await notificationService.notifyUser(userId, {
+        type: "booking_cancelled",
+        title: "Booking Cancelled",
+        message: "Your booking has been cancelled.",
+        bookingId: booking._id,
+      });
 
       return res.status(200).json({
         success: true,

@@ -114,6 +114,8 @@ const bookingSchema = new mongoose.Schema(
       },
     ],
 
+    jobCompletedNotes: [{ type: String }],
+
     bookingDuration: {
       value: Number,
       unit: { type: String, default: "minutes" },
@@ -309,13 +311,23 @@ const bookingSchema = new mongoose.Schema(
 
     // Cancellation
     cancellationReason: String,
+    cancellationRequest: {
+      status: { type: String, enum: ["pending", "approved"], default: null },
+      requestedAt: Date,
+      requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      reviewedAt: Date,
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+      buyerMessage: String,
+      providerMessage: String,
+      refundAmount: Number,
+    },
     cancelledBy: {
       type: mongoose.Schema.Types.ObjectId,
       refPath: "cancelledByModel",
     },
     cancelledByModel: {
       type: String,
-      enum: ["User", "Provider"],
+      enum: ["User", "Provider", "Admin"],
     },
 
     // Ratings

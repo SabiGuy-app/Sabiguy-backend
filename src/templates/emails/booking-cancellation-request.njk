@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Booking Cancellation Request</title>
+</head>
+<body style="margin:0; padding:0; background:#f4f7f4; font-family:Arial,Helvetica,sans-serif; color:#1f2937;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;">
+          <tr>
+            <td align="center" style="background:#1a6b35; border-radius:16px 16px 0 0; padding:30px 32px;">
+              {% if logoUrl %}
+              <img src="{{ logoUrl }}" alt="{{ brandName }}" style="max-height:44px; width:auto; display:block; margin:0 auto 14px;" />
+              {% else %}
+              <div style="font-weight:700; font-size:23px; letter-spacing:1px; color:#ffffff; margin-bottom:14px;">{{ brandName }}</div>
+              {% endif %}
+              <div style="font-size:38px; margin-bottom:8px;">&#9888;</div>
+              <h1 style="margin:0 0 8px; font-size:23px; line-height:1.3; color:#ffffff;">Cancellation Request Needs Review</h1>
+              <p style="margin:0; font-size:14px; color:#d9f0df; line-height:1.6;">A paid booking has been submitted for cancellation.</p>
+            </td>
+          </tr>
+          <tr><td style="background:#f47920; height:4px; font-size:0; line-height:0;">&nbsp;</td></tr>
+          <tr>
+            <td style="background:#ffffff; padding:30px 32px;">
+              <p style="margin:0 0 22px; font-size:15px; line-height:1.7; color:#374151;">Please review the request and follow up with the buyer and provider.</p>
+
+              <h2 style="margin:0 0 12px; font-size:16px; color:#1a6b35;">Cancellation request</h2>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:26px; border:1px solid #e5e7eb; border-radius:8px;">
+                <tr><td style="padding:12px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280; width:34%;">Reason</td><td style="padding:12px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ reason }}</td></tr>
+                <tr><td style="padding:12px 14px; color:#6b7280;">Requested</td><td style="padding:12px 14px; color:#1f2937;">{{ booking.cancellationRequest.requestedAt or booking.updatedAt or "Not available" }}</td></tr>
+              </table>
+
+              <h2 style="margin:0 0 12px; font-size:16px; color:#1a6b35;">Booking details</h2>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:26px; border:1px solid #e5e7eb; border-radius:8px;">
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280; width:34%;">Booking ID</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ booking._id }}</td></tr>
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280;">Current status</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ booking.status }}</td></tr>
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280;">Service</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ booking.serviceType or "Not specified" }}{% if booking.subCategory %} · {{ booking.subCategory }}{% endif %}</td></tr>
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280;">Amount paid</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">NGN {{ booking.payment.escrowAmount or booking.totalAmount or booking.calculatedPrice or booking.agreedPrice or "Not available" }}</td></tr>
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280;">Payment reference</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ booking.payment.paystackRef or "Not available" }}</td></tr>
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280;">Buyer</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ buyer.name }}{% if buyer.email %}<br>{{ buyer.email }}{% endif %}<br><span style="font-size:12px; color:#6b7280;">{{ booking.userId }}</span></td></tr>
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280;">Provider ID</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ booking.providerId or "Not assigned" }}</td></tr>
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280;">Schedule</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ booking.scheduleType or "Not specified" }}{% if booking.scheduleDate %}<br>{{ booking.scheduleDate }}{% endif %}{% if booking.scheduledTime %} · {{ booking.scheduledTime }}{% endif %}</td></tr>
+                {% if booking.pickupLocation or booking.location %}
+                <tr><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#6b7280;">Pickup / location</td><td style="padding:11px 14px; border-bottom:1px solid #e5e7eb; color:#1f2937;">{{ booking.pickupLocation.address or booking.location.address or "Not available" }}</td></tr>
+                {% endif %}
+                {% if booking.dropoffLocation %}
+                <tr><td style="padding:11px 14px; color:#6b7280;">Drop-off</td><td style="padding:11px 14px; color:#1f2937;">{{ booking.dropoffLocation.address or "Not available" }}</td></tr>
+                {% endif %}
+              </table>
+
+              {% if booking.description %}
+              <div style="margin-bottom:22px; background:#f9fafb; border:1px solid #e5e7eb; padding:16px; border-radius:8px;">
+                <h2 style="margin:0 0 8px; font-size:15px; color:#374151;">Booking description</h2>
+                <p style="margin:0; font-size:14px; line-height:1.7; color:#4b5563;">{{ booking.description }}</p>
+              </div>
+              {% endif %}
+
+              {% if booking.attachments and booking.attachments.length %}
+              <div style="margin-bottom:22px; background:#f9fafb; border:1px solid #e5e7eb; padding:16px; border-radius:8px;">
+                <h2 style="margin:0 0 8px; font-size:15px; color:#374151;">Attachments</h2>
+                <ul style="margin:0; padding-left:20px; font-size:14px; line-height:1.7;">{% for attachment in booking.attachments %}<li><a href="{{ attachment }}" style="color:#1a6b35;">{{ attachment }}</a></li>{% endfor %}</ul>
+              </div>
+              {% endif %}
+
+              <p style="margin:24px 0 0; font-size:14px; line-height:1.7; color:#6b7280;">This is an automated notification from {{ brandName }}. Please review the request in the admin dashboard.</p>
+            </td>
+          </tr>
+          <tr><td align="center" style="padding:18px 20px; color:#9ca3af; font-size:12px;">&copy; {{ year }} {{ brandName }}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

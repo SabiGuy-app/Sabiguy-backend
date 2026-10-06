@@ -5,8 +5,8 @@ const Provider = require("../../../models/ServiceProvider");
 const Buyer = require("../../../models/ServiceUser");
 const Business = require("../business/business.model");
 const Booking = require("../bookings/Bookings.model.js");
-const Transaction = require("../transactions/transaction.model");
 const WalletService = require("../wallet/wallet.service");
+const Transaction = require("../transactions/transaction.model");
 const notificationService = require("../../services/notification.service");
 const paymentService = require("../payment/payment.service");
 const {
@@ -30,6 +30,86 @@ class AdminController {
     this.deleteUser = this.deleteUser.bind(this);
     this.getPlatformFeeReport = this.getPlatformFeeReport.bind(this);
     this.getPlatformBalance = this.getPlatformBalance.bind(this);
+    this.approveBookingCancellation = this.approveBookingCancellation.bind(this);
+  }
+
+  async approveBookingCancellation(req, res) {
+    try {
+      const { bookingId } = req.params;
+      const { buyerMessage, providerMessage } = req.body;
+      if (!buyerMessage?.trim() || !providerMessage?.trim()) {
+        return res.status(400).json({ success: false, message: "buyerMessage and providerMessage are required" });
+      }
+      const booking = await Booking.findOne({ _id: bookingId, "cancellationRequest.status": "pending" });
+      if (!booking) return res.status(404).json({ success: false, message: "Pending cancellation request not found" });
+      const amount = Number(booking.payment?.escrowAmount ?? booking.totalAmount ?? booking.calculatedPrice ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ success: false, message: "Unable to determine a valid refund amount" });
+      }
+
+      const reference = `CANCEL-REFUND-${booking._id}`;
+      let transaction = await Transaction.findOne({ reference, type: "refund", status: "completed" });
+      let wallet;
+      if (!transaction) {
+        wallet = await WalletService.getOrCreateWallet(booking.userId, "Buyer");
+        const before = { available: wallet.balance.available, pending: wallet.balance.pending, total: wallet.balance.total };
+        await wallet.credit(amount, "refund");
+        wallet.totalRefunds = Number(wallet.totalRefunds || 0) + amount;
+        await wallet.save();
+        const after = { available: wallet.balance.available, pending: wallet.balance.pending, total: wallet.balance.total };
+        transaction = await Transaction.create({ reference, type: "refund", to: { userId: booking.userId, userModel: "Buyer", walletId: wallet._id }, amount, bookingId: booking._id, gateway: { name: "internal" }, balances: { before, after }, status: "completed", description: `Wallet refund for cancelled booking #${booking._id}`, metadata: { purpose: "booking_cancellation_refund", approvedBy: req.user.id }, completedAt: new Date() });
+      }
+
+      booking.status = "cancelled";
+      booking.cancelledBy = req.user.id;
+      booking.cancelledByModel = "Admin";
+      booking.cancellationRequest = { ...booking.cancellationRequest.toObject?.(), status: "approved", reviewedAt: new Date(), reviewedBy: req.user.id, buyerMessage: buyerMessage.trim(), providerMessage: providerMessage.trim(), refundAmount: amount };
+      if (booking.payment) booking.payment.escrowStatus = "refunded";
+      await booking.save();
+      const serviceLabel = [booking.serviceType, booking.subCategory]
+        .filter(Boolean)
+        .join(" · ") || "Service booking";
+      const scheduleLabel = [booking.scheduleType, booking.scheduleDate, booking.scheduledTime]
+        .filter(Boolean)
+        .join(" · ");
+      const pickupAddress =
+        booking.pickupLocation?.address || booking.location?.address || "Not specified";
+      const dropoffAddress = booking.dropoffLocation?.address || "Not specified";
+      const bookingDetails = `Booking #${booking._id} · ${serviceLabel}${scheduleLabel ? ` · ${scheduleLabel}` : ""} · Pickup/location: ${pickupAddress}${booking.dropoffLocation ? ` · Drop-off: ${dropoffAddress}` : ""}`;
+      await notificationService.notifyUser(booking.userId, {
+        type: "booking_cancellation_approved",
+        title: "Cancellation Approved",
+        message: `${buyerMessage.trim()}\n\n${bookingDetails}\nRefund: NGN${amount.toLocaleString()} credited to your wallet.`,
+        bookingId: booking._id,
+        amount,
+        serviceType: booking.serviceType,
+        subCategory: booking.subCategory,
+        scheduleType: booking.scheduleType,
+        scheduleDate: booking.scheduleDate,
+        scheduledTime: booking.scheduledTime,
+        pickupAddress,
+        dropoffAddress: booking.dropoffLocation ? dropoffAddress : undefined,
+      });
+      if (booking.providerId) {
+        await notificationService.notifyProvider(booking.providerId, {
+          type: "booking_cancelled",
+          title: "Booking Cancelled",
+          message: `${providerMessage.trim()}\n\n${bookingDetails}`,
+          bookingId: booking._id,
+          serviceType: booking.serviceType,
+          subCategory: booking.subCategory,
+          scheduleType: booking.scheduleType,
+          scheduleDate: booking.scheduleDate,
+          scheduledTime: booking.scheduledTime,
+          pickupAddress,
+          dropoffAddress: booking.dropoffLocation ? dropoffAddress : undefined,
+        });
+      }
+      return res.status(200).json({ success: true, message: "Cancellation approved and refund credited to buyer wallet", data: { booking, refund: transaction } });
+    } catch (error) {
+      console.error("Approve booking cancellation error:", error);
+      return res.status(500).json({ success: false, message: "Failed to approve cancellation", error: error.message });
+    }
   }
 
   getUserModel(userType) {

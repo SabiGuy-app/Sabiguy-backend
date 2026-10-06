@@ -47,11 +47,16 @@ const businessSchema = new mongoose.Schema(
     cityOfOperation: { type: String },
     businessCategory: { type: String, required: false, default: null },
     businessPhotos: [{ type: String }],
-    service: [
+   service: [
       {
         serviceName: { type: String },
-        pricingModel: { type: String },
-        price: { type: String },
+        duration: { type: String },
+        pricingModel: {
+          walk_in: { type: Number },
+          provider_address: { type: Number },
+          customer_address: { type: Number },
+        },
+        fixedPrice: { type: Number },
       },
     ],
     availableDays: [{ type: String }],
