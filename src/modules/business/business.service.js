@@ -437,8 +437,13 @@ const addServiceDetails = async (businessId, payload = {}) => {
   if (service !== undefined) {
     details.service = service.map((item = {}) => ({
       serviceName: item.serviceName,
-      pricingModel: item.pricingModel,
-      price: item.price,
+      duration: item.duration,
+       pricingModel: {
+            walk_in: item.pricingModel?.walk_in,
+            provider_address: item.pricingModel?.provider_address,
+            customer_address: item.pricingModel?.customer_address,
+          },
+          fixedPrice: item.fixedPrice,
     }));
   }
   if (availableDays !== undefined) details.availableDays = availableDays;

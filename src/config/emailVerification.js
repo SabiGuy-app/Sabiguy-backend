@@ -1,6 +1,7 @@
 const path = require("path");
 const brevo = require("@getbrevo/brevo");
 const nunjucks = require("nunjucks");
+require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const templatesPath = path.join(__dirname, "..", "templates", "emails");
 const templateEnv = nunjucks.configure(templatesPath, {
@@ -53,6 +54,30 @@ const sendEmailOtp = async (email, otp) => {
     console.error("Brevo error:", error);
     throw new Error(error.message || "Email send failed");
   }
+};
+
+const sendCancellationRequestAdminEmail = async (booking, reason, buyer = {}) => {
+  const recipient = (process.env.ADMIN_EMAIL || "").trim();
+  if (!recipient) throw new Error("ADMIN_EMAIL is not configured");
+  const email = new brevo.SendSmtpEmail();
+  email.subject = `Paid booking cancellation request: ${booking._id}`;
+  email.to = [{ email: recipient }];
+  email.sender = sender;
+  const bookingDetails = booking.toObject ? booking.toObject() : booking;
+  email.htmlContent = renderEmailTemplate("booking-cancellation-request.njk", {
+    booking: bookingDetails,
+    buyer: {
+      ...buyer,
+      name:
+        buyer.name ||
+        buyer.fullName ||
+        [buyer.firstName, buyer.lastName].filter(Boolean).join(" ") ||
+        "Not available",
+    },
+    reason: reason || "Not provided",
+    year: new Date().getFullYear(),
+  });
+  await apiInstance.sendTransacEmail(email);
 };
 
 const sendAccountDeletionOtp = async (email, otp) => {
@@ -335,6 +360,7 @@ const sendBusinessWelcomeMail = async (email, data = {}) => {
 
 module.exports = {
   sendEmailOtp,
+  sendCancellationRequestAdminEmail,
   forgotPasswordOtp,
   passwordChangedEmail,
   sendWelcomeEmail,
