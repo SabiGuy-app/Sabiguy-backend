@@ -1964,7 +1964,7 @@ class ProviderController {
         title: isTransport ? "Enroute to Pickup Location" : "Your Service Has Started",
         message: isTransport
           ? `${booking?.providerId?.fullName || "The rider"} is on their way to you!`
-          : `${booking?.providerId?.fullName || "Your provider"} has started your ${booking.subCategory?.replace(/_/g, " ") || "service"}.`,
+          : `${booking?.providerId?.fullName || "Your provider"} has started your ${booking.subCategory?.replace(/_/g, " ") || "service"} service.`,
         bookingId: booking._id,
         providerId,
       });
