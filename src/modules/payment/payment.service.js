@@ -17,7 +17,44 @@ class paymentService {
   constructor() {
     this.paystackBaseURL = "https://api.paystack.co";
     this.paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
-    this.MAX_BANK_WITHDRAWAL_AMOUNT = 10000;
+    this.MAX_BANK_WITHDRAWAL_AMOUNT = 500000;
+    this.MAX_WITHDRAWALS_PER_DAY = 1;
+    this.MAX_DAILY_WITHDRAWAL_AMOUNT = 500000;
+  }
+
+  async validateDailyWithdrawalLimit(providerId, withdrawalAmount) {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const withdrawalsToday = await Transaction.find({
+      type: "withdrawal",
+      "from.userId": providerId,
+      createdAt: {
+        $gte: dayStart,
+        $lt: dayEnd,
+      },
+      status: { $in: ["pending", "processing", "completed"] },
+    }).select("amount status createdAt").lean();
+
+    if (withdrawalsToday.length >= this.MAX_WITHDRAWALS_PER_DAY) {
+      throw new Error(
+        "You can only make one withdrawal request per day.",
+      );
+    }
+
+    const totalWithdrawnToday = withdrawalsToday.reduce(
+      (sum, transaction) => sum + (Number(transaction.amount) || 0),
+      0,
+    );
+
+    if (totalWithdrawnToday + withdrawalAmount > this.MAX_DAILY_WITHDRAWAL_AMOUNT) {
+      throw new Error(
+        `Daily withdrawal limit reached. Maximum daily withdrawal is NGN${this.MAX_DAILY_WITHDRAWAL_AMOUNT.toLocaleString()}.`,
+      );
+    }
   }
 
   async enforcePaymentWindow(booking) {
@@ -778,6 +815,8 @@ class paymentService {
           `Withdrawal is limited to NGN${this.MAX_BANK_WITHDRAWAL_AMOUNT.toLocaleString()} per request`,
         );
       }
+
+      await this.validateDailyWithdrawalLimit(providerId, withdrawalAmount);
 
       const wallet = await WalletService.getOrCreateWallet(
         providerId,

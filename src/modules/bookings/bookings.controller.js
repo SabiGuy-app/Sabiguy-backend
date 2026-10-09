@@ -2335,7 +2335,31 @@ class BookingController {
           title: "Cancellation Request Received",
           message: `Your cancellation request for ${booking.subCategory || booking.serviceType || "this booking"} is in process. Our team will get back to you soon.`,
           bookingId: booking._id,
+          serviceType: booking.serviceType,
+          subCategory: booking.subCategory,
+          scheduleType: booking.scheduleType,
+          scheduleDate: booking.scheduleDate,
+          scheduledTime: booking.scheduledTime,
         });
+        if (booking.providerId) {
+          const serviceLabel = [booking.serviceType, booking.subCategory]
+            .filter(Boolean)
+            .join(" · ") || "this booking";
+          const scheduleLabel = [booking.scheduleType, booking.scheduleDate, booking.scheduledTime]
+            .filter(Boolean)
+            .join(" · ");
+          await notificationService.notifyProvider(booking.providerId, {
+            type: "booking_cancellation_requested",
+            title: "Buyer Requested Cancellation",
+            message: `The buyer has requested cancellation of ${serviceLabel}${scheduleLabel ? ` scheduled for ${scheduleLabel}` : ""}. The request is under review; the booking has not been cancelled yet.${reason ? ` Reason: ${reason}` : ""}`,
+            bookingId: booking._id,
+            serviceType: booking.serviceType,
+            subCategory: booking.subCategory,
+            scheduleType: booking.scheduleType,
+            scheduleDate: booking.scheduleDate,
+            scheduledTime: booking.scheduledTime,
+          });
+        }
         try {
           const { sendCancellationRequestAdminEmail } = require("../../config/emailVerification");
           const buyer = await Buyer.findById(userId)
