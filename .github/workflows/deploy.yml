@@ -136,7 +136,6 @@ jobs:
             METERED_API_KEY=${{ secrets.METERED_API_KEY }}
             ADMIN_URL=${{ secrets.ADMIN_URL }}
 
-
             ENVEOF
 
       - name: Deploy to EC2
