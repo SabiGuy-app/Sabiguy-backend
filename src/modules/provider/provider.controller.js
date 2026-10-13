@@ -17,7 +17,7 @@ const {
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 const STALE_LOCATION_MINUTES = Number(process.env.STALE_LOCATION_MINUTES || 10);
 const PROVIDER_DIRECTORY_FIELDS =
-  "fullName email profilePicture job service servicePlace availableDays currentLocation rating reviews completedJobs city BusinessName yearsOfExperience workVisuals availability kycVerified";
+  "fullName email profilePicture job service servicePlace availableDays businessHours currentLocation rating reviews completedJobs city BusinessName yearsOfExperience workVisuals availability kycVerified";
 
 class ProviderController {
   async AccountType(req, res) {

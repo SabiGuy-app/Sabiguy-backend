@@ -142,7 +142,7 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [category, service, pricingOption, date, time, location, providerId]
+ *             required: [category, service, date, time, location, providerId]
  *             properties:
  *               category:
  *                 type: string
@@ -156,9 +156,14 @@ router.post(
  *                   properties:
  *                     serviceName:
  *                       type: string
+ *                     pricingOption:
+ *                       type: string
+ *                       enum: [walk_in, provider_address, customer_address, fixedPrice]
+ *                       description: Optional per-service override; defaults to the top-level pricingOption
  *               pricingOption:
  *                 type: string
  *                 enum: [walk_in, provider_address, customer_address, fixedPrice]
+ *                 description: Applied to each service unless overridden on that service
  *               date:
  *                 type: string
  *                 format: date

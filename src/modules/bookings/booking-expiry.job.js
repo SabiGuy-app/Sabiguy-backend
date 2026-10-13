@@ -136,7 +136,7 @@ const processScheduledBookings = async (now = new Date()) => {
         await notificationService.notifyProvider(booking.providerId, {
           type: "booking_status_updated",
           title: `Scheduled booking in ${reminder.minutes} minutes`,
-          message: `Your ${booking.serviceType} booking is scheduled to start in about ${reminder.minutes} minutes.`,
+          message: `Your ${booking.subCategory} service booking is scheduled to start in about ${reminder.minutes} minutes.`,
           bookingId: booking._id,
           scheduledStartAt: scheduledStart,
         });
