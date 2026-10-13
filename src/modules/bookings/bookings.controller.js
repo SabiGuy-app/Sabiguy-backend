@@ -1113,22 +1113,28 @@ class BookingController {
     try {
       const { category, date, time, location, providerId } = req.body || {};
       const serviceInput = req.body?.service;
-      const requestedService = Array.isArray(serviceInput)
-        ? serviceInput[0]
-        : serviceInput;
-      const serviceName = String(
-        requestedService?.serviceName ?? req.body?.serviceName ?? "",
-      ).trim();
+      const requestedServices = Array.isArray(serviceInput)
+        ? serviceInput
+        : serviceInput
+          ? [serviceInput]
+          : req.body?.serviceName
+            ? [{ serviceName: req.body.serviceName }]
+            : [];
+      const normalizedServices = requestedServices.map((item) => ({
+        serviceName: String(item?.serviceName || "").trim(),
+        pricingOption: String(
+          item?.pricingOption ?? req.body?.pricingOption ?? "",
+        ).trim().toLowerCase(),
+      }));
+      const serviceNames = normalizedServices.map((item) => item.serviceName);
+      const serviceName = serviceNames.join(", ");
       const normalizedCategory = String(category || "").trim();
-      const pricingOption = String(
-        req.body?.pricingOption ?? requestedService?.pricingOption ?? "",
-      )
-        .trim()
-        .toLowerCase();
+      const pricingOption = normalizedServices[0]?.pricingOption || "";
 
       if (
         !normalizedCategory ||
-        !serviceName ||
+        normalizedServices.length === 0 ||
+        normalizedServices.some((item) => !item.serviceName || !item.pricingOption) ||
         !date ||
         !time ||
         !location ||
@@ -1138,7 +1144,7 @@ class BookingController {
         return res.status(400).json({
           success: false,
           message:
-            "category, service.serviceName, pricingOption, date, time, location, and providerId are required",
+            "category, at least one service.serviceName and pricingOption, date, time, location, and providerId are required",
         });
       }
 
@@ -1214,45 +1220,48 @@ class BookingController {
         });
       }
 
-      const providerService = provider.service?.find(
-        (item) =>
-          String(item.serviceName || "")
-            .trim()
-            .toLowerCase() === serviceName.toLowerCase(),
-      );
-      if (!providerService) {
-        return res.status(400).json({
-          success: false,
-          message: "Provider does not offer this service",
-        });
-      }
-
       const pricingOptions = [
         "walk_in",
         "provider_address",
         "customer_address",
         "fixedprice",
       ];
-      if (!pricingOptions.includes(pricingOption)) {
-        return res.status(400).json({
-          success: false,
-          message: `pricingOption must be one of: ${pricingOptions.join(", ")}`,
-        });
-      }
-
-      const servicePrice = Number(
-        pricingOption === "fixedprice"
-          ? providerService.fixedPrice
-          : providerService.pricingModel?.[pricingOption],
+      const invalidPricingOption = normalizedServices.find(
+        (item) => !pricingOptions.includes(item.pricingOption),
       );
-      if (!Number.isFinite(servicePrice) || servicePrice <= 0) {
+      if (invalidPricingOption) {
         return res.status(400).json({
           success: false,
-          message: "The selected pricing option has no valid provider price",
+          message: `pricingOption for ${invalidPricingOption.serviceName} must be one of: ${pricingOptions.join(", ")}`,
         });
       }
 
-      if (this.isTransportLogistics(normalizedCategory, serviceName)) {
+      const serviceItems = [];
+      for (const requested of normalizedServices) {
+        const providerService = provider.service?.find(
+          (item) => String(item.serviceName || "").trim().toLowerCase() === requested.serviceName.toLowerCase(),
+        );
+        if (!providerService) {
+          return res.status(400).json({ success: false, message: `Provider does not offer ${requested.serviceName}` });
+        }
+        const price = Number(
+          requested.pricingOption === "fixedprice"
+            ? providerService.fixedPrice
+            : providerService.pricingModel?.[requested.pricingOption],
+        );
+        if (!Number.isFinite(price) || price <= 0) {
+          return res.status(400).json({ success: false, message: `The selected pricing option for ${requested.serviceName} has no valid provider price` });
+        }
+        serviceItems.push({
+          serviceName: requested.serviceName,
+          duration: providerService.duration || null,
+          pricingOption: requested.pricingOption,
+          price,
+        });
+      }
+      const servicePrice = serviceItems.reduce((total, item) => total + item.price, 0);
+
+      if (serviceNames.some((name) => this.isTransportLogistics(normalizedCategory, name))) {
         return res.status(400).json({
           success: false,
           message:
@@ -1296,14 +1305,14 @@ class BookingController {
         });
       }
 
-      const durationMatch = String(providerService.duration || "")
-        .trim()
-        .match(/^(\d+(?:\.\d+)?)\s*(min(?:ute)?s?|m|h(?:ou)?rs?)?$/i);
-      const durationValue = Number(durationMatch?.[1]);
-      const durationUnit = durationMatch?.[2]?.toLowerCase() || "min";
-      const durationMinutes = Number.isFinite(durationValue)
-        ? Math.ceil(durationValue * (durationUnit.startsWith("h") ? 60 : 1))
-        : 60;
+      const durationMinutes = serviceItems.reduce((total, item) => {
+        const durationMatch = String(item.duration || "").trim().match(/^(\d+(?:\.\d+)?)\s*(min(?:ute)?s?|m|h(?:ou)?rs?)?$/i);
+        const durationValue = Number(durationMatch?.[1]);
+        const durationUnit = durationMatch?.[2]?.toLowerCase() || "min";
+        return total + (Number.isFinite(durationValue)
+          ? Math.ceil(durationValue * (durationUnit.startsWith("h") ? 60 : 1))
+          : 60);
+      }, 0);
 
       const booking = await Booking.create({
         userId: req.user.id,
@@ -1312,10 +1321,11 @@ class BookingController {
         subCategory: serviceName,
         title: serviceName,
         serviceDetails: {
-          serviceName,
-          duration: providerService.duration || null,
+          serviceName: serviceItems[0].serviceName,
+          duration: serviceItems.map((item) => item.duration).filter(Boolean).join(" + ") || null,
           pricingOption,
           price: servicePrice,
+          items: serviceItems,
         },
         location: {
           address: address || `${latitude}, ${longitude}`,
@@ -1354,13 +1364,14 @@ class BookingController {
         await notificationService.notifyProvider(providerId, {
           type: "new_booking_request",
           title: "New Service Booking Request",
-          message: `A customer requested ${serviceName} for ${String(date)} at ${String(time)}. Please review and respond.`,
+          message: `A customer requested ${serviceName} service for ${String(date)} at ${String(time)}. Please review and respond.`,
           bookingId: booking._id,
           userId: req.user.id,
           serviceType: normalizedCategory,
           serviceName,
           pricingOption,
           amount: pricing.calculatedPrice,
+          budget: servicePrice,
           providerReceives: pricing.providerReceives,
           scheduleDate,
           scheduledTime: String(time).trim(),
@@ -1722,6 +1733,7 @@ class BookingController {
             rating: p.rating,
             completedJobs: p.completedJobs,
             startingPrice: p.startingPrice,
+            currentLocation: p.currentLocation,
             services: serviceNameRegex
               ? (p.service || []).filter((item) =>
                   serviceNameRegex.test(item.serviceName || ""),

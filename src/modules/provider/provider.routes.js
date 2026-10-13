@@ -908,7 +908,7 @@ router.put(
  *         name: status
  *         schema:
  *           type: string
- *           enum: [pending_providers, provider_selected, payment_pending, paid_escrow, in_progress, completed, cancelled, funds_released]
+ *           enum: [pending_providers, provider_selected, payment_pending, paid_escrow, in_progress, awaiting_provider_acceptance, completed, cancelled, funds_released]
  *         description: Filter by booking status
  *       - in: query
  *         name: page
@@ -1256,6 +1256,11 @@ router.patch(
  *                 items:
  *                   type: string
  *                 description: Optional video URLs documenting the completed job
+ *               jobCompletedNotes:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Optional notes about the completed job
  *     responses:
  *       200:
  *         description: Job marked as complete
