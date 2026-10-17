@@ -497,6 +497,28 @@ class NotificationService {
     }
   }
 
+  async sendIncomingCallPush(recipientId, recipientModel, data) {
+    try {
+      if (!this.firebaseInitialized) return;
+      const Model = recipientModel === "Buyer" ? Buyer : Provider;
+      const recipient = await Model.findById(recipientId).select("fcmToken");
+      if (!recipient?.fcmToken) return;
+      await admin.messaging().send({
+        token: recipient.fcmToken,
+        data: Object.fromEntries(
+          Object.entries(data).map(([key, value]) => [key, String(value ?? "")]),
+        ),
+        android: { priority: "high" },
+        apns: { headers: { "apns-priority": "10" }, payload: { aps: { "content-available": 1 } } },
+      });
+    } catch (error) {
+      this.logNotificationError("sendIncomingCallPush", recipientId, recipientModel, error);
+      if (error.code === "messaging/invalid-registration-token" || error.code === "messaging/registration-token-not-registered") {
+        await this.removeInvalidFCMToken(recipientId, recipientModel);
+      }
+    }
+  }
+
   async removeInvalidFCMToken(recipientId, recipientModel) {
     try {
       if (recipientModel === "Buyer") {

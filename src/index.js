@@ -11,6 +11,9 @@ const redis = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const notificationService = require("./services/notification.service");
 const turnService = require("./modules/call/call.service");
+const Call = require("./modules/call/Call.model");
+const Buyer = require("../models/ServiceUser");
+const Provider = require("../models/ServiceProvider");
 const {
   startBookingExpiryJob,
 } = require("./modules/bookings/booking-expiry.job");
@@ -313,6 +316,57 @@ io.on("connection", (socket) => {
         const iceServers = await turnService.getIceServers();
         const receiverRoom = `${targetType}:${targetId}`;
 
+        // Persist a mobile recovery copy of the offer. The existing socket payload stays unchanged.
+        try {
+          const Booking = require("./modules/bookings/Bookings.model");
+          const booking = await Booking.findById(bookingId).select("userId providerId").lean();
+          const callerIsBuyer = socket.userType === "buyer" && String(booking?.userId) === String(socket.userId);
+          const callerIsProvider = socket.userType === "provider" && String(booking?.providerId) === String(socket.userId);
+          const receiverIsBuyer = targetType === "buyer" && String(booking?.userId) === String(targetId);
+          const receiverIsProvider = targetType === "provider" && String(booking?.providerId) === String(targetId);
+          if (booking && (callerIsBuyer || callerIsProvider) && (receiverIsBuyer || receiverIsProvider) && offer) {
+            const Caller = callerIsBuyer ? Buyer : Provider;
+            const caller = await Caller.findById(socket.userId).select("fullName firstName lastName").lean();
+            const callerName = caller?.fullName || [caller?.firstName, caller?.lastName].filter(Boolean).join(" ") || "";
+            const expiresAt = new Date(Date.now() + 40000);
+            await Call.updateMany({ bookingId, status: "ringing" }, { $set: { status: "cancelled" } });
+            await Call.create({
+              bookingId,
+              callerId: socket.userId,
+              callerType: socket.userType,
+              callerName,
+              receiverId: targetId,
+              receiverType: targetType,
+              offer,
+              iceServers,
+              expiresAt,
+            });
+            const recipientModel = receiverIsBuyer ? "Buyer" : "Provider";
+            void notificationService.sendIncomingCallPush(targetId, recipientModel, {
+              type: "incoming_call",
+              bookingId,
+              callerId: socket.userId,
+              callerType: socket.userType,
+              callerName,
+              timestamp: new Date().toISOString(),
+            });
+            setTimeout(async () => {
+              try {
+                const expiredCall = await Call.findOneAndUpdate(
+                  { bookingId, callerId: socket.userId, receiverId: targetId, status: "ringing", expiresAt: { $lte: new Date() } },
+                  { $set: { status: "expired" } },
+                  { new: true },
+                );
+                if (expiredCall) io.to(`${socket.userType}:${socket.userId}`).emit("call:timeout", { bookingId });
+              } catch (error) {
+                console.error("Call expiry update error:", error.message);
+              }
+            }, 40000).unref?.();
+          }
+        } catch (error) {
+          console.error("Mobile call setup fallback error:", error.message);
+        }
+
         // Forward everything in one shot — no race condition
         io.to(receiverRoom).emit("call:incoming", {
           bookingId,
@@ -341,6 +395,9 @@ io.on("connection", (socket) => {
   socket.on("call:answer", (data) => {
     const { bookingId, callerId, callerType, answer } = data;
     const callerRoom = `${callerType}:${callerId}`;
+    void Call.updateMany({ bookingId, callerId, status: "ringing" }, { $set: { status: "accepted" } }).catch((error) => {
+      console.error("Call acceptance update error:", error.message);
+    });
 
     io.to(callerRoom).emit("call:answered", {
       bookingId,
@@ -369,6 +426,9 @@ io.on("connection", (socket) => {
   socket.on("call:reject", (data) => {
     const { bookingId, callerId, callerType } = data;
     const callerRoom = `${callerType}:${callerId}`;
+    void Call.updateMany({ bookingId, receiverId: socket.userId, status: "ringing" }, { $set: { status: "rejected" } }).catch((error) => {
+      console.error("Call rejection update error:", error.message);
+    });
 
     io.to(callerRoom).emit("call:rejected", {
       bookingId,
@@ -387,6 +447,28 @@ io.on("connection", (socket) => {
       bookingId,
       endedBy: socket.userId,
     });
+
+    void (async () => {
+      try {
+        const cancelledCall = await Call.findOneAndUpdate(
+          { bookingId, callerId: socket.userId, status: "ringing" },
+          { $set: { status: "cancelled" } },
+          { new: true },
+        );
+        if (cancelledCall) {
+          await notificationService.sendIncomingCallPush(cancelledCall.receiverId, cancelledCall.receiverType === "buyer" ? "Buyer" : "Provider", {
+            type: "call_cancelled",
+            bookingId,
+            callerId: socket.userId,
+            callerType: socket.userType,
+            timestamp: new Date().toISOString(),
+          });
+          io.to(targetRoom).emit("call:cancelled", { bookingId, cancelledBy: socket.userId });
+        }
+      } catch (error) {
+        console.error("Call cancellation update error:", error.message);
+      }
+    })();
 
     console.log(`📵 Call ended by ${socket.userId} [booking: ${bookingId}]`);
   });
