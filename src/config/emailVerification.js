@@ -334,6 +334,37 @@ const sendDriverInvitationEmail = async (email, data = {}) => {
   }
 };
 
+const sendStaffInvitationEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+
+  const businessName = data.businessName || "a business";
+
+  sendSmtpEmail.subject = `You've been invited to join ${businessName} as ${data.role || "staff"}`;
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate("staff-invitation.njk", {
+    businessName,
+    role: data.role,
+    services: data.services || [],
+    inviteLink: data.inviteLink,
+    expiryDays: data.expiryDays || 7,
+    year: new Date().getFullYear(),
+    ...data,
+  });
+  sendSmtpEmail.sender = sender;
+
+  try {
+    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log(
+      "Staff invitation email sent. Message ID:",
+      result.body.messageId,
+    );
+    return { success: true, messageId: result.body.messageId };
+  } catch (error) {
+    console.error("Staff invitation email error:", error);
+    throw new Error(error.message || "Staff invitation email failed");
+  }
+};
+
 const sendBusinessWelcomeMail = async (email, data = {}) => {
   const sendSmtpEmail = new brevo.SendSmtpEmail();
 
@@ -371,5 +402,6 @@ module.exports = {
   sendBusinessKycVerificationEmail,
   sendBusinessKycDisputeEmail,
   sendDriverInvitationEmail,
+  sendStaffInvitationEmail,
   sendBusinessWelcomeMail,
 };

@@ -19,6 +19,8 @@ const fcmRoutes = require('./modules/fcm/fcm.routes');
 const callRoutes = require('./modules/call/call.routes');
 const businessAuthRoutes = require('./modules/business/business.auth.routes');
 const businessRoutes = require('./modules/business/business.routes');
+const businessStaffRoutes = require('./modules/business/staff.routes');
+const businessDashboardRoutes = require('./modules/business/dashboard.routes');
 
 const createApp = () => {
   const app = express();
@@ -59,6 +61,8 @@ const createApp = () => {
   app.use('/api/v1/call', callRoutes);
   app.use('/api/v1/business/auth', businessAuthRoutes);
   app.use('/api/v1/businesses', businessRoutes);
+  app.use('/api/v1/business', businessStaffRoutes);
+  app.use('/api/v1/business', businessDashboardRoutes);
 
   app.get('/api-docs/swagger.json', (req, res) => {
     res.setHeader('Content-Type', 'application/json');

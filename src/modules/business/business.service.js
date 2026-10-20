@@ -1,41 +1,41 @@
-const mongoose = require("mongoose");
-const crypto = require("crypto");
-const Business = require("./business.model");
-const FleetInvitation = require("./fleetInvitation.model");
-const businessRepository = require("./business.repository");
-const notificationService = require("../../services/notification.service");
-const { sendDriverInvitationEmail } = require("../../config/emailVerification");
+const mongoose = require('mongoose');
+const crypto = require('crypto');
+const Business = require('./business.model');
+const FleetInvitation = require('./fleetInvitation.model');
+const businessRepository = require('./business.repository');
+const notificationService = require('../../services/notification.service');
+const { sendDriverInvitationEmail } = require('../../config/emailVerification');
 
 const INVITE_TOKEN_EXPIRY_DAYS = Number(
   process.env.DRIVER_INVITE_EXPIRY_DAYS || 7,
 );
-const PLATFORM_URL = process.env.PLATFORM_URL || "https://sabiguy.com";
+const PLATFORM_URL = process.env.PLATFORM_URL || 'https://sabiguy.com';
 
 class ValidationError extends Error {
   constructor(message) {
     super(message);
-    this.name = "ValidationError";
+    this.name = 'ValidationError';
   }
 }
 
 class NotFoundError extends Error {
   constructor(message) {
     super(message);
-    this.name = "NotFoundError";
+    this.name = 'NotFoundError';
   }
 }
 
 class ConflictError extends Error {
   constructor(message) {
     super(message);
-    this.name = "ConflictError";
+    this.name = 'ConflictError';
   }
 }
 
 class ForbiddenError extends Error {
   constructor(message) {
     super(message);
-    this.name = "ForbiddenError";
+    this.name = 'ForbiddenError';
   }
 }
 
@@ -46,7 +46,7 @@ const getBusinessesWithPagination = async (filters = {}, { skip, limit }) => {
     const [businesses, total] = await Promise.all([
       Business.find(query)
         .select(
-          "-password -refreshToken -refreshTokenExpiresAt -otp -resetOtp -resetOtpExpires -fcmToken",
+          '-password -refreshToken -refreshTokenExpiresAt -otp -resetOtp -resetOtpExpires -fcmToken',
         )
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -60,19 +60,19 @@ const getBusinessesWithPagination = async (filters = {}, { skip, limit }) => {
       total,
     };
   } catch (error) {
-    console.error("Error fetching businesses with pagination:", error);
+    console.error('Error fetching businesses with pagination:', error);
     // throw new Error(`Failed to fetch businesses: ${error.message}`);
   }
 };
 
 const getBusinessById = async (businessId) => {
   if (!mongoose.isValidObjectId(businessId)) {
-    throw new ValidationError("Invalid business ID");
+    throw new ValidationError('Invalid business ID');
   }
 
   const business = await businessRepository.findBusinessPublicById(businessId);
   if (!business || business.isDeleted) {
-    throw new NotFoundError("Business not found");
+    throw new NotFoundError('Business not found');
   }
 
   return business;
@@ -80,26 +80,26 @@ const getBusinessById = async (businessId) => {
 
 // 1. Invite a driver to a business/fleet.
 const inviteDriver = async (businessId, { driverEmail, role } = {}) => {
-  if (!driverEmail || typeof driverEmail !== "string") {
-    throw new ValidationError("driverEmail is required");
+  if (!driverEmail || typeof driverEmail !== 'string') {
+    throw new ValidationError('driverEmail is required');
   }
 
   const business = await businessRepository.findBusinessById(businessId);
   if (!business || business.isDeleted) {
-    throw new NotFoundError("Business not found");
+    throw new NotFoundError('Business not found');
   }
 
   // Per requirements: driverEmail must match an existing registered driver.
   const driver = await businessRepository.findDriverByEmail(driverEmail);
   if (!driver) {
-    throw new NotFoundError("No registered driver found with this email");
+    throw new NotFoundError('No registered driver found with this email');
   }
   if (driver.isDeleted || driver.isActive === false) {
     throw new ValidationError("This driver's account is not active");
   }
 
   if (businessRepository.isDriverLinked(business, driver._id)) {
-    throw new ConflictError("Driver already belongs to this business");
+    throw new ConflictError('Driver already belongs to this business');
   }
 
   const existingPending = await businessRepository.findPendingInvitation(
@@ -108,11 +108,11 @@ const inviteDriver = async (businessId, { driverEmail, role } = {}) => {
   );
   if (existingPending) {
     throw new ConflictError(
-      "A pending invitation already exists for this driver",
+      'A pending invitation already exists for this driver',
     );
   }
 
-  const token = crypto.randomBytes(32).toString("hex");
+  const token = crypto.randomBytes(32).toString('hex');
   const tokenExpiresAt = new Date(
     Date.now() + INVITE_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   );
@@ -121,14 +121,14 @@ const inviteDriver = async (businessId, { driverEmail, role } = {}) => {
     business: business._id,
     driver: driver._id,
     driverEmail: driver.email,
-    role: role || "driver",
+    role: role || 'driver',
     token,
     tokenExpiresAt,
     invitedBy: business._id,
   });
 
   const businessName =
-    business.BusinessName || business.fullName || "the business";
+    business.BusinessName || business.fullName || 'the business';
 
   // Best-effort side effects: an invitation is still valid even if the
   // email/push happens to fail, so these don't roll back the invite.
@@ -140,18 +140,18 @@ const inviteDriver = async (businessId, { driverEmail, role } = {}) => {
       expiryDays: INVITE_TOKEN_EXPIRY_DAYS,
     });
   } catch (error) {
-    console.error("Driver invitation email failed:", error.message);
+    console.error('Driver invitation email failed:', error.message);
   }
 
   try {
     await notificationService.notifyProvider(driver._id, {
-      type: "driver_invitation_received",
+      type: 'driver_invitation_received',
       message: `${businessName} invited you to join their fleet as a driver`,
       businessId: business._id,
       invitationId: invitation._id,
     });
   } catch (error) {
-    console.error("Driver invitation push notification failed:", error.message);
+    console.error('Driver invitation push notification failed:', error.message);
   }
 
   return invitation;
@@ -165,7 +165,7 @@ const getBusinessDrivers = async (businessId, { status, skip, limit } = {}) => {
     normalizedStatus = String(status).toUpperCase();
     if (!FleetInvitation.INVITATION_STATUSES.includes(normalizedStatus)) {
       throw new ValidationError(
-        `status must be one of: ${FleetInvitation.INVITATION_STATUSES.join(", ")}`,
+        `status must be one of: ${FleetInvitation.INVITATION_STATUSES.join(', ')}`,
       );
     }
   }
@@ -182,8 +182,8 @@ const getBusinessVehicles = (businessId, { skip, limit } = {}) =>
   businessRepository.getBusinessVehiclesPage(businessId, { skip, limit });
 
 const getBusinessByEmail = async (email) => {
-  if (!email || typeof email !== "string") {
-    throw new ValidationError("email is required");
+  if (!email || typeof email !== 'string') {
+    throw new ValidationError('email is required');
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
@@ -191,7 +191,7 @@ const getBusinessByEmail = async (email) => {
     await businessRepository.findBusinessByEmail(normalizedEmail);
 
   if (!business || business.isDeleted) {
-    throw new NotFoundError("Business not found");
+    throw new NotFoundError('Business not found');
   }
 
   return business;
@@ -200,24 +200,24 @@ const getBusinessByEmail = async (email) => {
 // 4. Confirm or reject a pending driver invitation.
 const respondToInvitation = async (driverId, { invitationId, action } = {}) => {
   if (!invitationId || !mongoose.Types.ObjectId.isValid(invitationId)) {
-    throw new ValidationError("A valid invitationId is required");
+    throw new ValidationError('A valid invitationId is required');
   }
 
-  const normalizedAction = String(action || "").toUpperCase();
-  if (!["ACCEPT", "REJECT"].includes(normalizedAction)) {
-    throw new ValidationError("action must be either ACCEPT or REJECT");
+  const normalizedAction = String(action || '').toUpperCase();
+  if (!['ACCEPT', 'REJECT'].includes(normalizedAction)) {
+    throw new ValidationError('action must be either ACCEPT or REJECT');
   }
 
   const invitation = await businessRepository.findInvitationById(invitationId);
   if (!invitation) {
-    throw new NotFoundError("Invitation not found");
+    throw new NotFoundError('Invitation not found');
   }
 
   if (invitation.driver.toString() !== driverId.toString()) {
-    throw new ForbiddenError("This invitation does not belong to you");
+    throw new ForbiddenError('This invitation does not belong to you');
   }
 
-  if (invitation.status !== "PENDING") {
+  if (invitation.status !== 'PENDING') {
     throw new ConflictError(
       `This invitation has already been ${invitation.status.toLowerCase()}`,
     );
@@ -227,20 +227,20 @@ const respondToInvitation = async (driverId, { invitationId, action } = {}) => {
     invitation.tokenExpiresAt &&
     invitation.tokenExpiresAt.getTime() < Date.now()
   ) {
-    invitation.status = "EXPIRED";
+    invitation.status = 'EXPIRED';
     await invitation.save();
-    throw new ConflictError("This invitation has expired");
+    throw new ConflictError('This invitation has expired');
   }
 
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
 
-    invitation.status = normalizedAction === "ACCEPT" ? "ACCEPTED" : "REJECTED";
+    invitation.status = normalizedAction === 'ACCEPT' ? 'ACCEPTED' : 'REJECTED';
     invitation.respondedAt = new Date();
     await invitation.save({ session });
 
-    if (normalizedAction === "ACCEPT") {
+    if (normalizedAction === 'ACCEPT') {
       await businessRepository.addDriverToBusiness(
         invitation.business,
         invitation.driver,
@@ -259,14 +259,14 @@ const respondToInvitation = async (driverId, { invitationId, action } = {}) => {
   try {
     await notificationService.notifyBusiness(invitation.business, {
       type:
-        normalizedAction === "ACCEPT"
-          ? "driver_invitation_accepted"
-          : "driver_invitation_rejected",
-      message: `A driver has ${normalizedAction === "ACCEPT" ? "accepted" : "declined"} your fleet invitation`,
+        normalizedAction === 'ACCEPT'
+          ? 'driver_invitation_accepted'
+          : 'driver_invitation_rejected',
+      message: `A driver has ${normalizedAction === 'ACCEPT' ? 'accepted' : 'declined'} your fleet invitation`,
       invitationId: invitation._id,
     });
   } catch (error) {
-    console.error("Business notification failed:", error.message);
+    console.error('Business notification failed:', error.message);
   }
 
   return invitation;
@@ -301,26 +301,26 @@ const addBusinessDetails = async (businessId, payload) => {
   };
 
   const missingField = Object.entries(requiredFields).find(
-    ([, value]) => value === undefined || value === null || value === "",
+    ([, value]) => value === undefined || value === null || value === '',
   );
   if (missingField) {
     throw new ValidationError(`${missingField[0]} is required`);
   }
 
   if (!isValidUrl(ninUrl)) {
-    throw new ValidationError("ninUrl must be a valid URL");
+    throw new ValidationError('ninUrl must be a valid URL');
   }
 
   const business = await businessRepository.findBusinessById(businessId);
   if (!business || business.isDeleted) {
-    throw new NotFoundError("Business not found");
+    throw new NotFoundError('Business not found');
   }
 
   const alreadyOnboarded = Boolean(
     business.BusinessName || business.regNumber || business.cacFile,
   );
   if (alreadyOnboarded) {
-    throw new ConflictError("Business profile already exists for this user");
+    throw new ConflictError('Business profile already exists for this user');
   }
 
   const updated = await businessRepository.saveBusinessDetails(businessId, {
@@ -352,22 +352,22 @@ const addBusinessVerification = async (businessId, payload) => {
   };
 
   const missingField = Object.entries(requiredFields).find(
-    ([, value]) => value === undefined || value === null || value === "",
+    ([, value]) => value === undefined || value === null || value === '',
   );
   if (missingField) {
     throw new ValidationError(`${missingField[0]} is required`);
   }
 
   if (!isValidUrl(cacCertificateUrl)) {
-    throw new ValidationError("cacCertificateUrl must be a valid URL");
+    throw new ValidationError('cacCertificateUrl must be a valid URL');
   }
 
   if (!isValidUrl(profilePhotoUrl)) {
-    throw new ValidationError("profilePhotoUrl must be a valid URL");
+    throw new ValidationError('profilePhotoUrl must be a valid URL');
   }
 
   if (!Array.isArray(businessPhotos) || businessPhotos.length === 0) {
-    throw new ValidationError("businessPhotos must be a non-empty array");
+    throw new ValidationError('businessPhotos must be a non-empty array');
   }
 
   businessPhotos.forEach((photoUrl, index) => {
@@ -378,7 +378,7 @@ const addBusinessVerification = async (businessId, payload) => {
 
   const business = await businessRepository.findBusinessById(businessId);
   if (!business || business.isDeleted) {
-    throw new NotFoundError("Business not found");
+    throw new NotFoundError('Business not found');
   }
 
   const updated = await businessRepository.saveBusinessVerificationDetails(
@@ -404,46 +404,53 @@ const addServiceDetails = async (businessId, payload = {}) => {
     payload;
 
   if (service !== undefined && !Array.isArray(service)) {
-    throw new ValidationError("service must be an array");
+    throw new ValidationError('service must be an array');
   }
 
   if (availableDays !== undefined && !Array.isArray(availableDays)) {
-    throw new ValidationError("availableDays must be an array");
+    throw new ValidationError('availableDays must be an array');
   }
 
   if (
     businessHours !== undefined &&
-    (typeof businessHours !== "object" ||
+    (typeof businessHours !== 'object' ||
       businessHours === null ||
       Array.isArray(businessHours))
   ) {
-    throw new ValidationError("businessHours must be an object");
+    throw new ValidationError('businessHours must be an object');
   }
 
   if (servicePlace !== undefined && !Array.isArray(servicePlace)) {
-    throw new ValidationError("servicePlace must be an array");
+    throw new ValidationError('servicePlace must be an array');
   }
 
   if (studioImages !== undefined && !Array.isArray(studioImages)) {
-    throw new ValidationError("studioImages must be an array");
+    throw new ValidationError('studioImages must be an array');
   }
 
   const business = await businessRepository.findBusinessById(businessId);
   if (!business || business.isDeleted) {
-    throw new NotFoundError("Business not found");
+    throw new NotFoundError('Business not found');
   }
 
   const details = {};
   if (service !== undefined) {
+    service.forEach((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        throw new ValidationError(
+          `service[${index}] must be an object with a serviceName`,
+        );
+      }
+    });
     details.service = service.map((item = {}) => ({
       serviceName: item.serviceName,
       duration: item.duration,
-       pricingModel: {
-            walk_in: item.pricingModel?.walk_in,
-            provider_address: item.pricingModel?.provider_address,
-            customer_address: item.pricingModel?.customer_address,
-          },
-          fixedPrice: item.fixedPrice,
+      pricingModel: {
+        walk_in: item.pricingModel?.walk_in,
+        provider_address: item.pricingModel?.provider_address,
+        customer_address: item.pricingModel?.customer_address,
+      },
+      fixedPrice: item.fixedPrice,
     }));
   }
   if (availableDays !== undefined) details.availableDays = availableDays;
@@ -481,12 +488,12 @@ const addServiceDetails = async (businessId, payload = {}) => {
 // 7. Add one or more vehicles for the authenticated business owner.
 const addVehicleDetails = async (businessId, vehicles) => {
   if (!Array.isArray(vehicles) || vehicles.length === 0) {
-    throw new ValidationError("vehicles must be a non-empty array");
+    throw new ValidationError('vehicles must be a non-empty array');
   }
 
   const business = await businessRepository.findBusinessById(businessId);
   if (!business || business.isDeleted) {
-    throw new NotFoundError("Business not found");
+    throw new NotFoundError('Business not found');
   }
 
   const existingPlateNumbers = new Set(
@@ -506,7 +513,7 @@ const addVehicleDetails = async (businessId, vehicles) => {
       vehiclePictureUrl,
     };
     const missingField = Object.entries(requiredFields).find(
-      ([, value]) => value === undefined || value === null || value === "",
+      ([, value]) => value === undefined || value === null || value === '',
     );
     if (missingField) {
       throw new ValidationError(
@@ -557,6 +564,342 @@ const addVehicleDetails = async (businessId, vehicles) => {
   return createdVehicles;
 };
 
+const requireActiveBusiness = async (businessId) => {
+  const business = await businessRepository.findBusinessById(businessId);
+  if (!business || business.isDeleted) {
+    throw new NotFoundError('Business not found');
+  }
+  return business;
+};
+
+const NON_EMPTY_FIELDS = new Set(['businessName', 'bankName', 'accountName']);
+
+const applyStringField = (key, label, value, updates) => {
+  if (value === undefined) return;
+  if (typeof value !== 'string' || value.trim() === '') {
+    if (NON_EMPTY_FIELDS.has(label)) {
+      throw new ValidationError(`${label} must be a non-empty string`);
+    }
+    if (value === null) {
+      updates[key] = undefined;
+      return;
+    }
+    throw new ValidationError(`${label} must be a string`);
+  }
+  updates[key] = value.trim();
+};
+
+const isWeekday = (value) =>
+  [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ].includes(value);
+
+// 8. Update the business profile identity fields (name, city, address).
+const updateBusinessProfile = async (businessId, payload = {}) => {
+  const { businessName, cityOfOperation, businessAddress } = payload;
+
+  const updates = {};
+  applyStringField('BusinessName', 'businessName', businessName, updates);
+  applyStringField(
+    'cityOfOperation',
+    'cityOfOperation',
+    cityOfOperation,
+    updates,
+  );
+  applyStringField(
+    'BusinessAddress',
+    'businessAddress',
+    businessAddress,
+    updates,
+  );
+
+  if (Object.keys(updates).length === 0) {
+    throw new ValidationError('No valid fields provided for update');
+  }
+
+  await requireActiveBusiness(businessId);
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return {
+    businessName: updated.BusinessName,
+    cityOfOperation: updated.cityOfOperation,
+    businessAddress: updated.BusinessAddress,
+  };
+};
+
+// 9. Update business operating defaults (currency, timezone, week start).
+const updateBusinessOperatingDefaults = async (businessId, payload = {}) => {
+  const { currency, timezone, weekStarts } = payload;
+
+  const updates = {};
+  applyStringField('currency', 'currency', currency, updates);
+  applyStringField('timezone', 'timezone', timezone, updates);
+  if (weekStarts !== undefined) {
+    if (typeof weekStarts !== 'string' || !isWeekday(weekStarts.trim())) {
+      throw new ValidationError('weekStarts must be a weekday name');
+    }
+    updates.weekStarts = weekStarts.trim();
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new ValidationError('No valid fields provided for update');
+  }
+
+  await requireActiveBusiness(businessId);
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return {
+    currency: updated.currency,
+    timezone: updated.timezone,
+    weekStarts: updated.weekStarts,
+  };
+};
+
+// 10. Update the business payout (company bank) account.
+const updateBusinessPayoutAccount = async (businessId, payload = {}) => {
+  const { bankName, bankCode, accountNumber, accountName, taxId } = payload;
+
+  const updates = {};
+  applyStringField('payoutAccount.bankName', 'bankName', bankName, updates);
+  applyStringField('payoutAccount.bankCode', 'bankCode', bankCode, updates);
+  applyStringField(
+    'payoutAccount.accountName',
+    'accountName',
+    accountName,
+    updates,
+  );
+  applyStringField('payoutAccount.taxId', 'taxId', taxId, updates);
+  if (accountNumber !== undefined) {
+    if (
+      typeof accountNumber !== 'string' ||
+      !/^\d{9,17}$/.test(accountNumber.trim())
+    ) {
+      throw new ValidationError(
+        'accountNumber must be a valid bank account number',
+      );
+    }
+    updates['payoutAccount.accountNumber'] = accountNumber.trim();
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new ValidationError('No valid fields provided for update');
+  }
+
+  await requireActiveBusiness(businessId);
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return {
+    bankName: updated.payoutAccount?.bankName,
+    bankCode: updated.payoutAccount?.bankCode,
+    accountNumber: updated.payoutAccount?.accountNumber,
+    accountName: updated.payoutAccount?.accountName,
+    taxId: updated.payoutAccount?.taxId,
+    verified: updated.payoutAccount?.verified ?? false,
+  };
+};
+
+// 11. Update the business default payout schedule.
+const updateBusinessPayoutSchedule = async (businessId, payload = {}) => {
+  const { automatic, day, minimumThreshold } = payload;
+
+  const updates = {};
+  if (automatic !== undefined) {
+    if (typeof automatic !== 'boolean') {
+      throw new ValidationError('automatic must be a boolean');
+    }
+    updates['payoutSchedule.automatic'] = automatic;
+  }
+  if (day !== undefined) {
+    if (typeof day !== 'string' || !isWeekday(day.trim())) {
+      throw new ValidationError('day must be a weekday name');
+    }
+    updates['payoutSchedule.day'] = day.trim();
+  }
+  if (minimumThreshold !== undefined) {
+    if (
+      typeof minimumThreshold !== 'number' ||
+      !Number.isFinite(minimumThreshold) ||
+      minimumThreshold < 0
+    ) {
+      throw new ValidationError(
+        'minimumThreshold must be a non-negative number',
+      );
+    }
+    updates['payoutSchedule.minimumThreshold'] = minimumThreshold;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new ValidationError('No valid fields provided for update');
+  }
+
+  await requireActiveBusiness(businessId);
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return {
+    automatic: updated.payoutSchedule?.automatic ?? false,
+    day: updated.payoutSchedule?.day,
+    minimumThreshold: updated.payoutSchedule?.minimumThreshold,
+  };
+};
+
+// 12. Update only the business service catalog (service[]).
+const updateBusinessServices = async (businessId, payload = {}) => {
+  const { service } = payload;
+
+  if (!Array.isArray(service)) {
+    throw new ValidationError('service must be an array');
+  }
+  service.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new ValidationError(
+        `service[${index}] must be an object with a serviceName`,
+      );
+    }
+  });
+
+  await requireActiveBusiness(businessId);
+
+  const updates = {
+    service: service.map((item = {}) => ({
+      serviceName: item.serviceName,
+      duration: item.duration,
+      pricingModel: {
+        walk_in: item.pricingModel?.walk_in,
+        provider_address: item.pricingModel?.provider_address,
+        customer_address: item.pricingModel?.customer_address,
+      },
+      fixedPrice: item.fixedPrice,
+    })),
+  };
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return { service: updated.service };
+};
+
+const toStringArray = (name, value) => {
+  if (!Array.isArray(value)) {
+    throw new ValidationError(`${name} must be an array`);
+  }
+  value.forEach((item, index) => {
+    if (typeof item !== 'string' || item.trim() === '') {
+      throw new ValidationError(`${name}[${index}] must be a non-empty string`);
+    }
+  });
+  return value.map((item) => item.trim());
+};
+
+// 13. Update only the days the business operates (availableDays[]).
+const updateBusinessAvailableDays = async (businessId, payload = {}) => {
+  const { availableDays } = payload;
+
+  const updates = {
+    availableDays: toStringArray('availableDays', availableDays),
+  };
+
+  await requireActiveBusiness(businessId);
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return { availableDays: updated.availableDays };
+};
+
+// 14. Update only the business service places (servicePlace[]).
+const updateBusinessServicePlace = async (businessId, payload = {}) => {
+  const { servicePlace } = payload;
+
+  const updates = { servicePlace: toStringArray('servicePlace', servicePlace) };
+
+  await requireActiveBusiness(businessId);
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return { servicePlace: updated.servicePlace };
+};
+
+// 15. Update the business opening hours (start / end), partial-friendly.
+const updateBusinessHours = async (businessId, payload = {}) => {
+  const { start, end } = payload;
+
+  const updates = {};
+  applyStringField('businessHours.start', 'start', start, updates);
+  applyStringField('businessHours.end', 'end', end, updates);
+
+  if (Object.keys(updates).length === 0) {
+    throw new ValidationError('No valid fields provided for update');
+  }
+
+  await requireActiveBusiness(businessId);
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return { businessHours: updated.businessHours };
+};
+
+// 16. Update only the studio gallery (studioImages[] of pictures/videos).
+const updateBusinessStudioImages = async (businessId, payload = {}) => {
+  const { studioImages } = payload;
+
+  if (!Array.isArray(studioImages)) {
+    throw new ValidationError('studioImages must be an array');
+  }
+  studioImages.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new ValidationError(`studioImages[${index}] must be an object`);
+    }
+  });
+
+  const updates = {
+    studioImages: studioImages.map((item = {}) => ({
+      pictures: Array.isArray(item.pictures) ? item.pictures : [],
+      videos: Array.isArray(item.videos) ? item.videos : [],
+    })),
+  };
+
+  await requireActiveBusiness(businessId);
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return { studioImages: updated.studioImages };
+};
+
 module.exports = {
   getBusinessesWithPagination,
   getBusinessById,
@@ -569,6 +912,15 @@ module.exports = {
   addVehicleDetails,
   addServiceDetails,
   respondToInvitation,
+  updateBusinessProfile,
+  updateBusinessOperatingDefaults,
+  updateBusinessPayoutAccount,
+  updateBusinessPayoutSchedule,
+  updateBusinessServices,
+  updateBusinessAvailableDays,
+  updateBusinessServicePlace,
+  updateBusinessHours,
+  updateBusinessStudioImages,
 
   ValidationError,
   NotFoundError,
