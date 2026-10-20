@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const Admin = require("./Admin.model");
 const Provider = require("../../../models/ServiceProvider");
 const Buyer = require("../../../models/ServiceUser");
@@ -19,6 +20,7 @@ const {
   sendKycDisputeEmail,
   sendBusinessKycVerificationEmail,
   sendBusinessKycDisputeEmail,
+  sendAdminInvitationEmail,
 } = require("../../config/emailVerification");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
@@ -211,35 +213,20 @@ class AdminController {
 
       const normalizedEmail = normalizeEmail(email);
 
+      const bootstrapEmails = String(process.env.ADMIN_BOOTSTRAP_EMAILS || "")
+        .split(",").map(normalizeEmail).filter(Boolean);
+      if (!bootstrapEmails.includes(normalizedEmail)) {
+        return res.status(403).json({ success: false, message: "This email is not authorized for super admin bootstrap" });
+      }
+
+      if (await Admin.countDocuments({ adminRole: "super_admin" }) >= 2) {
+        return res.status(403).json({ success: false, message: "Super admin bootstrap is closed. Ask a super admin to invite you." });
+      }
+
       const existing = await findUserByEmailAcrossDb(normalizedEmail);
       if (existing) {
         return res.status(400).json({ message: "Email already in use" });
       }
-
-      // const adminCount = await Admin.countDocuments();
-      // if (adminCount > 0) {
-      //   const authHeader = req.headers.authorization || "";
-      //   if (!authHeader.startsWith("Bearer ")) {
-      //     return res.status(403).json({ message: "Admin access required" });
-      //   }
-
-      //   const token = authHeader.split(" ")[1];
-      //   let decoded;
-      //   try {
-      //     decoded = jwt.verify(token, process.env.JWT_SECRET);
-      //   } catch {
-      //     return res.status(403).json({ message: "Admin access required" });
-      //   }
-
-      //   if (decoded?.role !== "admin") {
-      //     return res.status(403).json({ message: "Admin access required" });
-      //   }
-
-      //   const admin = await Admin.findById(decoded.id);
-      //   if (!admin) {
-      //     return res.status(403).json({ message: "Admin access required" });
-      //   }
-      // }
 
       const hashedPassword = await bcrypt.hash(password, 10);
       const admin = await Admin.create({
@@ -247,6 +234,7 @@ class AdminController {
         password: hashedPassword,
         fullName,
         role: "admin",
+        adminRole: "super_admin",
         emailVerified: true,
       });
 
@@ -264,6 +252,7 @@ class AdminController {
           email: admin.email,
           fullName: admin.fullName,
           role: admin.role,
+          adminRole: admin.adminRole,
           token,
         },
       });
@@ -274,6 +263,75 @@ class AdminController {
         message: "Error creating admin",
         error: error.message,
       });
+    }
+  }
+
+  async inviteAdmin(req, res) {
+    try {
+      const { email, adminRole, fullName } = req.body || {};
+      const allowedRoles = ["super_admin", "verification_admin", "operations_admin", "support_admin", "finance_admin"];
+      if (!email || !allowedRoles.includes(adminRole)) {
+        return res.status(400).json({ success: false, message: "A valid email and adminRole are required", allowedRoles });
+      }
+      const normalizedEmail = normalizeEmail(email);
+      if (await findUserByEmailAcrossDb(normalizedEmail)) {
+        return res.status(409).json({ success: false, message: "Email is already in use" });
+      }
+      if (adminRole === "super_admin" && await Admin.countDocuments({ adminRole: "super_admin" }) >= 2) {
+        return res.status(409).json({ success: false, message: "The platform is limited to two super admins" });
+      }
+      const baseUrl = process.env.ADMIN_INVITE_URL || process.env.FRONTEND_URL;
+      if (!baseUrl) return res.status(500).json({ success: false, message: "Admin invitation URL is not configured" });
+      const inviteToken = crypto.randomBytes(32).toString("hex");
+      const temporaryPassword = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+      const admin = await Admin.create({
+        email: normalizedEmail,
+        fullName: String(fullName || "Invited Admin").trim(),
+        password: temporaryPassword,
+        role: "admin",
+        adminRole,
+        emailVerified: false,
+        invitationTokenHash: crypto.createHash("sha256").update(inviteToken).digest("hex"),
+        invitationExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+      const inviteLink = `${baseUrl.replace(/\/$/, "")}/admin/accept-invitation?token=${inviteToken}`;
+      try {
+        await sendAdminInvitationEmail(normalizedEmail, {
+          adminName: admin.fullName,
+          adminRole,
+          invitedBy: req.user.fullName,
+          inviteLink,
+        });
+      } catch (emailError) {
+        await Admin.deleteOne({ _id: admin._id });
+        throw emailError;
+      }
+      return res.status(201).json({ success: true, message: "Admin invitation sent", data: { id: admin._id, email: admin.email, adminRole } });
+    } catch (error) {
+      console.error("Invite admin error:", error);
+      return res.status(500).json({ success: false, message: "Unable to send admin invitation" });
+    }
+  }
+
+  async acceptAdminInvitation(req, res) {
+    try {
+      const { token, password, fullName } = req.body || {};
+      if (!token || !password || String(password).length < 8) {
+        return res.status(400).json({ success: false, message: "A valid invitation token and password of at least 8 characters are required" });
+      }
+      const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex");
+      const admin = await Admin.findOne({ invitationTokenHash: tokenHash, invitationExpiresAt: { $gt: new Date() } }).select("+invitationTokenHash");
+      if (!admin) return res.status(400).json({ success: false, message: "Invitation is invalid or expired" });
+      admin.password = await bcrypt.hash(password, 10);
+      if (fullName?.trim()) admin.fullName = fullName.trim();
+      admin.emailVerified = true;
+      admin.invitationTokenHash = undefined;
+      admin.invitationExpiresAt = undefined;
+      await admin.save();
+      return res.status(200).json({ success: true, message: "Invitation accepted. You can now log in." });
+    } catch (error) {
+      console.error("Accept admin invitation error:", error);
+      return res.status(500).json({ success: false, message: "Unable to accept invitation" });
     }
   }
 
@@ -321,6 +379,7 @@ class AdminController {
           email: admin.email,
           fullName: admin.fullName,
           role: admin.role,
+          adminRole: admin.adminRole,
           token,
         },
       });

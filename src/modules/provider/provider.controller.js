@@ -3,6 +3,7 @@ const Provider = require("../../../models/ServiceProvider");
 const Buyer = require("../../../models/ServiceUser");
 const Booking = require("../bookings/Bookings.model.js");
 const notificationService = require("../../services/notification.service");
+const { notifyKycCompleted } = require("../../services/adminNotification.service");
 const paymentService = require("../payment/payment.service");
 const geolocationService = require("../../services/geolocation.service");
 const pricingService = require("../../services/pricing.service");
@@ -51,6 +52,7 @@ class ProviderController {
         return res.status(404).json({ message: "Provider not found" });
       }
 
+      const wasKycCompleted = Boolean(provider.kycCompleted);
       provider.gender = gender;
       provider.city = city;
       provider.address = address;
@@ -59,6 +61,7 @@ class ProviderController {
       provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
 
       await provider.save();
+      await notifyKycCompleted("provider", provider, wasKycCompleted);
 
       res.status(200).json({
         success: true,
@@ -120,6 +123,8 @@ class ProviderController {
         return res.status(404).json({ message: "Provider not found" });
       }
 
+      const wasKycCompleted = Boolean(provider.kycCompleted);
+
       if (job) {
         if (!Array.isArray(job)) {
           return res.status(400).json({ message: "Job must be an array" });
@@ -176,6 +181,7 @@ class ProviderController {
       provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
 
       await provider.save();
+      await notifyKycCompleted("provider", provider, wasKycCompleted);
 
       res.status(200).json({
         success: true,
@@ -249,6 +255,8 @@ class ProviderController {
         return res.status(404).json({ message: "Provider not found" });
       }
 
+      const wasKycCompleted = Boolean(provider.kycCompleted);
+
       if (service !== undefined) {
         provider.service = service.map((item = {}) => ({
           serviceName: item.serviceName,
@@ -304,6 +312,7 @@ class ProviderController {
       provider.kycLevel = Math.max(provider.kycLevel || 0, 4);
 
       await provider.save();
+      await notifyKycCompleted("provider", provider, wasKycCompleted);
 
       return res.status(200).json({
         success: true,
@@ -374,11 +383,13 @@ class ProviderController {
         return res.status(404).json({ message: "Provider not found" });
       }
 
+      const wasKycCompleted = Boolean(provider.kycCompleted);
       // Update the provider's profile picture
       provider.profilePicture = imageUrl;
       provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
 
       await provider.save();
+      await notifyKycCompleted("provider", provider, wasKycCompleted);
 
       res.status(200).json({
         success: true,

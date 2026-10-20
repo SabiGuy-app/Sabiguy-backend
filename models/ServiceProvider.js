@@ -9,6 +9,11 @@ const serviceProviderSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    signupPlatform: {
+      type: String,
+      enum: ["web", "android", "ios", "mobile", "unknown"],
+      default: "unknown",
+    },
     phoneNumber: { type: String, unique: true, sparse: true, trim: true },
     password: { type: String, required: false },
     createdAt: { type: Date, default: Date.now },

@@ -1,9 +1,13 @@
 const businessAuthService = require('./business.auth.service');
 const Business = require('./business.model');
+const { getClientPlatform } = require('../../services/clientPlatform.service');
 
 const registerBusiness = async (req, res) => {
   try {
-    const result = await businessAuthService.registerBusiness(req.body);
+    const result = await businessAuthService.registerBusiness({
+      ...req.body,
+      signupPlatform: getClientPlatform(req),
+    });
     return res.status(201).json({ success: true, ...result });
   } catch (err) {
     console.error('registerBusiness error:', err.message);
@@ -58,7 +62,7 @@ const login = async (req, res) => {
 const googleSignUp = async (req, res) => {
   try {
     const { token } = req.body;
-    const result = await businessAuthService.googleSignUpBusiness(token);
+    const result = await businessAuthService.googleSignUpBusiness(token, getClientPlatform(req));
     return res.status(201).json({ success: true, ...result });
   } catch (err) {
     console.error('business googleSignUp error:', err.message);
@@ -72,7 +76,7 @@ const googleSignUp = async (req, res) => {
 const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
-    const result = await businessAuthService.googleLogInBusiness(token);
+    const result = await businessAuthService.googleLogInBusiness(token, getClientPlatform(req));
     return res.status(200).json({ success: true, ...result });
   } catch (err) {
     console.error('business googleLogin error:', err.message);
