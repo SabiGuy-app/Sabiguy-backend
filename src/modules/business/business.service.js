@@ -5,6 +5,7 @@ const FleetInvitation = require("./fleetInvitation.model");
 const businessRepository = require("./business.repository");
 const notificationService = require("../../services/notification.service");
 const { sendDriverInvitationEmail } = require("../../config/emailVerification");
+const { notifyKycCompleted } = require("../../services/adminNotification.service");
 
 const INVITE_TOKEN_EXPIRY_DAYS = Number(
   process.env.DRIVER_INVITE_EXPIRY_DAYS || 7,
@@ -289,7 +290,6 @@ const addBusinessDetails = async (businessId, payload) => {
     businessAddress,
     cityOfOperation,
     ninUrl,
-    businessCategory,
   } = payload;
 
   const requiredFields = {
@@ -297,7 +297,6 @@ const addBusinessDetails = async (businessId, payload) => {
     businessAddress,
     cityOfOperation,
     ninUrl,
-    businessCategory,
   };
 
   const missingField = Object.entries(requiredFields).find(
@@ -328,16 +327,15 @@ const addBusinessDetails = async (businessId, payload) => {
     BusinessAddress: businessAddress,
     cityOfOperation,
     ninSlip: ninUrl,
-    businessCategory,
     kycLevel: Math.max(business.kycLevel || 0, 2),
   });
+  await notifyKycCompleted("business", updated, business.kycCompleted);
 
   return {
     businessName: updated.BusinessName,
     businessAddress: updated.BusinessAddress,
     cityOfOperation: updated.cityOfOperation,
     ninUrl: updated.ninSlip,
-    businessCategory: updated.businessCategory,
   };
 };
 
@@ -348,7 +346,6 @@ const addBusinessVerification = async (businessId, payload) => {
   const requiredFields = {
     cacCertificateUrl,
     profilePhotoUrl,
-    businessPhotos,
   };
 
   const missingField = Object.entries(requiredFields).find(
@@ -366,11 +363,11 @@ const addBusinessVerification = async (businessId, payload) => {
     throw new ValidationError("profilePhotoUrl must be a valid URL");
   }
 
-  if (!Array.isArray(businessPhotos) || businessPhotos.length === 0) {
-    throw new ValidationError("businessPhotos must be a non-empty array");
+  if (businessPhotos !== undefined && !Array.isArray(businessPhotos)) {
+    throw new ValidationError("businessPhotos must be an array");
   }
 
-  businessPhotos.forEach((photoUrl, index) => {
+  (businessPhotos || []).forEach((photoUrl, index) => {
     if (!isValidUrl(photoUrl)) {
       throw new ValidationError(`businessPhotos[${index}] must be a valid URL`);
     }
@@ -381,15 +378,20 @@ const addBusinessVerification = async (businessId, payload) => {
     throw new NotFoundError("Business not found");
   }
 
+  const verificationDetails = {
+    cacFile: cacCertificateUrl,
+    profilePicture: profilePhotoUrl,
+    kycLevel: Math.max(business.kycLevel || 0, 3),
+  };
+  if (businessPhotos !== undefined) {
+    verificationDetails.businessPhotos = businessPhotos;
+  }
+
   const updated = await businessRepository.saveBusinessVerificationDetails(
     businessId,
-    {
-      cacFile: cacCertificateUrl,
-      profilePicture: profilePhotoUrl,
-      businessPhotos,
-      kycLevel: Math.max(business.kycLevel || 0, 3),
-    },
+    verificationDetails,
   );
+  await notifyKycCompleted("business", updated, business.kycCompleted);
 
   return {
     cacCertificateUrl: updated.cacFile,
@@ -400,8 +402,14 @@ const addBusinessVerification = async (businessId, payload) => {
 
 // 7. Add or update service details for the authenticated business owner.
 const addServiceDetails = async (businessId, payload = {}) => {
-  const { service, availableDays, businessHours, servicePlace, studioImages } =
-    payload;
+  const {
+    businessCategory,
+    service,
+    availableDays,
+    businessHours,
+    servicePlace,
+    studioImages,
+  } = payload;
 
   if (service !== undefined && !Array.isArray(service)) {
     throw new ValidationError("service must be an array");
@@ -410,7 +418,9 @@ const addServiceDetails = async (businessId, payload = {}) => {
   if (availableDays !== undefined && !Array.isArray(availableDays)) {
     throw new ValidationError("availableDays must be an array");
   }
-
+  if (businessCategory !== undefined && typeof businessCategory !== "string") {
+    throw new ValidationError("businessCategory must be a string");
+  }
   if (
     businessHours !== undefined &&
     (typeof businessHours !== "object" ||
@@ -438,12 +448,12 @@ const addServiceDetails = async (businessId, payload = {}) => {
     details.service = service.map((item = {}) => ({
       serviceName: item.serviceName,
       duration: item.duration,
-       pricingModel: {
-            walk_in: item.pricingModel?.walk_in,
-            provider_address: item.pricingModel?.provider_address,
-            customer_address: item.pricingModel?.customer_address,
-          },
-          fixedPrice: item.fixedPrice,
+      pricingModel: {
+        walk_in: item.pricingModel?.walk_in,
+        provider_address: item.pricingModel?.provider_address,
+        customer_address: item.pricingModel?.customer_address,
+      },
+      fixedPrice: item.fixedPrice,
     }));
   }
   if (availableDays !== undefined) details.availableDays = availableDays;
@@ -453,6 +463,8 @@ const addServiceDetails = async (businessId, payload = {}) => {
       end: businessHours.end,
     };
   }
+
+  if (businessCategory !== undefined) details.businessCategory = businessCategory;
   if (servicePlace !== undefined) details.servicePlace = servicePlace;
   if (studioImages !== undefined) {
     details.studioImages = studioImages.map((item = {}) => ({
@@ -469,6 +481,7 @@ const addServiceDetails = async (businessId, payload = {}) => {
       kycLevel: Math.max(business.kycLevel || 0, 4),
     },
   );
+  await notifyKycCompleted("business", updated, business.kycCompleted);
 
   return {
     service: updated.service,
@@ -476,6 +489,7 @@ const addServiceDetails = async (businessId, payload = {}) => {
     businessHours: updated.businessHours,
     servicePlace: updated.servicePlace,
     studioImages: updated.studioImages,
+    businessCategory: updated.businessCategory,
   };
 };
 // 7. Add one or more vehicles for the authenticated business owner.
@@ -544,6 +558,7 @@ const addVehicleDetails = async (businessId, vehicles) => {
       kycLevel: Math.max(business.kycLevel || 0, 4),
     },
   );
+  await notifyKycCompleted("business", updated, business.kycCompleted);
 
   const createdVehicles = updated.vehicles
     .slice(-newVehicles.length)

@@ -334,6 +334,38 @@ const sendDriverInvitationEmail = async (email, data = {}) => {
   }
 };
 
+const sendAdminInvitationEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  sendSmtpEmail.subject = "You have been invited to the SabiGuy admin team";
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate("admin-invitation.njk", {
+    adminName: data.adminName || "there",
+    adminRole: data.adminRole,
+    invitedBy: data.invitedBy,
+    inviteLink: data.inviteLink,
+    year: new Date().getFullYear(),
+  });
+  sendSmtpEmail.sender = sender;
+  const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+  return { success: true, messageId: result.body.messageId };
+};
+
+const sendAdminEventEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  const isKycCompleted = data.event === "kyc_completed";
+  sendSmtpEmail.subject = isKycCompleted
+    ? `SabiGuy ${data.accountType} completed KYC`
+    : `New ${data.accountType} account on SabiGuy`;
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate("admin-account-notification.njk", {
+    ...data,
+    year: new Date().getFullYear(),
+  });
+  sendSmtpEmail.sender = sender;
+  const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+  return { success: true, messageId: result.body.messageId };
+};
+
 const sendBusinessWelcomeMail = async (email, data = {}) => {
   const sendSmtpEmail = new brevo.SendSmtpEmail();
 
@@ -371,5 +403,7 @@ module.exports = {
   sendBusinessKycVerificationEmail,
   sendBusinessKycDisputeEmail,
   sendDriverInvitationEmail,
+  sendAdminInvitationEmail,
+  sendAdminEventEmail,
   sendBusinessWelcomeMail,
 };
