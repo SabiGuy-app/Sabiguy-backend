@@ -41,7 +41,7 @@ const authMiddleware = async (req, res, next) => {
       return res.status(403).json({ message: "Account deactivated" });
     }
 
-    req.user = { id: user._id, role, email };
+    req.user = { id: user._id, role, adminRole: user.adminRole, email };
     next();
   } catch (err) {
     return res.status(401).json({ message: "Invalid token" });

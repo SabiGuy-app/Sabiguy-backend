@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const Business = require('./business.model');
+const { notifyAdminTeam } = require('../../services/adminNotification.service');
 const authService = require('../auth/auth.service');
 const {
   sendEmailOtp,
@@ -64,7 +65,7 @@ const guardAccountStatus = (business) => {
   }
 };
 
-const registerBusiness = async ({ email, password, fullName, phoneNumber }) => {
+const registerBusiness = async ({ email, password, fullName, phoneNumber, signupPlatform = "unknown" }) => {
   const normalizedEmail = normalizeEmail(email);
 
   if (!normalizedEmail || !password) {
@@ -113,6 +114,7 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber }) => {
 
   const newBusiness = new Business({
     email: normalizedEmail,
+    signupPlatform,
     password: hashedPassword,
     fullName,
     phoneNumber: phoneNumber || undefined,
@@ -127,6 +129,7 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber }) => {
   });
 
   await newBusiness.save();
+  await notifyAdminTeam({ event: 'account_created', accountType: 'business', account: newBusiness });
   await sendEmailOtp(normalizedEmail, otp);
 
   const token = authService.generateAccessToken(newBusiness);
@@ -245,7 +248,7 @@ const loginBusiness = async ({ email, password }) => {
   };
 };
 
-const googleAuthBusiness = async (token) => {
+const googleAuthBusiness = async (token, signupPlatform = "unknown") => {
   if (!token) {
     throw new AppError('Token is required', 400);
   }
@@ -310,6 +313,7 @@ const googleAuthBusiness = async (token) => {
   // Create new business with Google
   business = new Business({
     email: normalizedEmail,
+    signupPlatform,
     password: null,
     fullName: name,
     isGoogleUser: true,
@@ -323,6 +327,8 @@ const googleAuthBusiness = async (token) => {
   });
 
   const { token: jwtToken, refreshToken } = await issueTokens(business);
+
+  await notifyAdminTeam({ event: 'account_created', accountType: 'business', account: business });
 
   await emailHelper.sendBusinessWelcomeEmailSafe(normalizedEmail, {
     firstName: accountHelper.getFirstName(name),

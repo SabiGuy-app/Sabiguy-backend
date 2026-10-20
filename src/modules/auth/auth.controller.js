@@ -7,6 +7,8 @@ const Provider = require("../../../models/ServiceProvider");
 const Buyer = require("../../../models/ServiceUser");
 const Admin = require("../admin/Admin.model");
 const authService = require("./auth.service");
+const { notifyAdminTeam } = require("../../services/adminNotification.service");
+const { getClientPlatform } = require("../../services/clientPlatform.service");
 
 dotenv.config();
 const {
@@ -120,6 +122,7 @@ exports.googleSignUp = async (req, res) => {
     // Create new provider
     const newUser = new Provider({
       email: normalizedEmail,
+      signupPlatform: getClientPlatform(req),
       fullName: name,
       password: null,
       otp: null,
@@ -139,6 +142,7 @@ exports.googleSignUp = async (req, res) => {
 
     accountHelper.addAuthMethod(newUser, "google");
     await newUser.save();
+    await notifyAdminTeam({ event: "account_created", accountType: "provider", account: newUser });
 
     const welcomeSent = await emailHelper.sendWelcomeSafe(newUser.email, {
       firstName: accountHelper.getFirstName(newUser.fullName),
@@ -394,7 +398,6 @@ exports.registerBuyer = async (req, res) => {
         .status(500)
         .json({ message: "Failed to send otp, please try again" });
     }
-
     const token = jwt.sign(
       { id: newBuyer._id, role: newBuyer.role, email: newBuyer.email },
       process.env.JWT_SECRET,
@@ -460,6 +463,7 @@ exports.registerProvider = async (req, res) => {
 
     const newProvider = new Provider({
       email: normalizedEmail,
+      signupPlatform: getClientPlatform(req),
       password: hashedPassword,
       otp,
       otpExpiresAt,
@@ -485,6 +489,7 @@ exports.registerProvider = async (req, res) => {
         .status(500)
         .json({ message: "Failed to send otp, please try again" });
     }
+    await notifyAdminTeam({ event: "account_created", accountType: "provider", account: newProvider });
     const token = jwt.sign(
       { id: newProvider._id, role: newProvider.role, email: newProvider.email },
       process.env.JWT_SECRET,
@@ -534,7 +539,6 @@ exports.verifyEmail = async (req, res) => {
     accountHelper.addAuthMethod(user, "email");
 
     await user.save();
-
     let welcomeEmailSent = true;
     try {
       const firstName = user.fullName
