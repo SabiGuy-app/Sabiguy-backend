@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 const Business = require("./business.model");
+const Product = require("../products/product.model");
 const FleetInvitation = require("./fleetInvitation.model");
 const businessRepository = require("./business.repository");
 const notificationService = require("../../services/notification.service");
@@ -56,6 +57,15 @@ const getBusinessesWithPagination = async (filters = {}, { skip, limit }) => {
       Business.countDocuments(query),
     ]);
 
+    const products = await Product.find({ ownerType: "business", owner: { $in: businesses.map((business) => business._id) }, status: "approved" }).lean();
+    const productsByOwner = new Map();
+    products.forEach((product) => {
+      const key = String(product.owner);
+      if (!productsByOwner.has(key)) productsByOwner.set(key, []);
+      productsByOwner.get(key).push(product);
+    });
+    businesses.forEach((business) => { business.products = productsByOwner.get(String(business._id)) || []; });
+
     return {
       businesses,
       total,
@@ -76,7 +86,9 @@ const getBusinessById = async (businessId) => {
     throw new NotFoundError("Business not found");
   }
 
-  return business;
+  const result = business.toObject ? business.toObject() : business;
+  result.products = await Product.find({ ownerType: "business", owner: business._id, status: "approved" }).lean();
+  return result;
 };
 
 // 1. Invite a driver to a business/fleet.

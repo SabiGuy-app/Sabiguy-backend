@@ -366,6 +366,35 @@ const sendAdminEventEmail = async (email, data = {}) => {
   return { success: true, messageId: result.body.messageId };
 };
 
+const sendProductSubmittedEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  sendSmtpEmail.subject = `Product pending approval: ${data.productName || "New product"}`;
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate("product-submitted.njk", {
+    ...data,
+    year: new Date().getFullYear(),
+  });
+  sendSmtpEmail.sender = sender;
+  const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+  return { success: true, messageId: result.body.messageId };
+};
+
+const sendProductReviewEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  const approved = data.status === "approved";
+  sendSmtpEmail.subject = approved
+    ? `Your product was approved: ${data.productName}`
+    : `An update on your product: ${data.productName}`;
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate("product-review-result.njk", {
+    ...data,
+    year: new Date().getFullYear(),
+  });
+  sendSmtpEmail.sender = sender;
+  const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+  return { success: true, messageId: result.body.messageId };
+};
+
 const sendBusinessWelcomeMail = async (email, data = {}) => {
   const sendSmtpEmail = new brevo.SendSmtpEmail();
 
@@ -405,5 +434,7 @@ module.exports = {
   sendDriverInvitationEmail,
   sendAdminInvitationEmail,
   sendAdminEventEmail,
+  sendProductSubmittedEmail,
+  sendProductReviewEmail,
   sendBusinessWelcomeMail,
 };

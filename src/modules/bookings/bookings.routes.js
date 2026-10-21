@@ -79,6 +79,10 @@ const onlyRole = require("../../../middleware/roleMiddleware.js");
  *                 items:
  *                   type: string
  *                 description: Attachments (images url, documents url)
+ *               packageImage:
+ *                 type: string
+ *                 format: uri
+ *                 description: Optional URL of the package image
  *     responses:
  *       201:
  *         description: Booking created successfully
