@@ -1,0 +1,13 @@
+<!doctype html>
+<html><body style="font-family:Arial,sans-serif;color:#1f2937;line-height:1.6">
+  <h2>Product {{ status }}</h2>
+  <p>Hello {{ accountName }},</p>
+  {% if status == "approved" %}
+    <p>Your product <strong>{{ productName }}</strong> has been approved and can now appear on your SabiGuy profile.</p>
+  {% else %}
+    <p>Your product <strong>{{ productName }}</strong> was not approved.</p>
+    {% if reviewNote %}<p><strong>Review note:</strong> {{ reviewNote }}</p>{% endif %}
+  {% endif %}
+  <p><strong>Price:</strong> {{ currency }} {{ price }}</p>
+  <small>© {{ year }} SabiGuy</small>
+</body></html>
