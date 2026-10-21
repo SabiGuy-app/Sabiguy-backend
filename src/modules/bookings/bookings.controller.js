@@ -31,6 +31,7 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "payment_pending",
   "booking_expired",
   "expired",
+  "declined"
 ]; // Bookings that count towards provider activity
 const DELETABLE_BOOKING_STATUSES = [
   "pending_providers",
@@ -455,6 +456,7 @@ class BookingController {
         endDate,
         budget,
         attachments,
+        packageImage,
         modeOfDelivery: modeOfDeliveryRaw,
         modeOfDelivey,
         applyRideDiscount = false,
@@ -573,6 +575,7 @@ class BookingController {
         startDate,
         endDate,
         budget,
+        packageImage,
         modeOfDelivery,
         applyRideDiscount,
         attachments: attachments || [],
@@ -1864,8 +1867,10 @@ class BookingController {
             pickupAddress: booking.pickupLocation?.address,
             dropoffAddress: booking.dropoffLocation?.address,
             distance: booking.distance?.value,
+            packageImage: booking.packageImage,
             calculatedPrice: booking.driverReceives,
             urgency: "high",
+
           })
           .catch((err) => {
             console.error(

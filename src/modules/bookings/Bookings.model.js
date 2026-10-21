@@ -319,6 +319,10 @@ const bookingSchema = new mongoose.Schema(
 
     // Attachments
     attachments: [String],
+    packageImage: {
+      type: String,
+      trim: true,
+    },
 
     // Cancellation
     cancellationReason: String,

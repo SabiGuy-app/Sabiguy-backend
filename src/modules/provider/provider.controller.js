@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const Provider = require("../../../models/ServiceProvider");
+const Product = require("../products/product.model");
 const Buyer = require("../../../models/ServiceUser");
 const Booking = require("../bookings/Bookings.model.js");
 const notificationService = require("../../services/notification.service");
@@ -1309,6 +1310,15 @@ class ProviderController {
         Provider.countDocuments(query),
       ]);
 
+      const products = await Product.find({ ownerType: "provider", owner: { $in: providers.map((p) => p._id) }, status: "approved" }).lean();
+      const productsByOwner = new Map();
+      products.forEach((product) => {
+        const key = String(product.owner);
+        if (!productsByOwner.has(key)) productsByOwner.set(key, []);
+        productsByOwner.get(key).push(product);
+      });
+      providers.forEach((provider) => { provider.products = productsByOwner.get(String(provider._id)) || []; });
+
       return res.status(200).json({
         success: true,
         service: service || "all",
@@ -1356,6 +1366,8 @@ class ProviderController {
           message: "Provider not found",
         });
       }
+
+      provider.products = await Product.find({ ownerType: "provider", owner: provider._id, status: "approved" }).lean();
 
       return res.status(200).json({
         success: true,
