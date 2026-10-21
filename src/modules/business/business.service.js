@@ -1,6 +1,17 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 const Business = require('./business.model');
+const Product = require('../products/product.model');
+const FleetInvitation = require('./fleetInvitation.model');
+const businessRepository = require('./business.repository');
+const notificationService = require('../../services/notification.service');
+const { sendDriverInvitationEmail } = require('../../config/emailVerification');
+const {
+  notifyKycCompleted,
+} = require('../../services/adminNotification.service');
+const mongoose = require('mongoose');
+const crypto = require('crypto');
+const Business = require('./business.model');
 const FleetInvitation = require('./fleetInvitation.model');
 const businessRepository = require('./business.repository');
 const notificationService = require('../../services/notification.service');
@@ -55,6 +66,21 @@ const getBusinessesWithPagination = async (filters = {}, { skip, limit }) => {
       Business.countDocuments(query),
     ]);
 
+    const products = await Product.find({
+      ownerType: 'business',
+      owner: { $in: businesses.map((business) => business._id) },
+      status: 'approved',
+    }).lean();
+    const productsByOwner = new Map();
+    products.forEach((product) => {
+      const key = String(product.owner);
+      if (!productsByOwner.has(key)) productsByOwner.set(key, []);
+      productsByOwner.get(key).push(product);
+    });
+    businesses.forEach((business) => {
+      business.products = productsByOwner.get(String(business._id)) || [];
+    });
+
     return {
       businesses,
       total,
@@ -75,7 +101,13 @@ const getBusinessById = async (businessId) => {
     throw new NotFoundError('Business not found');
   }
 
-  return business;
+  const result = business.toObject ? business.toObject() : business;
+  result.products = await Product.find({
+    ownerType: 'business',
+    owner: business._id,
+    status: 'approved',
+  }).lean();
+  return result;
 };
 
 // 1. Invite a driver to a business/fleet.
@@ -284,20 +316,13 @@ const isValidUrl = (value) => {
 
 // 5. Create the authenticated business owner's business profile.
 const addBusinessDetails = async (businessId, payload) => {
-  const {
-    businessName,
-    businessAddress,
-    cityOfOperation,
-    ninUrl,
-    businessCategory,
-  } = payload;
+  const { businessName, businessAddress, cityOfOperation, ninUrl } = payload;
 
   const requiredFields = {
     businessName,
     businessAddress,
     cityOfOperation,
     ninUrl,
-    businessCategory,
   };
 
   const missingField = Object.entries(requiredFields).find(
@@ -328,16 +353,15 @@ const addBusinessDetails = async (businessId, payload) => {
     BusinessAddress: businessAddress,
     cityOfOperation,
     ninSlip: ninUrl,
-    businessCategory,
     kycLevel: Math.max(business.kycLevel || 0, 2),
   });
+  await notifyKycCompleted('business', updated, business.kycCompleted);
 
   return {
     businessName: updated.BusinessName,
     businessAddress: updated.BusinessAddress,
     cityOfOperation: updated.cityOfOperation,
     ninUrl: updated.ninSlip,
-    businessCategory: updated.businessCategory,
   };
 };
 
@@ -348,7 +372,6 @@ const addBusinessVerification = async (businessId, payload) => {
   const requiredFields = {
     cacCertificateUrl,
     profilePhotoUrl,
-    businessPhotos,
   };
 
   const missingField = Object.entries(requiredFields).find(
@@ -370,7 +393,7 @@ const addBusinessVerification = async (businessId, payload) => {
     throw new ValidationError('businessPhotos must be a non-empty array');
   }
 
-  businessPhotos.forEach((photoUrl, index) => {
+  (businessPhotos || []).forEach((photoUrl, index) => {
     if (!isValidUrl(photoUrl)) {
       throw new ValidationError(`businessPhotos[${index}] must be a valid URL`);
     }
@@ -381,15 +404,20 @@ const addBusinessVerification = async (businessId, payload) => {
     throw new NotFoundError('Business not found');
   }
 
+  const verificationDetails = {
+    cacFile: cacCertificateUrl,
+    profilePicture: profilePhotoUrl,
+    kycLevel: Math.max(business.kycLevel || 0, 3),
+  };
+  if (businessPhotos !== undefined) {
+    verificationDetails.businessPhotos = businessPhotos;
+  }
+
   const updated = await businessRepository.saveBusinessVerificationDetails(
     businessId,
-    {
-      cacFile: cacCertificateUrl,
-      profilePicture: profilePhotoUrl,
-      businessPhotos,
-      kycLevel: Math.max(business.kycLevel || 0, 3),
-    },
+    verificationDetails,
   );
+  await notifyKycCompleted('business', updated, business.kycCompleted);
 
   return {
     cacCertificateUrl: updated.cacFile,
@@ -400,8 +428,14 @@ const addBusinessVerification = async (businessId, payload) => {
 
 // 7. Add or update service details for the authenticated business owner.
 const addServiceDetails = async (businessId, payload = {}) => {
-  const { service, availableDays, businessHours, servicePlace, studioImages } =
-    payload;
+  const {
+    businessCategory,
+    service,
+    availableDays,
+    businessHours,
+    servicePlace,
+    studioImages,
+  } = payload;
 
   if (service !== undefined && !Array.isArray(service)) {
     throw new ValidationError('service must be an array');
@@ -451,6 +485,12 @@ const addServiceDetails = async (businessId, payload = {}) => {
         customer_address: item.pricingModel?.customer_address,
       },
       fixedPrice: item.fixedPrice,
+      pricingModel: {
+        walk_in: item.pricingModel?.walk_in,
+        provider_address: item.pricingModel?.provider_address,
+        customer_address: item.pricingModel?.customer_address,
+      },
+      fixedPrice: item.fixedPrice,
     }));
   }
   if (availableDays !== undefined) details.availableDays = availableDays;
@@ -460,6 +500,9 @@ const addServiceDetails = async (businessId, payload = {}) => {
       end: businessHours.end,
     };
   }
+
+  if (businessCategory !== undefined)
+    details.businessCategory = businessCategory;
   if (servicePlace !== undefined) details.servicePlace = servicePlace;
   if (studioImages !== undefined) {
     details.studioImages = studioImages.map((item = {}) => ({
@@ -476,6 +519,7 @@ const addServiceDetails = async (businessId, payload = {}) => {
       kycLevel: Math.max(business.kycLevel || 0, 4),
     },
   );
+  await notifyKycCompleted('business', updated, business.kycCompleted);
 
   return {
     service: updated.service,
@@ -483,6 +527,7 @@ const addServiceDetails = async (businessId, payload = {}) => {
     businessHours: updated.businessHours,
     servicePlace: updated.servicePlace,
     studioImages: updated.studioImages,
+    businessCategory: updated.businessCategory,
   };
 };
 // 7. Add one or more vehicles for the authenticated business owner.
@@ -551,6 +596,7 @@ const addVehicleDetails = async (businessId, vehicles) => {
       kycLevel: Math.max(business.kycLevel || 0, 4),
     },
   );
+  await notifyKycCompleted('business', updated, business.kycCompleted);
 
   const createdVehicles = updated.vehicles
     .slice(-newVehicles.length)

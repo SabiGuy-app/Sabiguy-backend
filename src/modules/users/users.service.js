@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Provider = require('../../../models/ServiceProvider');
 const Buyer = require('../../../models/ServiceUser');
 const Business = require('../business/business.model'); 
+const Product = require('../products/product.model');
 const geolocationService = require('../../services/geolocation.service');
 const { sendNinSubmittedEmail } = require('../../config/emailVerification');
 const { getPagination } = require('../../shared/utils/pagination');
@@ -182,10 +183,18 @@ const getAllUsers = async (req) => {
 };
 
 const getUserByEmail = async (email) => {
-  const buyer = await Buyer.findOne({ email }).select('-password');
-  const provider = await Provider.findOne({ email }).select('-password');
-  const business = await Business.findOne({ email }).select('-password');
-  return buyer || provider || business;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const buyer = await Buyer.findOne({ email: normalizedEmail }).select('-password').lean();
+  const provider = await Provider.findOne({ email: normalizedEmail }).select('-password').lean();
+  const business = await Business.findOne({ email: normalizedEmail }).select('-password').lean();
+  const account = buyer || provider || business;
+  if (!account) return null;
+  if (provider && account === provider) {
+    account.products = await Product.find({ ownerType: 'provider', owner: provider._id }).sort({ createdAt: -1 }).lean();
+  } else if (business && account === business) {
+    account.products = await Product.find({ ownerType: 'business', owner: business._id }).sort({ createdAt: -1 }).lean();
+  }
+  return account;
 };
 
 const getUserById = async (id) => {

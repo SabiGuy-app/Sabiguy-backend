@@ -72,7 +72,6 @@ router.get("/getAllBusinesses", authMiddleware, getAllBusinesses);
  *               - businessAddress
  *               - cityOfOperation
  *               - ninUrl
- *               - businessCategory
  *             properties:
  *               businessName:
  *                 type: string
@@ -87,10 +86,6 @@ router.get("/getAllBusinesses", authMiddleware, getAllBusinesses);
  *                 type: string
  *                 description: URL of the NIN slip/document
  *                 example: "https://res.cloudinary.com/demo/image/upload/v123456/nin-slip.jpg"
- *               businessCategory:
- *                 type: string
- *                 description: Category of the business
- *                 example: "Transport & Logistics"
  *     responses:
  *       201:
  *         description: Business details created successfully
@@ -129,7 +124,6 @@ router.post(
  *             required:
  *               - cacCertificateUrl
  *               - profilePhotoUrl
- *               - businessPhotos
  *             properties:
  *               cacCertificateUrl:
  *                 type: string
@@ -141,7 +135,7 @@ router.post(
  *                 example: "https://res.cloudinary.com/demo/image/upload/v123456/profile.jpg"
  *               businessPhotos:
  *                 type: array
- *                 description: URLs of business/store photos
+ *                 description: Optional URLs of business/store photos
  *                 items:
  *                   type: string
  *                   example: "https://res.cloudinary.com/demo/image/upload/v123456/store-1.jpg"
@@ -262,7 +256,7 @@ router.post(
  * /api/v1/businesses/service-details:
  *   post:
  *     summary: Add or update business service details
- *     description: Stores services, working days, business hours, service locations, and studio images for the authenticated business owner. All request properties are optional, so a partial update is supported.
+ *     description: Stores the business category, services, working days, business hours, service locations, and studio images for the authenticated business owner. All request properties are optional, so a partial update is supported.
  *     tags: [Business]
  *     security:
  *       - bearerAuth: []
@@ -273,6 +267,10 @@ router.post(
  *           schema:
  *             type: object
  *             properties:
+ *               businessCategory:
+ *                 type: string
+ *                 description: Category of the business
+ *                 example: "Transport & Logistics"
  *               service:
  *                 type: array
  *                 description: Services offered by the business
@@ -283,11 +281,20 @@ router.post(
  *                       type: string
  *                       example: "Home Cleaning"
  *                     pricingModel:
- *                       type: string
- *                       example: "fixed"
- *                     price:
- *                       type: string
- *                       example: "25000"
+ *                       type: object
+ *                       properties:
+ *                         walk_in:
+ *                           type: number
+ *                           example: 25000
+ *                         provider_address:
+ *                           type: number
+ *                           example: 30000
+ *                         customer_address:
+ *                           type: number
+ *                           example: 35000
+ *                     fixedPrice:
+ *                       type: number
+ *                       example: 25000
  *               availableDays:
  *                 type: array
  *                 description: Days on which the business is available

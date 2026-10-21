@@ -93,6 +93,86 @@ router.post(
 
 /**
  * @swagger
+ * /api/v1/admin/invitations:
+ *   post:
+ *     summary: Invite an admin
+ *     description: Sends an email invitation to create an admin account with the selected role. Requires a super admin.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, adminRole]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "verification@example.com"
+ *               adminRole:
+ *                 type: string
+ *                 enum: [super_admin, verification_admin, operations_admin, support_admin, finance_admin]
+ *                 example: verification_admin
+ *               fullName:
+ *                 type: string
+ *                 example: "Jane Admin"
+ *     responses:
+ *       201:
+ *         description: Admin invitation sent
+ *       400:
+ *         description: Email or admin role is invalid
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Super admin access required
+ *       409:
+ *         description: Email is already in use or the super admin limit is reached
+ *       500:
+ *         description: Invitation could not be sent
+ */
+router.post("/invitations", adminAuthLimiter, authMiddleware, onlyRole("admin"), AdminController.inviteAdmin);
+
+/**
+ * @swagger
+ * /api/v1/admin/invitations/accept:
+ *   post:
+ *     summary: Accept an admin invitation
+ *     description: Uses the invitation token from the email to set the admin password and activate the account.
+ *     tags: [Admins]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token, password]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 example: "invitation-token-from-email"
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *                 example: "StrongPassword123"
+ *               fullName:
+ *                 type: string
+ *                 example: "Jane Admin"
+ *     responses:
+ *       200:
+ *         description: Invitation accepted; admin can log in
+ *       400:
+ *         description: Invitation token is invalid or expired, or password is too short
+ *       500:
+ *         description: Invitation could not be accepted
+ */
+router.post("/invitations/accept", adminAuthLimiter, AdminController.acceptAdminInvitation);
+
+/**
+ * @swagger
  * /api/v1/admin/{bookingId}/delete-booking:
  *   delete:
  *     summary: Delete booking

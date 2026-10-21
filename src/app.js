@@ -21,6 +21,7 @@ const businessAuthRoutes = require('./modules/business/business.auth.routes');
 const businessRoutes = require('./modules/business/business.routes');
 const businessStaffRoutes = require('./modules/business/staff.routes');
 const businessDashboardRoutes = require('./modules/business/dashboard.routes');
+const productRoutes = require('./modules/products/product.route');
 
 const createApp = () => {
   const app = express();

@@ -45,6 +45,7 @@ const options = {
             subCategory: { type: 'string' },
             title: { type: 'string' },
             description: { type: 'string' },
+            packageImage: { type: 'string', format: 'uri' },
             location: {
               type: 'object',
               properties: {
@@ -192,6 +193,8 @@ const options = {
     path.join(__dirname, '..', 'modules', 'files', 'files.routes.js'),
     path.join(__dirname, '..', 'modules', 'users', 'users.routes.js'),
     path.join(__dirname, '..', 'modules', 'wallet', 'wallet.routes.js'),
+    path.join(__dirname, '..', 'modules', 'products', 'product.route.js'),
+
     // path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
     path.join(
       __dirname,
