@@ -1,14 +1,14 @@
-const { OAuth2Client } = require("google-auth-library");
-const dotenv = require("dotenv");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const axios = require("axios");
-const Provider = require("../../../models/ServiceProvider");
-const Buyer = require("../../../models/ServiceUser");
-const Admin = require("../admin/Admin.model");
-const authService = require("./auth.service");
-const { notifyAdminTeam } = require("../../services/adminNotification.service");
-const { getClientPlatform } = require("../../services/clientPlatform.service");
+const { OAuth2Client } = require('google-auth-library');
+const dotenv = require('dotenv');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const axios = require('axios');
+const Provider = require('../../../models/ServiceProvider');
+const Buyer = require('../../../models/ServiceUser');
+const Admin = require('../admin/Admin.model');
+const authService = require('./auth.service');
+const { notifyAdminTeam } = require('../../services/adminNotification.service');
+const { getClientPlatform } = require('../../services/clientPlatform.service');
 
 dotenv.config();
 const {
@@ -17,12 +17,12 @@ const {
   passwordChangedEmail,
   sendWelcomeEmail,
   sendAccountDeletionOtp,
-} = require("../../config/emailVerification");
+} = require('../../config/emailVerification');
 const {
   findUserByEmailAcrossDb,
   findUserByPhoneAcrossDb,
   normalizePhoneNumber,
-} = require("../../services/identity.service");
+} = require('../../services/identity.service');
 
 const {
   AppError,
@@ -30,7 +30,7 @@ const {
   passwordHelper,
   emailHelper,
   accountHelper,
-} = require("../../shared/utils/auth.helpers");
+} = require('../../shared/utils/auth.helpers');
 
 const roleModelMap = authService.roleModelMap;
 const normalizeEmail = authService.normalizeEmail;
@@ -54,7 +54,7 @@ const findUserAcrossRoles = async (email, roles = authRoles) => {
     const user = await findUserByRoleAndEmail(
       role,
       email,
-      role === "admin" ? { includePassword: true } : undefined,
+      role === 'admin' ? { includePassword: true } : undefined,
     );
     if (user) return { user, role };
   }
@@ -66,7 +66,7 @@ exports.googleSignUp = async (req, res) => {
   const { token } = req.body;
 
   if (!token) {
-    return res.status(400).json({ message: "Token is required" });
+    return res.status(400).json({ message: 'Token is required' });
   }
 
   try {
@@ -78,13 +78,13 @@ exports.googleSignUp = async (req, res) => {
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
 
     if (existingEmail) {
-      if (existingEmail.role === "provider") {
+      if (existingEmail.role === 'provider') {
         const user = existingEmail.user;
-        let message = "Account successfully linked and logged in.";
+        let message = 'Account successfully linked and logged in.';
 
         // If not verified, this implicitly verifies them
         if (!user.emailVerified) {
-          message = "Email verified and account linked successfully.";
+          message = 'Email verified and account linked successfully.';
         }
 
         // Link the account (updates isGoogleUser, googleId, authMethods)
@@ -97,7 +97,7 @@ exports.googleSignUp = async (req, res) => {
             firstName: accountHelper.getFirstName(user.fullName),
             role: user.role,
           });
-          if (!welcomeSent) message += " (Welcome email will be sent shortly)";
+          if (!welcomeSent) message += ' (Welcome email will be sent shortly)';
         }
 
         const jwtToken = generateAccessToken(user);
@@ -116,7 +116,7 @@ exports.googleSignUp = async (req, res) => {
       }
       return res
         .status(400)
-        .json({ message: "Email already in use by another role" });
+        .json({ message: 'Email already in use by another role' });
     }
 
     // Create new provider
@@ -131,7 +131,7 @@ exports.googleSignUp = async (req, res) => {
       isGoogleUser: true,
       googleId,
       profilePicture: picture,
-      role: "provider",
+      role: 'provider',
       kycLevel: 1,
       isOnline: false,
       availability: {
@@ -140,9 +140,13 @@ exports.googleSignUp = async (req, res) => {
       },
     });
 
-    accountHelper.addAuthMethod(newUser, "google");
+    accountHelper.addAuthMethod(newUser, 'google');
     await newUser.save();
-    await notifyAdminTeam({ event: "account_created", accountType: "provider", account: newUser });
+    await notifyAdminTeam({
+      event: 'account_created',
+      accountType: 'provider',
+      account: newUser,
+    });
 
     const welcomeSent = await emailHelper.sendWelcomeSafe(newUser.email, {
       firstName: accountHelper.getFirstName(newUser.fullName),
@@ -157,18 +161,18 @@ exports.googleSignUp = async (req, res) => {
 
     res.status(200).json({
       message: welcomeSent
-        ? "Signup successful! Welcome email sent."
-        : "Signup successful! Welcome email will be sent shortly.",
+        ? 'Signup successful! Welcome email sent.'
+        : 'Signup successful! Welcome email will be sent shortly.',
       token: jwtToken,
       refreshToken,
       user: buildAuthUserPayload(newUser),
       newUser: true,
     });
   } catch (err) {
-    console.error("Google signup failed:", err);
+    console.error('Google signup failed:', err);
     res
       .status(401)
-      .json({ message: "Google signup failed", error: err.message });
+      .json({ message: 'Google signup failed', error: err.message });
   }
 };
 
@@ -176,7 +180,7 @@ exports.googleSignUpBuyer = async (req, res) => {
   const { token } = req.body;
 
   if (!token) {
-    return res.status(400).json({ message: "Token is required" });
+    return res.status(400).json({ message: 'Token is required' });
   }
 
   try {
@@ -187,12 +191,12 @@ exports.googleSignUpBuyer = async (req, res) => {
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
 
     if (existingEmail) {
-      if (existingEmail.role === "buyer") {
+      if (existingEmail.role === 'buyer') {
         const user = existingEmail.user;
-        let message = "Account successfully linked and logged in.";
+        let message = 'Account successfully linked and logged in.';
 
         if (!user.emailVerified) {
-          message = "Email verified and account linked successfully.";
+          message = 'Email verified and account linked successfully.';
         }
 
         accountHelper.linkGoogleAccount(user, googleId);
@@ -203,7 +207,7 @@ exports.googleSignUpBuyer = async (req, res) => {
             firstName: accountHelper.getFirstName(user.fullName),
             role: user.role,
           });
-          if (!welcomeSent) message += " (Welcome email will be sent shortly)";
+          if (!welcomeSent) message += ' (Welcome email will be sent shortly)';
         }
 
         const jwtToken = generateAccessToken(user);
@@ -222,7 +226,7 @@ exports.googleSignUpBuyer = async (req, res) => {
       }
       return res
         .status(400)
-        .json({ message: "Email already in use by another role" });
+        .json({ message: 'Email already in use by another role' });
     }
 
     // Create new buyer
@@ -236,10 +240,10 @@ exports.googleSignUpBuyer = async (req, res) => {
       emailVerified: true,
       isGoogleUser: true,
       googleId,
-      role: "buyer",
+      role: 'buyer',
     });
 
-    accountHelper.addAuthMethod(newUser, "google");
+    accountHelper.addAuthMethod(newUser, 'google');
     await newUser.save();
 
     const welcomeSent = await emailHelper.sendWelcomeSafe(newUser.email, {
@@ -255,18 +259,18 @@ exports.googleSignUpBuyer = async (req, res) => {
 
     res.status(200).json({
       message: welcomeSent
-        ? "Signup successful! Welcome email sent."
-        : "Signup successful! Welcome email will be sent shortly.",
+        ? 'Signup successful! Welcome email sent.'
+        : 'Signup successful! Welcome email will be sent shortly.',
       token: jwtToken,
       refreshToken,
       user: buildAuthUserPayload(newUser),
       newUser: true,
     });
   } catch (err) {
-    console.error("Google signup failed:", err);
+    console.error('Google signup failed:', err);
     res
       .status(401)
-      .json({ message: "Google signup failed", error: err.message });
+      .json({ message: 'Google signup failed', error: err.message });
   }
 };
 
@@ -274,7 +278,7 @@ exports.googleLogIn = async (req, res) => {
   const { token } = req.body;
 
   if (!token) {
-    return res.status(400).json({ message: "Token is required" });
+    return res.status(400).json({ message: 'Token is required' });
   }
 
   try {
@@ -282,23 +286,21 @@ exports.googleLogIn = async (req, res) => {
     const normalizedEmail = normalizeEmail(email);
 
     const { user } = await findUserAcrossRoles(normalizedEmail, [
-      "provider",
-      "buyer",
-      "businessOwner",
+      'provider',
+      'buyer',
+      'businessOwner',
     ]);
 
     if (!user) {
-      return res
-        .status(400)
-        .json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     if (user.isDeleted) {
-      return res.status(403).json({ message: "Account deleted" });
+      return res.status(403).json({ message: 'Account deleted' });
     }
 
     if (user.isActive === false) {
-      return res.status(403).json({ message: "Account deactivated" });
+      return res.status(403).json({ message: 'Account deactivated' });
     }
 
     // Hybrid magic: If they exist but aren't a Google user, link them
@@ -307,7 +309,7 @@ exports.googleLogIn = async (req, res) => {
     } else if (user.googleId && user.googleId !== googleId) {
       return res.status(401).json({
         message:
-          "Google account mismatch. Please use the correct Google account.",
+          'Google account mismatch. Please use the correct Google account.',
       });
     }
 
@@ -323,16 +325,16 @@ exports.googleLogIn = async (req, res) => {
     await user.save();
 
     res.status(200).json({
-      message: "Login successful",
+      message: 'Login successful',
       token: jwtToken,
       refreshToken,
       user: buildAuthUserPayload(user),
     });
   } catch (err) {
-    console.error("Google login failed:", err);
+    console.error('Google login failed:', err);
     res
       .status(401)
-      .json({ message: "Google login failed", error: err.message });
+      .json({ message: 'Google login failed', error: err.message });
   }
 };
 exports.registerBuyer = async (req, res) => {
@@ -343,19 +345,27 @@ exports.registerBuyer = async (req, res) => {
   try {
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
-      if (existingEmail.role === "buyer" && !existingEmail.user.emailVerified) {
+      if (existingEmail.role === 'buyer' && !existingEmail.user.emailVerified) {
         const otp = accountHelper.generateOtp();
         const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
         existingEmail.user.otp = otp;
         existingEmail.user.otpExpiresAt = otpExpiresAt;
         await existingEmail.user.save();
 
-        await sendEmailOtp(normalizedEmail, otp);
+        try {
+          await sendEmailOtp(normalizedEmail, otp);
+        } catch (OtpError) {
+          console.error(
+            'Failed to resend signup OTP:',
+            normalizedEmail,
+            OtpError.message,
+          );
+        }
         return res.status(200).json({
-          message: "Email not verified. OTP sent to email.",
+          message: 'Email not verified. OTP sent to email.',
         });
       }
-      return res.status(400).json({ message: "Email already in use" });
+      return res.status(400).json({ message: 'Email already in use' });
     }
 
     if (normalizedPhoneNumber) {
@@ -363,7 +373,7 @@ exports.registerBuyer = async (req, res) => {
         normalizedPhoneNumber,
       );
       if (existingPhone) {
-        return res.status(400).json({ message: "Phone number already in use" });
+        return res.status(400).json({ message: 'Phone number already in use' });
       }
     }
 
@@ -384,8 +394,8 @@ exports.registerBuyer = async (req, res) => {
       city,
       fullName,
       phoneNumber: normalizedPhoneNumber || phoneNumber,
-      role: "buyer",
-      authMethods: ["email"],
+      role: 'buyer',
+      authMethods: ['email'],
     });
 
     await newBuyer.save();
@@ -393,19 +403,20 @@ exports.registerBuyer = async (req, res) => {
     try {
       await sendEmailOtp(normalizedEmail, otp);
     } catch (OtpError) {
-      await Buyer.findByIdAndDelete(newBuyer._id);
-      return res
-        .status(500)
-        .json({ message: "Failed to send otp, please try again" });
+      console.error(
+        'Failed to send buyer signup OTP:',
+        normalizedEmail,
+        OtpError.message,
+      );
     }
     const token = jwt.sign(
       { id: newBuyer._id, role: newBuyer.role, email: newBuyer.email },
       process.env.JWT_SECRET,
-      { expiresIn: "20h" },
+      { expiresIn: '20h' },
     );
 
     return res.status(201).json({
-      message: "OTP sent to email. Please verify to complete registration.",
+      message: 'OTP sent to email. Please verify to complete registration.',
       buyer: {
         id: newBuyer._id,
         email: newBuyer.email,
@@ -413,8 +424,8 @@ exports.registerBuyer = async (req, res) => {
       token,
     });
   } catch (err) {
-    console.error("Registration error:", err);
-    res.status(500).json({ message: "Server error:", err });
+    console.error('Registration error:', err);
+    res.status(500).json({ message: 'Server error:', err });
   }
 };
 
@@ -427,7 +438,7 @@ exports.registerProvider = async (req, res) => {
     const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
     if (existingEmail) {
       if (
-        existingEmail.role === "provider" &&
+        existingEmail.role === 'provider' &&
         !existingEmail.user.emailVerified
       ) {
         const otp = accountHelper.generateOtp();
@@ -436,12 +447,20 @@ exports.registerProvider = async (req, res) => {
         existingEmail.user.otpExpiresAt = otpExpiresAt;
         await existingEmail.user.save();
 
-        await sendEmailOtp(normalizedEmail, otp);
+        try {
+          await sendEmailOtp(normalizedEmail, otp);
+        } catch (OtpError) {
+          console.error(
+            'Failed to resend signup OTP:',
+            normalizedEmail,
+            OtpError.message,
+          );
+        }
         return res.status(200).json({
-          message: "Email not verified. OTP sent to email.",
+          message: 'Email not verified. OTP sent to email.',
         });
       }
-      return res.status(400).json({ message: "Email already in use" });
+      return res.status(400).json({ message: 'Email already in use' });
     }
 
     if (normalizedPhoneNumber) {
@@ -449,7 +468,7 @@ exports.registerProvider = async (req, res) => {
         normalizedPhoneNumber,
       );
       if (existingPhone) {
-        return res.status(400).json({ message: "Phone number already in use" });
+        return res.status(400).json({ message: 'Phone number already in use' });
       }
     }
 
@@ -470,8 +489,8 @@ exports.registerProvider = async (req, res) => {
       isVerified: false,
       fullName,
       phoneNumber: normalizedPhoneNumber || phoneNumber,
-      role: "provider",
-      authMethods: ["email"],
+      role: 'provider',
+      authMethods: ['email'],
       isOnline: false,
       availability: {
         isAvailable: false,
@@ -484,20 +503,25 @@ exports.registerProvider = async (req, res) => {
     try {
       await sendEmailOtp(normalizedEmail, otp);
     } catch (OtpError) {
-      await Provider.findByIdAndDelete(newProvider._id);
-      return res
-        .status(500)
-        .json({ message: "Failed to send otp, please try again" });
+      console.error(
+        'Failed to send provider signup OTP:',
+        normalizedEmail,
+        OtpError.message,
+      );
     }
-    await notifyAdminTeam({ event: "account_created", accountType: "provider", account: newProvider });
+    await notifyAdminTeam({
+      event: 'account_created',
+      accountType: 'provider',
+      account: newProvider,
+    });
     const token = jwt.sign(
       { id: newProvider._id, role: newProvider.role, email: newProvider.email },
       process.env.JWT_SECRET,
-      { expiresIn: "20h" },
+      { expiresIn: '20h' },
     );
 
     return res.status(201).json({
-      message: "OTP sent to email. Please verify to complete registration.",
+      message: 'OTP sent to email. Please verify to complete registration.',
       provider: {
         id: newProvider._id,
         email: newProvider.email,
@@ -505,8 +529,8 @@ exports.registerProvider = async (req, res) => {
       token,
     });
   } catch (err) {
-    console.error("Registration error:", err);
-    res.status(500).json({ message: "Server error:", err });
+    console.error('Registration error:', err);
+    res.status(500).json({ message: 'Server error:', err });
   }
 };
 
@@ -514,47 +538,47 @@ exports.verifyEmail = async (req, res) => {
   const { otp } = req.body;
   try {
     let user = await Buyer.findOne({ otp: otp });
-    let userType = "buyer";
+    let userType = 'buyer';
 
     if (!user) {
       user = await Provider.findOne({ otp: otp });
-      userType = "provider";
+      userType = 'provider';
     }
     if (!user) {
       const BusinessOwner = roleModelMap.businessOwner;
       user = await BusinessOwner.findOne({ otp: otp });
-      userType = "businessOwner";
+      userType = 'businessOwner';
     }
 
     if (!user) {
-      return res.status(400).json({ message: "Invalid or expired OTP." });
+      return res.status(400).json({ message: 'Invalid or expired OTP.' });
     }
     if (Date.now() > user.otpExpiresAt) {
-      return res.status(400).json({ message: "OTP has expired." });
+      return res.status(400).json({ message: 'OTP has expired.' });
     }
     user.emailVerified = true;
     user.otp = null;
     user.otpExpiresAt = null;
     user.kycLevel = 1;
-    accountHelper.addAuthMethod(user, "email");
+    accountHelper.addAuthMethod(user, 'email');
 
     await user.save();
     let welcomeEmailSent = true;
     try {
       const firstName = user.fullName
         ? user.fullName.trim().split(/\s+/)[0]
-        : "there";
-      const baseUrl = process.env.FRONTEND_URL || "";
+        : 'there';
+      const baseUrl = process.env.FRONTEND_URL || '';
       await sendWelcomeEmail(user.email, {
         firstName,
         year: new Date().getFullYear(),
         appUrl: baseUrl,
-        ctaText: "Open SabiGuy",
+        ctaText: 'Open SabiGuy',
         role: userType,
         // unsubscribeUrl: baseUrl ? `${baseUrl.replace(/\\/$/, "")}/unsubscribe` : "",
       });
     } catch (welcomeError) {
-      console.error("Welcome email error:", welcomeError);
+      console.error('Welcome email error:', welcomeError);
       welcomeEmailSent = false;
     }
 
@@ -565,7 +589,7 @@ exports.verifyEmail = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Something went wrong." });
+    res.status(500).json({ message: 'Something went wrong.' });
   }
 };
 
@@ -575,17 +599,20 @@ exports.resendOTP = async (req, res) => {
 
   try {
     const { user } = await findUserAcrossRoles(normalizedEmail, [
-      "buyer",
-      "provider",
-      "businessOwner",
+      'buyer',
+      'provider',
+      'businessOwner',
     ]);
 
     if (!user) {
-      return res.status(404).json({ message: "If an account exists for this email, you'll receive instructions shortly." });
+      return res.status(404).json({
+        message:
+          "If an account exists for this email, you'll receive instructions shortly.",
+      });
     }
 
     if (user.emailVerified) {
-      return res.status(400).json({ message: "Email already verified" });
+      return res.status(400).json({ message: 'Email already verified' });
     }
 
     const now = new Date();
@@ -597,7 +624,7 @@ exports.resendOTP = async (req, res) => {
     ) {
       return res
         .status(429)
-        .json({ message: "Please wait before requesting another OTP" });
+        .json({ message: 'Please wait before requesting another OTP' });
     }
 
     // Generate new OTP and expiration
@@ -615,12 +642,12 @@ exports.resendOTP = async (req, res) => {
       // Don't delete the user on resend failure — they already exist
       return res
         .status(500)
-        .json({ message: "Failed to send OTP. Please try again" });
+        .json({ message: 'Failed to send OTP. Please try again' });
     }
-    return res.status(200).json({ message: "OTP resent successfully" });
+    return res.status(200).json({ message: 'OTP resent successfully' });
   } catch (err) {
-    console.error("Resend OTP error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error('Resend OTP error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
@@ -628,7 +655,7 @@ exports.login = async (req, res) => {
   const { email, password, role: requestedRole } = req.body || {};
 
   if (!email || !password) {
-    return res.status(400).json({ message: "Email and password are required" });
+    return res.status(400).json({ message: 'Email and password are required' });
   }
 
   const normalizedEmail = normalizeEmail(email);
@@ -638,7 +665,7 @@ exports.login = async (req, res) => {
     return findUserByRoleAndEmail(
       role,
       normalizedEmail,
-      role === "admin" ? { includePassword: true } : undefined,
+      role === 'admin' ? { includePassword: true } : undefined,
     );
   };
 
@@ -648,57 +675,57 @@ exports.login = async (req, res) => {
 
     if (requestedRole) {
       if (!allowedRoles.includes(requestedRole)) {
-        return res.status(400).json({ message: "Invalid role" });
+        return res.status(400).json({ message: 'Invalid role' });
       }
       user = await findUserByRole(requestedRole);
       role = requestedRole;
     } else {
-      user = await findUserByRole("buyer");
-      role = "buyer";
+      user = await findUserByRole('buyer');
+      role = 'buyer';
 
       if (!user) {
-        user = await findUserByRole("provider");
-        role = "provider";
+        user = await findUserByRole('provider');
+        role = 'provider';
       }
       if (!user) {
-        user = await findUserByRole("admin");
-        role = "admin";
+        user = await findUserByRole('admin');
+        role = 'admin';
       }
       if (!user) {
-        user = await findUserByRole("businessOwner");
-        role = "businessOwner";
+        user = await findUserByRole('businessOwner');
+        role = 'businessOwner';
       }
     }
 
     if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     if (user.isDeleted) {
-      return res.status(403).json({ message: "Account deleted" });
+      return res.status(403).json({ message: 'Account deleted' });
     }
 
     if (user.isActive === false) {
-      return res.status(403).json({ message: "Account deactivated" });
+      return res.status(403).json({ message: 'Account deactivated' });
     }
 
     if (!user.emailVerified) {
       return res
         .status(403)
-        .json({ message: "Please verify your email before logging in" });
+        .json({ message: 'Please verify your email before logging in' });
     }
 
     if (user.isGoogleUser && !user.password) {
       return res.status(400).json({
         message:
           "This account was created with Google. Please log in with Google, or use 'Forgot Password' to set a password.",
-        authMethod: "google",
+        authMethod: 'google',
       });
     }
 
     const isMatch = await passwordHelper.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     const token = generateAccessToken(user);
@@ -708,7 +735,7 @@ exports.login = async (req, res) => {
     await user.save();
 
     res.json({
-      message: "Login successful",
+      message: 'Login successful',
       role,
       email: user.email,
       token,
@@ -718,8 +745,8 @@ exports.login = async (req, res) => {
       user: buildAuthUserPayload(user),
     });
   } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ message: "Failed to login", error });
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Failed to login', error });
   }
 };
 
@@ -729,7 +756,7 @@ exports.refreshAuthToken = async (req, res) => {
   if (!refreshToken) {
     return res.status(400).json({
       success: false,
-      message: "refreshToken is required",
+      message: 'refreshToken is required',
     });
   }
 
@@ -742,7 +769,7 @@ exports.refreshAuthToken = async (req, res) => {
     if (!user || user.refreshToken !== refreshToken) {
       return res.status(401).json({
         success: false,
-        message: "Invalid refresh token",
+        message: 'Invalid refresh token',
       });
     }
 
@@ -752,7 +779,7 @@ exports.refreshAuthToken = async (req, res) => {
     ) {
       return res.status(401).json({
         success: false,
-        message: "Refresh token expired",
+        message: 'Refresh token expired',
       });
     }
 
@@ -766,7 +793,7 @@ exports.refreshAuthToken = async (req, res) => {
   } catch (error) {
     return res.status(401).json({
       success: false,
-      message: "Refresh token expired or invalid",
+      message: 'Refresh token expired or invalid',
       error: error.message,
     });
   }
@@ -778,15 +805,16 @@ exports.forgotPassword = async (req, res) => {
 
   try {
     const { user } = await findUserAcrossRoles(normalizedEmail, [
-      "buyer",
-      "provider",
-      "businessOwner",
+      'buyer',
+      'provider',
+      'businessOwner',
     ]);
 
     if (!user) {
-      return res
-        .status(200)
-        .json({ message: "If an account exists for this email, you'll receive instructions shortly."});
+      return res.status(200).json({
+        message:
+          "If an account exists for this email, you'll receive instructions shortly.",
+      });
     }
     const otp = accountHelper.generateOtp();
 
@@ -795,10 +823,10 @@ exports.forgotPassword = async (req, res) => {
     await user.save();
     await forgotPasswordOtp(normalizedEmail, otp);
 
-    res.status(201).json({ message: "Forgot password otp sent to email" });
+    res.status(201).json({ message: 'Forgot password otp sent to email' });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Failed to send OTP email" });
+    return res.status(500).json({ message: 'Failed to send OTP email' });
   }
 };
 
@@ -807,20 +835,21 @@ exports.resendForgotPasswordOtp = async (req, res) => {
   const normalizedEmail = normalizeEmail(email);
 
   if (!email) {
-    return res.status(400).json({ message: "Email is required" });
+    return res.status(400).json({ message: 'Email is required' });
   }
 
   try {
     const { user } = await findUserAcrossRoles(normalizedEmail, [
-      "buyer",
-      "provider",
-      "businessOwner",
+      'buyer',
+      'provider',
+      'businessOwner',
     ]);
 
     if (!user) {
-      return res
-        .status(200)
-        .json({ message: "If an account exists for this email, you'll receive instructions shortly." });
+      return res.status(200).json({
+        message:
+          "If an account exists for this email, you'll receive instructions shortly.",
+      });
     }
 
     const now = new Date();
@@ -831,7 +860,7 @@ exports.resendForgotPasswordOtp = async (req, res) => {
     if (lastSent && now.getTime() - lastSent.getTime() < 60 * 1000) {
       return res
         .status(429)
-        .json({ message: "Please wait before requesting another OTP" });
+        .json({ message: 'Please wait before requesting another OTP' });
     }
 
     const otp = accountHelper.generateOtp();
@@ -845,10 +874,10 @@ exports.resendForgotPasswordOtp = async (req, res) => {
 
     return res
       .status(200)
-      .json({ message: "Forgot password OTP resent to email" });
+      .json({ message: 'Forgot password OTP resent to email' });
   } catch (error) {
-    console.error("Resend forgot password OTP error:", error);
-    return res.status(500).json({ message: "Failed to send OTP email" });
+    console.error('Resend forgot password OTP error:', error);
+    return res.status(500).json({ message: 'Failed to send OTP email' });
   }
 };
 
@@ -858,27 +887,28 @@ exports.verifyResetOtp = async (req, res) => {
 
   try {
     const { user } = await findUserAcrossRoles(normalizedEmail, [
-      "buyer",
-      "provider",
-      "businessOwner",
+      'buyer',
+      'provider',
+      'businessOwner',
     ]);
 
     if (!user) {
-      return res
-        .status(400)
-        .json({ message: "If an account exists for this email, you'll receive instructions shortly."});
+      return res.status(400).json({
+        message:
+          "If an account exists for this email, you'll receive instructions shortly.",
+      });
     }
 
     if (!otp || user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
-    return res.status(200).json({ message: "OTP verified successfully" });
+    return res.status(200).json({ message: 'OTP verified successfully' });
   } catch (error) {
-    console.error("Verify reset OTP error:", error);
+    console.error('Verify reset OTP error:', error);
     return res
       .status(500)
-      .json({ message: "Server error", error: error.message });
+      .json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -896,24 +926,25 @@ exports.resetPassword = async (req, res) => {
 
   try {
     const { user } = await findUserAcrossRoles(normalizedEmail, [
-      "buyer",
-      "provider",
-      "businessOwner",
+      'buyer',
+      'provider',
+      'businessOwner',
     ]);
 
     if (!user) {
-      return res
-        .status(400)
-        .json({ message: "If an account exists for this email, you'll receive instructions shortly." });
+      return res.status(400).json({
+        message:
+          "If an account exists for this email, you'll receive instructions shortly.",
+      });
     }
     if (user.resetOtp !== otp || user.resetOtpExpires < Date.now()) {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
     user.password = await passwordHelper.hash(newPassword);
     user.resetOtp = undefined;
     user.resetOtpExpires = undefined;
-    accountHelper.addAuthMethod(user, "email");
+    accountHelper.addAuthMethod(user, 'email');
     await user.save();
 
     // Non-blocking notification — password is already changed
@@ -926,10 +957,10 @@ exports.resetPassword = async (req, res) => {
       },
     );
 
-    res.json({ message: "Password reset successful" });
+    res.json({ message: 'Password reset successful' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error:", err });
+    res.status(500).json({ message: 'Server error:', err });
   }
 };
 
@@ -941,7 +972,7 @@ exports.changePassword = async (req, res) => {
     if (!newPassword) {
       return res.status(400).json({
         success: false,
-        message: "New password is required",
+        message: 'New password is required',
       });
     }
     const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/;
@@ -949,25 +980,28 @@ exports.changePassword = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Password must contain uppercase, lowercase, number, and special character",
+          'Password must contain uppercase, lowercase, number, and special character',
       });
     }
     // Minimum password strength check
     if (newPassword.length < 8) {
       return res.status(400).json({
         success: false,
-        message: "New password must be at least 8 characters long",
+        message: 'New password must be at least 8 characters long',
       });
     }
 
     // Find user
     const Model = roleModelMap[req.user.role];
-    const user = Model ? await Model.findById(userId).select("+password") : null;
+    const user = Model
+      ? await Model.findById(userId).select('+password')
+      : null;
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "If an account exists for this email, you'll receive instructions shortly.",
+        message:
+          "If an account exists for this email, you'll receive instructions shortly.",
       });
     }
 
@@ -980,7 +1014,7 @@ exports.changePassword = async (req, res) => {
         return res.status(400).json({
           success: false,
           message:
-            "You are setting your first password. Do not send oldPassword.",
+            'You are setting your first password. Do not send oldPassword.',
         });
       }
     } else {
@@ -988,7 +1022,7 @@ exports.changePassword = async (req, res) => {
       if (!oldPassword) {
         return res.status(400).json({
           success: false,
-          message: "Old password is required",
+          message: 'Old password is required',
         });
       }
 
@@ -996,14 +1030,14 @@ exports.changePassword = async (req, res) => {
       if (!isMatch) {
         return res.status(401).json({
           success: false,
-          message: "Old password is incorrect",
+          message: 'Old password is incorrect',
         });
       }
     }
 
     // Hash and save new password
     user.password = await passwordHelper.hash(newPassword);
-    accountHelper.addAuthMethod(user, "email");
+    accountHelper.addAuthMethod(user, 'email');
     await user.save();
 
     try {
@@ -1016,24 +1050,24 @@ exports.changePassword = async (req, res) => {
         },
       );
     } catch (emailError) {
-      console.error("Password change email error:", emailError);
+      console.error('Password change email error:', emailError);
       return res.status(500).json({
         success: false,
-        message: "Password changed, but confirmation email failed to send",
+        message: 'Password changed, but confirmation email failed to send',
       });
     }
 
     return res.status(200).json({
       success: true,
       message: isSettingFirstPassword
-        ? "Password set successfully. You can now log in with email and password."
-        : "Password changed successfully",
+        ? 'Password set successfully. You can now log in with email and password.'
+        : 'Password changed successfully',
     });
   } catch (error) {
-    console.error("Change password error:", error);
+    console.error('Change password error:', error);
     return res.status(500).json({
       success: false,
-      message: "Error changing password",
+      message: 'Error changing password',
     });
   }
 };
@@ -1044,7 +1078,7 @@ exports.confirmPassword = async (req, res) => {
     if (!password) {
       return res.status(400).json({
         success: false,
-        message: "Password is required",
+        message: 'Password is required',
       });
     }
 
@@ -1052,19 +1086,23 @@ exports.confirmPassword = async (req, res) => {
     if (!Model) {
       return res.status(403).json({
         success: false,
-        message: "Password confirmation is not available for this account type",
+        message: 'Password confirmation is not available for this account type',
       });
     }
 
-    const user = await Model.findById(req.user.id).select("+password");
+    const user = await Model.findById(req.user.id).select('+password');
     if (!user) {
-      return res.status(404).json({ success: false, message: "If an account exists for this email, you'll receive instructions shortly." });
+      return res.status(404).json({
+        success: false,
+        message:
+          "If an account exists for this email, you'll receive instructions shortly.",
+      });
     }
 
     if (!user.password) {
       return res.status(400).json({
         success: false,
-        message: "No password is set for this account",
+        message: 'No password is set for this account',
       });
     }
 
@@ -1072,19 +1110,19 @@ exports.confirmPassword = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: "Password is incorrect",
+        message: 'Password is incorrect',
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Password confirmed successfully",
+      message: 'Password confirmed successfully',
     });
   } catch (error) {
-    console.error("Confirm password error:", error);
+    console.error('Confirm password error:', error);
     return res.status(500).json({
       success: false,
-      message: "Failed to confirm password",
+      message: 'Failed to confirm password',
     });
   }
 };
@@ -1104,11 +1142,11 @@ exports.initiateAccountDeletion = async (req, res) => {
     const user = await getAuthenticatedUserForDeletion(req);
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid token" });
+      return res.status(401).json({ message: 'Invalid token' });
     }
 
     if (user.isDeleted) {
-      return res.status(400).json({ message: "Account already deleted" });
+      return res.status(400).json({ message: 'Account already deleted' });
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -1122,21 +1160,21 @@ exports.initiateAccountDeletion = async (req, res) => {
     try {
       await sendAccountDeletionOtp(user.email, otp);
     } catch (emailError) {
-      console.error("Account deletion OTP email error:", emailError);
+      console.error('Account deletion OTP email error:', emailError);
       return res.status(500).json({
-        message: "Failed to send deletion OTP. Please try again.",
+        message: 'Failed to send deletion OTP. Please try again.',
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Account deletion OTP sent to your email.",
+      message: 'Account deletion OTP sent to your email.',
     });
   } catch (error) {
-    console.error("Initiate account deletion error:", error);
+    console.error('Initiate account deletion error:', error);
     return res.status(500).json({
       success: false,
-      message: "Error initiating account deletion",
+      message: 'Error initiating account deletion',
       error: error.message,
     });
   }
@@ -1147,16 +1185,16 @@ exports.verifyAccountDeletionOtp = async (req, res) => {
     const user = await getAuthenticatedUserForDeletion(req);
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid token" });
+      return res.status(401).json({ message: 'Invalid token' });
     }
 
     if (user.isDeleted) {
-      return res.status(400).json({ message: "Account already deleted" });
+      return res.status(400).json({ message: 'Account already deleted' });
     }
 
     const { otp } = req.body || {};
     if (!otp) {
-      return res.status(400).json({ message: "OTP is required" });
+      return res.status(400).json({ message: 'OTP is required' });
     }
 
     if (
@@ -1165,7 +1203,7 @@ exports.verifyAccountDeletionOtp = async (req, res) => {
       !user.accountDeletionOtpExpiresAt ||
       new Date(user.accountDeletionOtpExpiresAt).getTime() < Date.now()
     ) {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
     user.accountDeletionOtpVerified = true;
@@ -1174,13 +1212,13 @@ exports.verifyAccountDeletionOtp = async (req, res) => {
     return res.status(200).json({
       success: true,
       message:
-        "OTP verified successfully. You can now confirm account deletion.",
+        'OTP verified successfully. You can now confirm account deletion.',
     });
   } catch (error) {
-    console.error("Verify account deletion OTP error:", error);
+    console.error('Verify account deletion OTP error:', error);
     return res.status(500).json({
       success: false,
-      message: "Error verifying account deletion OTP",
+      message: 'Error verifying account deletion OTP',
       error: error.message,
     });
   }
@@ -1191,22 +1229,22 @@ exports.confirmAccountDeletion = async (req, res) => {
     const user = await getAuthenticatedUserForDeletion(req);
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid token" });
+      return res.status(401).json({ message: 'Invalid token' });
     }
 
     if (user.isDeleted) {
-      return res.status(400).json({ message: "Account already deleted" });
+      return res.status(400).json({ message: 'Account already deleted' });
     }
 
     if (!user.accountDeletionOtpVerified) {
       return res.status(400).json({
-        message: "Please verify the deletion OTP first.",
+        message: 'Please verify the deletion OTP first.',
       });
     }
 
     const { otp } = req.body || {};
     if (!otp) {
-      return res.status(400).json({ message: "OTP is required" });
+      return res.status(400).json({ message: 'OTP is required' });
     }
 
     if (
@@ -1215,7 +1253,7 @@ exports.confirmAccountDeletion = async (req, res) => {
       !user.accountDeletionOtpExpiresAt ||
       new Date(user.accountDeletionOtpExpiresAt).getTime() < Date.now()
     ) {
-      return res.status(400).json({ message: "Invalid or expired OTP" });
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
     const deletionUpdate = {
@@ -1234,8 +1272,8 @@ exports.confirmAccountDeletion = async (req, res) => {
         accountDeletionOtpVerified: false,
       },
       $unset: {
-        email: "",
-        phoneNumber: "",
+        email: '',
+        phoneNumber: '',
       },
     };
 
@@ -1243,13 +1281,13 @@ exports.confirmAccountDeletion = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Account deleted successfully",
+      message: 'Account deleted successfully',
     });
   } catch (error) {
-    console.error("Confirm account deletion error:", error);
+    console.error('Confirm account deletion error:', error);
     return res.status(500).json({
       success: false,
-      message: "Error confirming account deletion",
+      message: 'Error confirming account deletion',
       error: error.message,
     });
   }
@@ -1260,20 +1298,23 @@ exports.me = async (req, res) => {
     const { id, role } = req.user || {};
 
     if (!id || !role) {
-      return res.status(401).json({ message: "Invalid token" });
+      return res.status(401).json({ message: 'Invalid token' });
     }
 
     const Model = roleModelMap[role];
     if (!Model) {
-      return res.status(403).json({ message: "Invalid role" });
+      return res.status(403).json({ message: 'Invalid role' });
     }
 
     const user = await Model.findById(id).select(
-      "-password -otp -otpExpiresAt -resetOtp -resetOtpExpires -refreshToken",
+      '-password -otp -otpExpiresAt -resetOtp -resetOtpExpires -refreshToken',
     );
 
     if (!user) {
-      return res.status(404).json({ message: "If an account exists for this email, you'll receive instructions shortly." });
+      return res.status(404).json({
+        message:
+          "If an account exists for this email, you'll receive instructions shortly.",
+      });
     }
 
     return res.status(200).json({
@@ -1290,10 +1331,10 @@ exports.me = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Auth me error:", error);
+    console.error('Auth me error:', error);
     return res.status(500).json({
       success: false,
-      message: "Error fetching profile",
+      message: 'Error fetching profile',
       error: error.message,
     });
   }
