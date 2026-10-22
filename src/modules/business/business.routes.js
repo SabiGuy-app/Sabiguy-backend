@@ -13,6 +13,15 @@ const {
   addVehicleDetails,
   getKycLevel,
   addServiceDetails,
+  updateBusinessProfile,
+  updateBusinessOperatingDefaults,
+  updateBusinessPayoutAccount,
+  updateBusinessPayoutSchedule,
+  updateBusinessServices,
+  updateBusinessAvailableDays,
+  updateBusinessServicePlace,
+  updateBusinessHours,
+  updateBusinessStudioImages,
 } = require("./business.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
 const onlyRole = require("../../../middleware/roleMiddleware");
@@ -342,6 +351,384 @@ router.post(
   authMiddleware,
   onlyRole("businessOwner"),
   addServiceDetails,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/profile:
+ *   put:
+ *     summary: Update business profile identity
+ *     description: Partially updates the authenticated business owner's name, city of operation and address.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               businessName:
+ *                 type: string
+ *               cityOfOperation:
+ *                 type: string
+ *               businessAddress:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Business profile updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/profile",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessProfile,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/operating-defaults:
+ *   put:
+ *     summary: Update business operating defaults
+ *     description: Partially updates the authenticated business owner's currency, timezone and week start day.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               currency:
+ *                 type: string
+ *               timezone:
+ *                 type: string
+ *               weekStarts:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Operating defaults updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/operating-defaults",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessOperatingDefaults,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/payout-account:
+ *   put:
+ *     summary: Update business payout account
+ *     description: Partially updates the authenticated business owner's company payout bank account details.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               bankName:
+ *                 type: string
+ *               bankCode:
+ *                 type: string
+ *               accountNumber:
+ *                 type: string
+ *               accountName:
+ *                 type: string
+ *               taxId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Payout account updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/payout-account",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessPayoutAccount,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/payout-schedule:
+ *   put:
+ *     summary: Update business payout schedule
+ *     description: Partially updates the authenticated business owner's default payout schedule.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               automatic:
+ *                 type: boolean
+ *               day:
+ *                 type: string
+ *               minimumThreshold:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Payout schedule updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/payout-schedule",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessPayoutSchedule,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/details/services:
+ *   put:
+ *     summary: Update business services
+ *     description: Replaces the authenticated business owner's service catalog.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - service
+ *             properties:
+ *               service:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     serviceName:
+ *                       type: string
+ *                     duration:
+ *                       type: string
+ *                     pricingModel:
+ *                       type: object
+ *                       properties:
+ *                         walk_in:
+ *                           type: number
+ *                         provider_address:
+ *                           type: number
+ *                         customer_address:
+ *                           type: number
+ *                     fixedPrice:
+ *                       type: number
+ *     responses:
+ *       200:
+ *         description: Business services updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/details/services",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessServices,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/details/available-days:
+ *   put:
+ *     summary: Update business available days
+ *     description: Replaces the authenticated business owner's operating days.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - availableDays
+ *             properties:
+ *               availableDays:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Available days updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/details/available-days",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessAvailableDays,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/details/service-place:
+ *   put:
+ *     summary: Update business service places
+ *     description: Replaces the authenticated business owner's service places.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - servicePlace
+ *             properties:
+ *               servicePlace:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Service places updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/details/service-place",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessServicePlace,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/details/hours:
+ *   put:
+ *     summary: Update business opening hours
+ *     description: Partially updates the authenticated business owner's opening hours.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               start:
+ *                 type: string
+ *               end:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Business hours updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/details/hours",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessHours,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/details/studio-images:
+ *   put:
+ *     summary: Update business studio gallery
+ *     description: Replaces the authenticated business owner's studio images and videos.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - studioImages
+ *             properties:
+ *               studioImages:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     pictures:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     videos:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *     responses:
+ *       200:
+ *         description: Studio images updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/details/studio-images",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessStudioImages,
 );
 
 /**

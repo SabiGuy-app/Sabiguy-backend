@@ -52,7 +52,7 @@ const businessSchema = new mongoose.Schema(
     cityOfOperation: { type: String },
     businessCategory: { type: String, required: false, default: null },
     businessPhotos: [{ type: String }],
-   service: [
+    service: [
       {
         serviceName: { type: String },
         duration: { type: String },
@@ -127,6 +127,22 @@ const businessSchema = new mongoose.Schema(
       default: null,
     },
     kycLevel: { type: Number, default: 0 },
+    currency: { type: String, default: 'NGN' },
+    timezone: { type: String, default: 'Africa/Lagos' },
+    weekStarts: { type: String, default: 'Monday' },
+    payoutAccount: {
+      bankName: { type: String },
+      bankCode: { type: String },
+      accountNumber: { type: String },
+      accountName: { type: String },
+      taxId: { type: String },
+      verified: { type: Boolean, default: false },
+    },
+    payoutSchedule: {
+      automatic: { type: Boolean, default: false },
+      day: { type: String, default: 'Friday' },
+      minimumThreshold: { type: Number, default: 0 },
+    },
   },
   {
     timestamps: true,
