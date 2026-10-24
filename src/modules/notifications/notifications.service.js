@@ -28,6 +28,7 @@ const DEFAULT_PREFERENCES = {
       "booking_selected",
       "booking_cancelled",
       "booking_cancellation_requested",
+      "booking_cancellation_rejected",
       "booking_cancellation_approved",
       "booking_declined",
       "booking_status_updated",

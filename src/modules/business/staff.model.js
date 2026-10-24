@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 
 const STAFF_STATUSES = ["INVITED", "ACTIVE", "DECLINED", "EXPIRED", "REMOVED"];
 const WORK_STATUSES = ["offline", "available", "en_route", "in_service"];
+const CLOCK_ACTIONS = ["clock_in", "clock_out"];
+const CLOCK_REQUEST_STATUSES = ["pending", "approved", "rejected", "cancelled"];
 
 const staffSchema = new mongoose.Schema(
   {
@@ -77,6 +79,20 @@ const staffSchema = new mongoose.Schema(
       lastClockInAt: { type: Date, default: null },
       lastClockOutAt: { type: Date, default: null },
     },
+    // Latest clock-in/out request. Staff request, the business owner approves
+    // or rejects; onDuty only changes on approval. One pending at a time.
+    clockRequest: {
+      action: { type: String, enum: CLOCK_ACTIONS, default: null },
+      status: { type: String, enum: CLOCK_REQUEST_STATUSES, default: null },
+      requestedAt: { type: Date, default: null },
+      respondedAt: { type: Date, default: null },
+      respondedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Business",
+        default: null,
+      },
+      reason: { type: String, default: null },
+    },
     acceptedAt: { type: Date, default: null },
     declinedAt: { type: Date, default: null },
     removedAt: { type: Date, default: null },
@@ -95,5 +111,6 @@ staffSchema.index(
 
 staffSchema.statics.STAFF_STATUSES = STAFF_STATUSES;
 staffSchema.statics.WORK_STATUSES = WORK_STATUSES;
+staffSchema.statics.CLOCK_ACTIONS = CLOCK_ACTIONS;
 
 module.exports = mongoose.model("Staff", staffSchema);

@@ -22,6 +22,8 @@ const {
   updateBusinessServicePlace,
   updateBusinessHours,
   updateBusinessStudioImages,
+  setBusinessAvailability,
+  updateBusinessLocation,
 } = require("./business.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
 const onlyRole = require("../../../middleware/roleMiddleware");
@@ -78,6 +80,16 @@ router.get("/getAllBusinesses", authMiddleware, getAllBusinesses);
  *                 example: "ABC Logistics"
  *               businessAddress:
  *                 type: string
+ *               latitude:
+ *                 type: number
+ *                 minimum: -90
+ *                 maximum: 90
+ *                 description: Latitude for the business location
+ *               longitude:
+ *                 type: number
+ *                 minimum: -180
+ *                 maximum: 180
+ *                 description: Longitude for the business location
  *                 example: "12 Allen Avenue"
  *               cityOfOperation:
  *                 type: string
@@ -358,7 +370,7 @@ router.post(
  * /api/v1/businesses/profile:
  *   put:
  *     summary: Update business profile identity
- *     description: Partially updates the authenticated business owner's name, city of operation and address.
+ *     description: Partially updates the authenticated business owner's name, city, address, and nearby-search location.
  *     tags: [Business]
  *     security:
  *       - bearerAuth: []
@@ -729,6 +741,88 @@ router.put(
   authMiddleware,
   onlyRole("businessOwner"),
   updateBusinessStudioImages,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/availability:
+ *   put:
+ *     summary: Toggle business availability
+ *     description: Turns fast-booking availability on or off for the authenticated business owner. A business only appears in nearby search when it is available, online (recent location heartbeat), within business hours, and has at least the minimum number of staff on duty. The response reports the current on-duty staff count and whether the business is eligible.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - isAvailable
+ *             properties:
+ *               isAvailable:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Availability updated successfully
+ *       400:
+ *         description: isAvailable must be a boolean
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/availability",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  setBusinessAvailability,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/location:
+ *   put:
+ *     summary: Update business location (heartbeat)
+ *     description: Updates the authenticated business owner's current location. Mirrors PUT /api/v1/provider/location. Requires verified KYC, and resolves currentLocation.address (an address sent by the app wins; otherwise the cached address is reused unless the business moved more than 500m, then it is reverse geocoded). The business app should call this regularly; it also marks the business as online for nearby search.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - latitude
+ *               - longitude
+ *             properties:
+ *               latitude:
+ *                 type: number
+ *               longitude:
+ *                 type: number
+ *               address:
+ *                 type: string
+ *                 description: Optional human-readable address from the device
+ *     responses:
+ *       200:
+ *         description: Location updated successfully
+ *       400:
+ *         description: Invalid coordinates
+ *       403:
+ *         description: KYC verification required to update location
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/location",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessLocation,
 );
 
 /**

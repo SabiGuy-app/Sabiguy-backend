@@ -334,6 +334,7 @@ router.get("/:id", getUserById);
  * /api/v1/users/location:
  *   put:
  *     summary: Update user location
+ *     description: Updates the authenticated buyer's current location and resolves currentLocation.address the same way as PUT /api/v1/provider/location. An address sent by the app wins, otherwise the saved address is reused unless the buyer moved more than 500m, and only then is it reverse geocoded.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -346,10 +347,10 @@ router.get("/:id", getUserById);
  *             required:
  *               - latitude
  *               - longitude
- *               - address
  *             properties:
  *               address:
  *                 type: string
+ *                 description: Optional human-readable address from the device
  *                 example: Ikeja, Lagos
  *               latitude:
  *                 type: number

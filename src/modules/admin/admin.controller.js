@@ -33,6 +33,7 @@ class AdminController {
     this.getPlatformFeeReport = this.getPlatformFeeReport.bind(this);
     this.getPlatformBalance = this.getPlatformBalance.bind(this);
     this.approveBookingCancellation = this.approveBookingCancellation.bind(this);
+    this.rejectBookingCancellation = this.rejectBookingCancellation.bind(this);
   }
 
   async approveBookingCancellation(req, res) {
@@ -42,7 +43,12 @@ class AdminController {
       if (!buyerMessage?.trim() || !providerMessage?.trim()) {
         return res.status(400).json({ success: false, message: "buyerMessage and providerMessage are required" });
       }
-      const booking = await Booking.findOne({ _id: bookingId, "cancellationRequest.status": "pending" });
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        status: "cancellation_requested",
+        "cancellationRequest.status": "pending",
+      });
       if (!booking) return res.status(404).json({ success: false, message: "Pending cancellation request not found" });
       const amount = Number(booking.payment?.escrowAmount ?? booking.totalAmount ?? booking.calculatedPrice ?? 0);
       if (!Number.isFinite(amount) || amount <= 0) {
@@ -106,11 +112,110 @@ class AdminController {
           pickupAddress,
           dropoffAddress: booking.dropoffLocation ? dropoffAddress : undefined,
         });
+      } else if (booking.businessId) {
+        await notificationService.notifyBusiness(booking.businessId, {
+          type: "booking_cancelled",
+          title: "Booking Cancelled",
+          message: `${providerMessage.trim()}\n\n${bookingDetails}`,
+          bookingId: booking._id,
+          serviceType: booking.serviceType,
+          subCategory: booking.subCategory,
+          scheduleType: booking.scheduleType,
+          scheduleDate: booking.scheduleDate,
+          scheduledTime: booking.scheduledTime,
+          pickupAddress,
+          dropoffAddress: booking.dropoffLocation ? dropoffAddress : undefined,
+        });
       }
       return res.status(200).json({ success: true, message: "Cancellation approved and refund credited to buyer wallet", data: { booking, refund: transaction } });
     } catch (error) {
       console.error("Approve booking cancellation error:", error);
       return res.status(500).json({ success: false, message: "Failed to approve cancellation", error: error.message });
+    }
+  }
+
+  async rejectBookingCancellation(req, res) {
+    try {
+      const { bookingId } = req.params;
+      const { buyerMessage, providerMessage } = req.body;
+      if (!buyerMessage?.trim() || !providerMessage?.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "buyerMessage and providerMessage are required",
+        });
+      }
+
+      const booking = await Booking.findOne({
+        _id: bookingId,
+        status: "cancellation_requested",
+        "cancellationRequest.status": "pending",
+      });
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: "Pending cancellation request not found",
+        });
+      }
+
+      const previousStatus = booking.cancellationRequest.previousStatus;
+      if (!previousStatus) {
+        return res.status(409).json({
+          success: false,
+          message: "Previous booking status is unavailable",
+        });
+      }
+
+      booking.status = previousStatus;
+      booking.cancellationRequest = {
+        ...booking.cancellationRequest.toObject?.(),
+        status: "rejected",
+        reviewedAt: new Date(),
+        reviewedBy: req.user.id,
+        buyerMessage: buyerMessage.trim(),
+        providerMessage: providerMessage.trim(),
+      };
+      await booking.save();
+
+      await notificationService.notifyUser(booking.userId, {
+        type: "booking_cancellation_rejected",
+        title: "Cancellation Request Rejected",
+        message: buyerMessage.trim(),
+        bookingId: booking._id,
+        serviceType: booking.serviceType,
+        subCategory: booking.subCategory,
+      });
+      if (booking.providerId) {
+        await notificationService.notifyProvider(booking.providerId, {
+          type: "booking_cancellation_rejected",
+          title: "Cancellation Request Rejected",
+          message: providerMessage.trim(),
+          bookingId: booking._id,
+          serviceType: booking.serviceType,
+          subCategory: booking.subCategory,
+        });
+      } else if (booking.businessId) {
+        await notificationService.notifyBusiness(booking.businessId, {
+          type: "booking_cancellation_rejected",
+          title: "Cancellation Request Rejected",
+          message: providerMessage.trim(),
+          bookingId: booking._id,
+          serviceType: booking.serviceType,
+          subCategory: booking.subCategory,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Cancellation rejected and booking restored",
+        data: booking,
+      });
+    } catch (error) {
+      console.error("Reject booking cancellation error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to reject cancellation",
+        error: error.message,
+      });
     }
   }
 

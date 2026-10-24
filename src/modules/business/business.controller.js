@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const { getPagination } = require("../../shared/utils/pagination");
 const Business = require("./business.model");
 const businessService = require("./business.service");
+const staffService = require("./staff.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
@@ -523,6 +524,50 @@ const updateBusinessStudioImages = async (req, res) => {
   }
 };
 
+// PUT /availability — toggle whether the business receives fast bookings.
+const setBusinessAvailability = async (req, res) => {
+  try {
+    const [data, onDutyCounts] = await Promise.all([
+      businessService.setBusinessAvailability(req.user.id, req.body),
+      staffService.countOnDutyStaffByBusiness([req.user.id]),
+    ]);
+    const onDutyStaffCount = onDutyCounts.get(String(req.user.id)) || 0;
+
+    return res.status(200).json({
+      success: true,
+      message: `Business is now ${data.availability.isAvailable ? "available" : "unavailable"}`,
+      data: {
+        ...data,
+        onDutyStaffCount,
+        minimumOnDutyStaff: staffService.MIN_ON_DUTY_STAFF,
+        eligibleForBookings:
+          data.availability.isAvailable &&
+          onDutyStaffCount >= staffService.MIN_ON_DUTY_STAFF,
+      },
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update availability");
+  }
+};
+
+// PUT /location — location heartbeat from the business app.
+const updateBusinessLocation = async (req, res) => {
+  try {
+    const data = await businessService.updateBusinessLocation(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Location updated successfully",
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update location");
+  }
+};
+
 module.exports = {
   getAllBusinesses,
   getBusinessById,
@@ -545,4 +590,6 @@ module.exports = {
   updateBusinessServicePlace,
   updateBusinessHours,
   updateBusinessStudioImages,
+  setBusinessAvailability,
+  updateBusinessLocation,
 };

@@ -41,6 +41,20 @@ test("updateBusinessProfile rejects non-string businessAddress", () => {
   );
 });
 
+test("updateBusinessProfile rejects invalid location coordinates", () => {
+  return rejects(
+    updateBusinessProfile(BUSINESS_ID, { latitude: 91, longitude: 3 }),
+    /latitude and longitude must be valid coordinates/,
+  );
+});
+
+test("updateBusinessProfile requires latitude and longitude together", () => {
+  return rejects(
+    updateBusinessProfile(BUSINESS_ID, { latitude: 6 }),
+    /latitude and longitude must be valid coordinates/,
+  );
+});
+
 test("updateBusinessOperatingDefaults rejects invalid weekStarts", () => {
   return rejects(
     updateBusinessOperatingDefaults(BUSINESS_ID, { weekStarts: "Funday" }),

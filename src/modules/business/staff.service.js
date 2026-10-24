@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const Staff = require('./staff.model');
 const Booking = require('../bookings/Bookings.model');
 const businessRepository = require('./business.repository');
+const Provider = require('../../../models/ServiceProvider');
+const notificationService = require('../../services/notification.service');
 const geolocationService = require('../../services/geolocation.service');
 const {
   ValidationError,
@@ -442,6 +444,339 @@ const WORK_STATUS_RANK = {
   offline: 3,
 };
 
+// A business needs at least this many clocked-in staff to receive fast bookings.
+const MIN_ON_DUTY_STAFF = Number(process.env.BUSINESS_MIN_ON_DUTY_STAFF || 1);
+
+// Staff only count as on duty while their own app is alive: their provider
+// location heartbeat must be at least this fresh (matches nearby search).
+const STAFF_STALE_LOCATION_MINUTES = Number(
+  process.env.STAFF_STALE_LOCATION_MINUTES || 10,
+);
+
+// Clocked-in (onDuty.active) ACTIVE staff whose provider account has a fresh
+// location heartbeat, per business, as a Map of businessId string -> count.
+// Businesses with nobody online on duty are absent.
+const countOnDutyStaffByBusiness = async (businessIds = []) => {
+  if (!businessIds.length) return new Map();
+
+  const onDutyStaff = await Staff.find(
+    {
+      business: { $in: businessIds },
+      status: 'ACTIVE',
+      'onDuty.active': true,
+      provider: { $ne: null },
+    },
+    'business provider',
+    { lean: true },
+  );
+  if (!onDutyStaff.length) return new Map();
+
+  const staleThreshold = new Date(
+    Date.now() - STAFF_STALE_LOCATION_MINUTES * 60 * 1000,
+  );
+  const onlineProviderIds = await Provider.distinct('_id', {
+    _id: { $in: onDutyStaff.map((s) => s.provider) },
+    lastLocationUpdate: { $gte: staleThreshold },
+  });
+  const online = new Set(onlineProviderIds.map(String));
+
+  const counts = new Map();
+  for (const s of onDutyStaff) {
+    if (!online.has(String(s.provider))) continue;
+    const key = String(s.business);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return counts;
+};
+
+// Resolves the ACTIVE staff record the authenticated provider is clocking
+// against. `businessId` is optional when the provider works for one business.
+const findOwnActiveStaff = async (providerId, businessId) => {
+  if (!mongoose.isValidObjectId(providerId)) {
+    throw new ForbiddenError('Valid provider account required');
+  }
+  if (businessId !== undefined && !mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+
+  const records = await Staff.find({
+    provider: providerId,
+    status: 'ACTIVE',
+    ...(businessId !== undefined ? { business: businessId } : {}),
+  });
+  if (!records.length) {
+    throw new NotFoundError(
+      businessId !== undefined
+        ? 'You are not an active staff member of this business'
+        : 'You are not an active staff member of any business',
+    );
+  }
+  if (records.length > 1) {
+    throw new ValidationError(
+      'You work for more than one business; businessId is required',
+    );
+  }
+  return records[0];
+};
+
+// Owner-side lookup of one of their staff, by Staff _id.
+const findBusinessActiveStaff = async (businessId, staffId) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+  if (!mongoose.isValidObjectId(staffId)) {
+    throw new ValidationError('Invalid staff ID');
+  }
+
+  const staff = await Staff.findOne({ _id: staffId, business: businessId });
+  if (!staff) {
+    throw new NotFoundError('Staff not found in your business');
+  }
+  if (staff.status !== 'ACTIVE') {
+    throw new ConflictError(
+      `Cannot change duty for a staff member who is ${staff.status.toLowerCase()}`,
+    );
+  }
+  return staff;
+};
+
+const hasPendingClockRequest = (staff) =>
+  staff.clockRequest?.status === 'pending';
+
+const toClockState = (staff) => ({
+  staffId: staff._id,
+  businessId: staff.business,
+  onDuty: Boolean(staff.onDuty?.active),
+  since: staff.onDuty?.since || null,
+  lastClockInAt: staff.onDuty?.lastClockInAt || null,
+  lastClockOutAt: staff.onDuty?.lastClockOutAt || null,
+  workStatus: staff.workStatus,
+  clockRequest: staff.clockRequest?.status
+    ? {
+        action: staff.clockRequest.action,
+        status: staff.clockRequest.status,
+        requestedAt: staff.clockRequest.requestedAt,
+        respondedAt: staff.clockRequest.respondedAt,
+        reason: staff.clockRequest.reason,
+      }
+    : null,
+});
+
+// Is this provider on duty — or waiting on a clock-in — at another business?
+const assertNotOnDutyElsewhere = async (staff) => {
+  const elsewhere = await Staff.exists({
+    provider: staff.provider,
+    status: 'ACTIVE',
+    business: { $ne: staff.business },
+    $or: [
+      { 'onDuty.active': true },
+      { 'clockRequest.status': 'pending', 'clockRequest.action': 'clock_in' },
+    ],
+  });
+  if (elsewhere) {
+    throw new ConflictError(
+      'You are clocked in (or awaiting clock-in) at another business; clock out there first',
+    );
+  }
+};
+
+// Flips the duty state. Callers save.
+const applyDutyChange = (staff, onDuty, now = new Date()) => {
+  if (onDuty) {
+    staff.set({
+      'onDuty.active': true,
+      'onDuty.since': now,
+      'onDuty.lastClockInAt': now,
+    });
+    // Keep busy states (en_route / in_service); otherwise mark available.
+    if (!['en_route', 'in_service'].includes(staff.workStatus)) {
+      staff.workStatus = 'available';
+    }
+  } else {
+    staff.set({
+      'onDuty.active': false,
+      'onDuty.since': null,
+      'onDuty.lastClockOutAt': now,
+    });
+    staff.workStatus = 'offline';
+  }
+};
+
+const notifySafely = async (send, label) => {
+  try {
+    await send();
+  } catch (error) {
+    console.error(`${label} notification failed:`, error.message);
+  }
+};
+
+// Staff (provider) asks to clock in or out. Nothing changes on duty until the
+// business owner approves. Requesting the state you're already in cancels any
+// pending request; repeating a pending request is a no-op.
+const requestClockChange = async (providerId, action, { businessId } = {}) => {
+  const staff = await findOwnActiveStaff(providerId, businessId);
+  const wantsOnDuty = action === 'clock_in';
+
+  if (Boolean(staff.onDuty?.active) === wantsOnDuty) {
+    if (hasPendingClockRequest(staff)) {
+      staff.set({
+        'clockRequest.status': 'cancelled',
+        'clockRequest.respondedAt': new Date(),
+      });
+      await staff.save();
+    }
+    return toClockState(staff);
+  }
+  if (hasPendingClockRequest(staff) && staff.clockRequest.action === action) {
+    return toClockState(staff);
+  }
+  if (wantsOnDuty) await assertNotOnDutyElsewhere(staff);
+
+  staff.clockRequest = {
+    action,
+    status: 'pending',
+    requestedAt: new Date(),
+    respondedAt: null,
+    respondedBy: null,
+    reason: null,
+  };
+  await staff.save();
+
+  const label = wantsOnDuty ? 'clock in' : 'clock out';
+  await notifySafely(
+    () =>
+      notificationService.notifyBusiness(staff.business, {
+        type: wantsOnDuty
+          ? 'staff_clock_in_requested'
+          : 'staff_clock_out_requested',
+        title: `Staff ${label} request`,
+        message: `${staff.email} (${staff.role}) wants to ${label}`,
+        staffId: staff._id,
+      }),
+    'Clock request',
+  );
+
+  return toClockState(staff);
+};
+
+const clockInStaff = (providerId, options) =>
+  requestClockChange(providerId, 'clock_in', options);
+
+const clockOutStaff = (providerId, options) =>
+  requestClockChange(providerId, 'clock_out', options);
+
+// Owner: staff with a pending clock-in/out request, oldest first.
+const getPendingClockRequests = async (businessId) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+
+  const staffList = await Staff.find({
+    business: businessId,
+    status: 'ACTIVE',
+    'clockRequest.status': 'pending',
+  })
+    .sort({ 'clockRequest.requestedAt': 1 })
+    .populate('provider', 'fullName profilePicture');
+
+  return staffList.map((s) => ({
+    ...toClockState(s),
+    staffCode: s.staffCode,
+    role: s.role,
+    email: s.email,
+    fullName: s.provider?.fullName || null,
+    profilePicture: s.provider?.profilePicture || null,
+  }));
+};
+
+const CLOCK_RESPONSE_ACTIONS = ['approve', 'reject'];
+
+// Owner approves or rejects a staff member's pending clock request.
+const respondToClockRequest = async (
+  businessId,
+  staffId,
+  { action, reason } = {},
+) => {
+  if (!CLOCK_RESPONSE_ACTIONS.includes(action)) {
+    throw new ValidationError("action must be 'approve' or 'reject'");
+  }
+  if (reason !== undefined && reason !== null && typeof reason !== 'string') {
+    throw new ValidationError('reason must be a string');
+  }
+
+  const staff = await findBusinessActiveStaff(businessId, staffId);
+  if (!hasPendingClockRequest(staff)) {
+    throw new ConflictError('This staff member has no pending clock request');
+  }
+
+  const requested = staff.clockRequest.action;
+  const now = new Date();
+  if (action === 'approve') {
+    if (requested === 'clock_in') await assertNotOnDutyElsewhere(staff);
+    applyDutyChange(staff, requested === 'clock_in', now);
+  }
+  staff.set({
+    'clockRequest.status': action === 'approve' ? 'approved' : 'rejected',
+    'clockRequest.respondedAt': now,
+    'clockRequest.respondedBy': businessId,
+    'clockRequest.reason': reason?.trim() || null,
+  });
+  await staff.save();
+
+  const label = requested === 'clock_in' ? 'clock-in' : 'clock-out';
+  await notifySafely(
+    () =>
+      notificationService.notifyProvider(staff.provider, {
+        type:
+          action === 'approve'
+            ? 'staff_clock_request_approved'
+            : 'staff_clock_request_rejected',
+        title: `${label[0].toUpperCase()}${label.slice(1)} ${action === 'approve' ? 'approved' : 'rejected'}`,
+        message: `Your ${label} request was ${action === 'approve' ? 'approved' : 'rejected'}${reason?.trim() ? `: ${reason.trim()}` : ''}`,
+        businessId: staff.business,
+      }),
+    'Clock response',
+  );
+
+  return toClockState(staff);
+};
+
+// Owner clocks a staff member out directly (no request needed). Resolves a
+// pending clock-out as approved. Idempotent when already off duty.
+const businessClockOutStaff = async (businessId, staffId, { reason } = {}) => {
+  if (reason !== undefined && reason !== null && typeof reason !== 'string') {
+    throw new ValidationError('reason must be a string');
+  }
+
+  const staff = await findBusinessActiveStaff(businessId, staffId);
+  if (!staff.onDuty?.active) return toClockState(staff);
+
+  const now = new Date();
+  applyDutyChange(staff, false, now);
+  if (hasPendingClockRequest(staff)) {
+    staff.set({
+      'clockRequest.status': 'approved',
+      'clockRequest.respondedAt': now,
+      'clockRequest.respondedBy': businessId,
+      'clockRequest.reason': reason?.trim() || null,
+    });
+  }
+  await staff.save();
+
+  await notifySafely(
+    () =>
+      notificationService.notifyProvider(staff.provider, {
+        type: 'staff_clocked_out_by_business',
+        title: 'Clocked out',
+        message: `You were clocked out by the business${reason?.trim() ? `: ${reason.trim()}` : ''}`,
+        businessId: staff.business,
+      }),
+    'Business clock-out',
+  );
+
+  return toClockState(staff);
+};
+
 // The "Staff on duty" board: every active staff member with a working status.
 // Busy states are derived from the staff's not-yet-completed assigned bookings
 // (in_progress -> in_service, assigned -> en_route); everyone else falls back
@@ -802,6 +1137,13 @@ module.exports = {
   assignStaffToBooking,
   updateStaffRole,
   getStaffOnDuty,
+  countOnDutyStaffByBusiness,
+  MIN_ON_DUTY_STAFF,
+  clockInStaff,
+  clockOutStaff,
+  getPendingClockRequests,
+  respondToClockRequest,
+  businessClockOutStaff,
   getAllStaff,
   getStaffDetail,
   respondToStaffInvite,

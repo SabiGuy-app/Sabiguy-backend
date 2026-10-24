@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router({ mergeParams: true });
-const { inviteStaff, getStaffCandidates, assignStaffToBooking, updateStaffRole, getStaffOnDuty, getAllStaff, getStaffDetail, respondToStaffInvite } = require("./staff.controller");
+const { inviteStaff, getStaffCandidates, assignStaffToBooking, updateStaffRole, getStaffOnDuty, getAllStaff, getStaffDetail, respondToStaffInvite, clockIn, clockOut, getPendingClockRequests, respondToClockRequest, businessClockOutStaff } = require("./staff.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
 const onlyRole = require("../../../middleware/roleMiddleware");
 
@@ -504,6 +504,210 @@ router.post(
   authMiddleware,
   onlyRole("provider"),
   respondToStaffInvite,
+);
+
+/**
+ * @swagger
+ * /api/v1/business/staff/clock-in:
+ *   post:
+ *     summary: Request to clock in as staff
+ *     description: Provider-facing. Sends a clock-in request to the business owner; the staff member goes on duty only once the owner approves it. On-duty staff count towards the business's fast-booking eligibility while their own location heartbeat is fresh. businessId is only required if the provider is active staff at more than one business. A provider can be on duty (or awaiting clock-in) at one business at a time. Repeating a pending request is a no-op; calling it while already on duty cancels any pending clock-out request.
+ *     tags: [Business Staff]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               businessId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Request pending, or current duty state (data.clockRequest shows the request)
+ *       400:
+ *         description: Invalid businessId, or businessId required for multi-business staff
+ *       403:
+ *         description: Provider access only
+ *       404:
+ *         description: Not an active staff member
+ *       409:
+ *         description: On duty or awaiting clock-in at another business
+ *       500:
+ *         description: Server error
+ */
+router.post("/staff/clock-in", authMiddleware, onlyRole("provider"), clockIn);
+
+/**
+ * @swagger
+ * /api/v1/business/staff/clock-out:
+ *   post:
+ *     summary: Request to clock out as staff
+ *     description: Provider-facing. Sends a clock-out request to the business owner; the staff member stays on duty until the owner approves it. businessId is only required if the provider is active staff at more than one business. Repeating a pending request is a no-op; calling it while already off duty cancels any pending clock-in request.
+ *     tags: [Business Staff]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               businessId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Request pending, or current duty state (data.clockRequest shows the request)
+ *       400:
+ *         description: Invalid businessId, or businessId required for multi-business staff
+ *       403:
+ *         description: Provider access only
+ *       404:
+ *         description: Not an active staff member
+ *       500:
+ *         description: Server error
+ */
+router.post("/staff/clock-out", authMiddleware, onlyRole("provider"), clockOut);
+
+/**
+ * @swagger
+ * /api/v1/business/{businessId}/clock-requests:
+ *   get:
+ *     summary: List pending staff clock requests
+ *     description: Business-facing. Returns active staff with a pending clock-in or clock-out request, oldest first.
+ *     tags: [Business Staff]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Pending clock requests
+ *       400:
+ *         description: Invalid business ID
+ *       403:
+ *         description: Not your business
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/:businessId/clock-requests",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  getPendingClockRequests,
+);
+
+/**
+ * @swagger
+ * /api/v1/business/{businessId}/staff/{staffId}/clock-request:
+ *   post:
+ *     summary: Approve or reject a staff clock request
+ *     description: Business-facing. Approving a clock-in puts the staff member on duty; approving a clock-out takes them off duty. Rejecting leaves their duty state unchanged. The staff member is notified either way.
+ *     tags: [Business Staff]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - action
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [approve, reject]
+ *               reason:
+ *                 type: string
+ *                 description: Optional note shown to the staff member
+ *     responses:
+ *       200:
+ *         description: Request approved or rejected (returns current duty state)
+ *       400:
+ *         description: Invalid IDs, action or reason
+ *       403:
+ *         description: Not your business
+ *       404:
+ *         description: Staff not found in your business
+ *       409:
+ *         description: No pending request, staff not active, or staff on duty at another business
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/:businessId/staff/:staffId/clock-request",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  respondToClockRequest,
+);
+
+/**
+ * @swagger
+ * /api/v1/business/{businessId}/staff/{staffId}/clock-out:
+ *   post:
+ *     summary: Clock a staff member out
+ *     description: Business-facing. Takes a staff member off duty immediately, without a request (e.g. they forgot to clock out). A pending clock-out request is marked approved. No-op if already off duty. The staff member is notified.
+ *     tags: [Business Staff]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Staff clocked out (returns current duty state)
+ *       400:
+ *         description: Invalid IDs or reason
+ *       403:
+ *         description: Not your business
+ *       404:
+ *         description: Staff not found in your business
+ *       409:
+ *         description: Staff not active
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/:businessId/staff/:staffId/clock-out",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  businessClockOutStaff,
 );
 
 module.exports = router;

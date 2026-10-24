@@ -299,6 +299,7 @@ const bookingSchema = new mongoose.Schema(
         'completed', // Service completed
         'expired', // Payment window expired before user paid
         'cancelled', // Cancelled
+        'cancellation_requested',
         'user_accepted_completion',
         'funds_released', // Payment released to provider
         'disputed', // Dispute raised
@@ -371,7 +372,12 @@ const bookingSchema = new mongoose.Schema(
     // Cancellation
     cancellationReason: String,
     cancellationRequest: {
-      status: { type: String, enum: ['pending', 'approved'], default: null },
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: null,
+      },
+      previousStatus: String,
       requestedAt: Date,
       requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       reviewedAt: Date,

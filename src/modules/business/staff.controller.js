@@ -206,7 +206,108 @@ const respondToStaffInvite = async (req, res) => {
   }
 };
 
+const clockRequestMessage = (data, action) => {
+  if (data.clockRequest?.status === 'pending') {
+    return `${action} request sent; awaiting business approval`;
+  }
+  return data.onDuty ? 'You are on duty' : 'You are off duty';
+};
+
+// POST /staff/clock-in — the authenticated staff member asks to go on duty.
+const clockIn = async (req, res) => {
+  try {
+    const data = await staffService.clockInStaff(req.user.id, {
+      businessId: req.body?.businessId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: clockRequestMessage(data, 'Clock-in'),
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to request clock-in');
+  }
+};
+
+// POST /staff/clock-out — the authenticated staff member asks to go off duty.
+const clockOut = async (req, res) => {
+  try {
+    const data = await staffService.clockOutStaff(req.user.id, {
+      businessId: req.body?.businessId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: clockRequestMessage(data, 'Clock-out'),
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to request clock-out');
+  }
+};
+
+// GET /:businessId/clock-requests — pending clock-in/out requests.
+const getPendingClockRequests = async (req, res) => {
+  try {
+    assertSelfBusiness(req);
+
+    const data = await staffService.getPendingClockRequests(
+      req.params.businessId,
+    );
+
+    return res.status(200).json({ success: true, count: data.length, data });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to fetch clock requests');
+  }
+};
+
+// POST /:businessId/staff/:staffId/clock-request — approve or reject.
+const respondToClockRequest = async (req, res) => {
+  try {
+    assertSelfBusiness(req);
+
+    const data = await staffService.respondToClockRequest(
+      req.params.businessId,
+      req.params.staffId,
+      { action: req.body?.action, reason: req.body?.reason },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Clock request ${req.body.action === 'approve' ? 'approved' : 'rejected'}`,
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to respond to clock request');
+  }
+};
+
+// POST /:businessId/staff/:staffId/clock-out — owner clocks staff out.
+const businessClockOutStaff = async (req, res) => {
+  try {
+    assertSelfBusiness(req);
+
+    const data = await staffService.businessClockOutStaff(
+      req.params.businessId,
+      req.params.staffId,
+      { reason: req.body?.reason },
+    );
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'Staff clocked out', data });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to clock out staff');
+  }
+};
+
 module.exports = {
+  clockIn,
+  clockOut,
+  getPendingClockRequests,
+  respondToClockRequest,
+  businessClockOutStaff,
   inviteStaff,
   getStaffCandidates,
   assignStaffToBooking,

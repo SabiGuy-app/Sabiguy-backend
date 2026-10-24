@@ -47,6 +47,30 @@ const businessSchema = new mongoose.Schema(
     BusinessName: { type: String },
     regNumber: { type: String },
     BusinessAddress: { type: String },
+    currentLocation: {
+      type: {
+        type: String,
+        enum: ['Point'],
+      },
+      coordinates: {
+        type: [Number],
+      },
+      address: { type: String },
+    },
+    lastLocationUpdate: { type: Date, default: Date.now },
+    // Presence for fast-booking search. `isOnline` flips on with every
+    // heartbeat (location ping) and off on socket disconnect; `lastSeenAt`
+    // covers disconnects that never reach the server.
+    isOnline: { type: Boolean, default: false },
+    lastSeenAt: { type: Date, default: null },
+    availability: {
+      isAvailable: { type: Boolean, default: false },
+      lastUpdated: { type: Date, default: null },
+    },
+    rating: {
+      average: { type: Number, default: 0 },
+      count: { type: Number, default: 0 },
+    },
     cacFile: { type: String },
     ninSlip: { type: String },
     cityOfOperation: { type: String },
@@ -148,5 +172,7 @@ const businessSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+businessSchema.index({ currentLocation: '2dsphere' });
 
 module.exports = mongoose.model('Business', businessSchema);

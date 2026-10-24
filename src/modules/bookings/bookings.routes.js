@@ -681,7 +681,28 @@ router.get(
  * @swagger
  * /api/v1/bookings/search:
  *   post:
- *     summary: Search for nearby providers by service name and location
+ *     summary: Search nearby provider and business accounts
+ *     description: |
+ *       Returns up to 6 bookable provider and business accounts near a location, nearest first
+ *       (accounts with a fresh location before stale ones, rating as tiebreak).
+ *
+ *       **Filters.** Send at least one of `search`, `serviceName`, `jobService` or `businessName`.
+ *       All filters sent are combined with AND.
+ *
+ *       - `search` is the free-text box. It is partial and case-insensitive and matches provider
+ *         `fullName`, `BusinessName` or service name, and business `BusinessName`, `fullName`,
+ *         service name or `businessCategory`.
+ *       - `serviceName` is an exact (case-insensitive) service name filter.
+ *       - `businessName` is a partial, case-insensitive `BusinessName` filter.
+ *
+ *       **Who is returned.**
+ *       - Providers who are active, toggled available, have sent a location in the last 10 minutes,
+ *         and have no booking in progress that blocks a new one.
+ *       - Businesses that are active, toggled available, online (location heartbeat in the last
+ *         10 minutes), open now per their available days and business hours, and have at least the
+ *         minimum number of online staff on duty.
+ *
+ *       The search radius is 7 km.
  *     tags: [Bookings]
  *     security:
  *       - bearerAuth: []
@@ -708,28 +729,190 @@ router.get(
  *                 example:
  *                   latitude: 6.5244
  *                   longitude: 3.3792
+ *               search:
+ *                 type: string
+ *                 minLength: 2
+ *                 maxLength: 100
+ *                 example: tunde
+ *                 description: |
+ *                   Free-text search, partial and case-insensitive (trimmed). Matches provider fullName,
+ *                   BusinessName or service name, and business BusinessName, fullName, service name or
+ *                   category. Combined (AND) with the other filters, and can be used alone.
  *               serviceName:
  *                 type: string
  *                 example: Hair Styling
- *                 description: Matches service.serviceName; optional if jobService is provided
+ *                 description: Exact, case-insensitive match on service.serviceName
  *               jobService:
  *                 type: string
  *                 example: Beauty & Personal Care
- *                 description: Matches job.service; optional if serviceName is provided
+ *                 description: Matches provider job.service, or business category or service name
+ *               businessName:
+ *                 type: string
+ *                 example: Beauty Studio
+ *                 description: Partial, case-insensitive BusinessName match for provider and business accounts; can be used alone
  *               fixedPrice:
  *                 type: number
  *                 minimum: 0
- *                 description: Exact fixedPrice value for the matching service entry
+ *                 example: 0
+ *                 description: Optional. Exact fixedPrice value for the matching service entry
  *               rating:
  *                 type: number
  *                 minimum: 0
  *                 maximum: 5
- *                 description: Minimum provider average rating
+ *                 example: 5
+ *                 description: Optional. Minimum account average rating
+ *           examples:
+ *             allFields:
+ *               summary: All fields (only location is required)
+ *               value:
+ *                 search: tunde
+ *                 serviceName: Hair Styling
+ *                 jobService: Beauty & Personal Care
+ *                 businessName: Beauty Studio
+ *                 fixedPrice: 0
+ *                 rating: 5
+ *                 location:
+ *                   latitude: 6.5244
+ *                   longitude: 3.3792
+ *             searchOnly:
+ *               summary: Free-text search
+ *               value:
+ *                 search: tunde
+ *                 location:
+ *                   latitude: 6.5244
+ *                   longitude: 3.3792
+ *             searchWithFilters:
+ *               summary: Search narrowed by rating
+ *               value:
+ *                 search: braids
+ *                 rating: 4
+ *                 location:
+ *                   latitude: 6.5244
+ *                   longitude: 3.3792
+ *             serviceAtAddress:
+ *               summary: Exact service near an address
+ *               value:
+ *                 serviceName: Hair Styling
+ *                 location: Ikeja, Lagos
  *     responses:
  *       200:
- *         description: Nearby providers returned successfully
+ *         description: Nearby provider and business accounts returned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 search:
+ *                   type: string
+ *                   description: Trimmed search term, when sent
+ *                 serviceName:
+ *                   type: string
+ *                 jobService:
+ *                   type: string
+ *                 businessName:
+ *                   type: string
+ *                 fixedPrice:
+ *                   type: number
+ *                 rating:
+ *                   type: number
+ *                 location:
+ *                   type: object
+ *                   properties:
+ *                     latitude:
+ *                       type: number
+ *                     longitude:
+ *                       type: number
+ *                 count:
+ *                   type: integer
+ *                   example: 2
+ *                 nearbyProviders:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       accountType:
+ *                         type: string
+ *                         enum: [provider, business]
+ *                       providerAccountType:
+ *                         type: string
+ *                         description: Provider accounts only (individual or business provider)
+ *                       fullName:
+ *                         type: string
+ *                       BusinessName:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       profilePicture:
+ *                         type: string
+ *                         nullable: true
+ *                       rating:
+ *                         type: object
+ *                         properties:
+ *                           average:
+ *                             type: number
+ *                           count:
+ *                             type: integer
+ *                       completedJobs:
+ *                         type: integer
+ *                         description: Provider accounts only
+ *                       startingPrice:
+ *                         type: number
+ *                         description: Provider accounts only
+ *                       onDutyStaffCount:
+ *                         type: integer
+ *                         description: Business accounts only. Online staff currently on duty
+ *                       currentLocation:
+ *                         type: object
+ *                         properties:
+ *                           type:
+ *                             type: string
+ *                             example: Point
+ *                           coordinates:
+ *                             type: array
+ *                             items:
+ *                               type: number
+ *                             description: "[longitude, latitude]"
+ *                           address:
+ *                             type: string
+ *                       lastLocationUpdate:
+ *                         type: string
+ *                         format: date-time
+ *                       services:
+ *                         type: array
+ *                         description: Offered services, filtered to the requested serviceName when one is sent
+ *                         items:
+ *                           type: object
+ *                       jobs:
+ *                         type: array
+ *                         description: Provider accounts only. Jobs matching jobService, when sent
+ *                         items:
+ *                           type: object
+ *                       distanceFromPickup:
+ *                         type: number
+ *                         description: Distance in km
+ *                       providerETA:
+ *                         type: object
+ *                         properties:
+ *                           value:
+ *                             type: integer
+ *                           unit:
+ *                             type: string
+ *                             example: minutes
+ *                       locationFresh:
+ *                         type: boolean
  *       400:
- *         description: Invalid location or no service filter provided
+ *         description: Invalid location, invalid fixedPrice or rating, search shorter than 2 or longer than 100 characters, or no search filter provided
+ *       401:
+ *         description: Missing or invalid token
+ *       403:
+ *         description: Buyer access only
+ *       500:
+ *         description: Server error
  */
 router.post(
   "/search",
