@@ -457,6 +457,63 @@ class GeolocationService {
     return degrees * (Math.PI / 180);
   }
 
+  isRawCoordinateString(address) {
+    return (
+      typeof address === "string" &&
+      /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(address.trim())
+    );
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Address for a location heartbeat (providers and businesses).
+     1. A real address sent by the app wins.
+     2. Otherwise reuse the cached address unless moved > 500m.
+     3. Otherwise reverse geocode; if that fails or is vague, fall back
+        to the cache, then to "lat, lng". Never returns null.
+  ───────────────────────────────────────────────────────────── */
+  async resolveLocationAddress({
+    latitude,
+    longitude,
+    providedAddress,
+    existingLocation,
+    reuseWithinKm = 0.5,
+  }) {
+    const isUsable = (addr) =>
+      typeof addr === "string" &&
+      addr.trim() !== "" &&
+      !this.isRawCoordinateString(addr);
+
+    if (isUsable(providedAddress)) return providedAddress.trim();
+
+    const cachedAddress = isUsable(existingLocation?.address)
+      ? existingLocation.address
+      : null;
+    const [oldLng, oldLat] = existingLocation?.coordinates || [];
+    const hasOldCoords =
+      Number.isFinite(oldLat) &&
+      Number.isFinite(oldLng) &&
+      !(oldLat === 0 && oldLng === 0);
+
+    if (
+      cachedAddress &&
+      hasOldCoords &&
+      this.calculateDistance(oldLat, oldLng, latitude, longitude) <=
+        reuseWithinKm
+    ) {
+      return cachedAddress;
+    }
+
+    const fallback = cachedAddress || `${latitude}, ${longitude}`;
+    try {
+      const geoData = await this.reverseGeocode(longitude, latitude);
+      if (isUsable(geoData?.formattedAddress)) return geoData.formattedAddress;
+      console.warn("⚠️ Reverse geocode returned a vague address, using fallback");
+    } catch (error) {
+      console.warn("Reverse geocoding failed:", error.message);
+    }
+    return fallback;
+  }
+
   isValidCoordinates(longitude, latitude) {
     return (
       typeof longitude === "number" &&

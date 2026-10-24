@@ -1,5 +1,8 @@
 const Booking = require("./Bookings.model.js");
 const Provider = require("../../../models/ServiceProvider");
+const Business = require("../business/business.model");
+const businessService = require("../business/business.service");
+const staffService = require("../business/staff.service");
 const Buyer = require("../../../models/ServiceUser");
 const Chat = require("../chat/chat.model");
 const Notification = require("../notifications/notification.model");
@@ -22,6 +25,8 @@ const PROVIDER_RADIUS = {
 };
 const MAX_PROVIDERS_RETURNED = 6;
 const STALE_LOCATION_MINUTES = 10;
+const SEARCH_MIN_LENGTH = 2; // free-text /bookings/search term
+const SEARCH_MAX_LENGTH = 100;
 const ELIGIBLE_ACTIVE_STATUSES = [
   "completed",
   "enroute_to_dropoff",
@@ -31,7 +36,7 @@ const ELIGIBLE_ACTIVE_STATUSES = [
   "payment_pending",
   "booking_expired",
   "expired",
-  "declined"
+  "declined",
 ]; // Bookings that count towards provider activity
 const DELETABLE_BOOKING_STATUSES = [
   "pending_providers",
@@ -1127,7 +1132,9 @@ class BookingController {
         serviceName: String(item?.serviceName || "").trim(),
         pricingOption: String(
           item?.pricingOption ?? req.body?.pricingOption ?? "",
-        ).trim().toLowerCase(),
+        )
+          .trim()
+          .toLowerCase(),
       }));
       const serviceNames = normalizedServices.map((item) => item.serviceName);
       const serviceName = serviceNames.join(", ");
@@ -1137,7 +1144,9 @@ class BookingController {
       if (
         !normalizedCategory ||
         normalizedServices.length === 0 ||
-        normalizedServices.some((item) => !item.serviceName || !item.pricingOption) ||
+        normalizedServices.some(
+          (item) => !item.serviceName || !item.pricingOption,
+        ) ||
         !date ||
         !time ||
         !location ||
@@ -1242,10 +1251,18 @@ class BookingController {
       const serviceItems = [];
       for (const requested of normalizedServices) {
         const providerService = provider.service?.find(
-          (item) => String(item.serviceName || "").trim().toLowerCase() === requested.serviceName.toLowerCase(),
+          (item) =>
+            String(item.serviceName || "")
+              .trim()
+              .toLowerCase() === requested.serviceName.toLowerCase(),
         );
         if (!providerService) {
-          return res.status(400).json({ success: false, message: `Provider does not offer ${requested.serviceName}` });
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message: `Provider does not offer ${requested.serviceName}`,
+            });
         }
         const price = Number(
           requested.pricingOption === "fixedprice"
@@ -1253,7 +1270,12 @@ class BookingController {
             : providerService.pricingModel?.[requested.pricingOption],
         );
         if (!Number.isFinite(price) || price <= 0) {
-          return res.status(400).json({ success: false, message: `The selected pricing option for ${requested.serviceName} has no valid provider price` });
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message: `The selected pricing option for ${requested.serviceName} has no valid provider price`,
+            });
         }
         serviceItems.push({
           serviceName: requested.serviceName,
@@ -1262,9 +1284,16 @@ class BookingController {
           price,
         });
       }
-      const servicePrice = serviceItems.reduce((total, item) => total + item.price, 0);
+      const servicePrice = serviceItems.reduce(
+        (total, item) => total + item.price,
+        0,
+      );
 
-      if (serviceNames.some((name) => this.isTransportLogistics(normalizedCategory, name))) {
+      if (
+        serviceNames.some((name) =>
+          this.isTransportLogistics(normalizedCategory, name),
+        )
+      ) {
         return res.status(400).json({
           success: false,
           message:
@@ -1309,12 +1338,17 @@ class BookingController {
       }
 
       const durationMinutes = serviceItems.reduce((total, item) => {
-        const durationMatch = String(item.duration || "").trim().match(/^(\d+(?:\.\d+)?)\s*(min(?:ute)?s?|m|h(?:ou)?rs?)?$/i);
+        const durationMatch = String(item.duration || "")
+          .trim()
+          .match(/^(\d+(?:\.\d+)?)\s*(min(?:ute)?s?|m|h(?:ou)?rs?)?$/i);
         const durationValue = Number(durationMatch?.[1]);
         const durationUnit = durationMatch?.[2]?.toLowerCase() || "min";
-        return total + (Number.isFinite(durationValue)
-          ? Math.ceil(durationValue * (durationUnit.startsWith("h") ? 60 : 1))
-          : 60);
+        return (
+          total +
+          (Number.isFinite(durationValue)
+            ? Math.ceil(durationValue * (durationUnit.startsWith("h") ? 60 : 1))
+            : 60)
+        );
       }, 0);
 
       const booking = await Booking.create({
@@ -1325,7 +1359,11 @@ class BookingController {
         title: serviceName,
         serviceDetails: {
           serviceName: serviceItems[0].serviceName,
-          duration: serviceItems.map((item) => item.duration).filter(Boolean).join(" + ") || null,
+          duration:
+            serviceItems
+              .map((item) => item.duration)
+              .filter(Boolean)
+              .join(" + ") || null,
           pricingOption,
           price: servicePrice,
           items: serviceItems,
@@ -1465,27 +1503,69 @@ class BookingController {
           req.body?.job?.service ??
           "",
       ).trim();
-      const fixedPrice = req.body?.fixedPrice ?? req.body?.serviceName?.fixedPrice;
+      const normalizedBusinessName = String(
+        req.body?.businessName ?? req.body?.BusinessName ?? "",
+      ).trim();
+      const normalizedSearch = String(req.body?.search ?? "").trim();
+      const fixedPrice =
+        req.body?.fixedPrice ?? req.body?.serviceName?.fixedPrice;
       const minimumRating = req.body?.rating;
 
+      if (
+        normalizedSearch &&
+        (normalizedSearch.length < SEARCH_MIN_LENGTH ||
+          normalizedSearch.length > SEARCH_MAX_LENGTH)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `search must be between ${SEARCH_MIN_LENGTH} and ${SEARCH_MAX_LENGTH} characters`,
+        });
+      }
+
       const parsedFixedPrice =
-        fixedPrice === undefined || fixedPrice === "" ? undefined : Number(fixedPrice);
+        fixedPrice === undefined || fixedPrice === ""
+          ? undefined
+          : Number(fixedPrice);
       const parsedMinimumRating =
         minimumRating === undefined || minimumRating === ""
           ? undefined
           : Number(minimumRating);
 
-      if (parsedFixedPrice !== undefined && (!Number.isFinite(parsedFixedPrice) || parsedFixedPrice < 0)) {
-        return res.status(400).json({ success: false, message: "fixedPrice must be a non-negative number" });
+      if (
+        parsedFixedPrice !== undefined &&
+        (!Number.isFinite(parsedFixedPrice) || parsedFixedPrice < 0)
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "fixedPrice must be a non-negative number",
+          });
       }
-      if (parsedMinimumRating !== undefined && (!Number.isFinite(parsedMinimumRating) || parsedMinimumRating < 0 || parsedMinimumRating > 5)) {
-        return res.status(400).json({ success: false, message: "rating must be a number between 0 and 5" });
+      if (
+        parsedMinimumRating !== undefined &&
+        (!Number.isFinite(parsedMinimumRating) ||
+          parsedMinimumRating < 0 ||
+          parsedMinimumRating > 5)
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "rating must be a number between 0 and 5",
+          });
       }
 
-      if (!normalizedServiceName && !normalizedJobService) {
+      if (
+        !normalizedSearch &&
+        !normalizedServiceName &&
+        !normalizedJobService &&
+        !normalizedBusinessName
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Provide serviceName, jobService, or both",
+          message:
+            "Provide search, serviceName, jobService, businessName, or a combination",
         });
       }
 
@@ -1534,6 +1614,9 @@ class BookingController {
         normalizedJobService || null,
         parsedFixedPrice,
         parsedMinimumRating,
+        normalizedBusinessName || null,
+        true,
+        normalizedSearch || null,
       );
       const nearbyProviders = providers.map(
         ({ _raw, ...provider }) => provider,
@@ -1541,8 +1624,10 @@ class BookingController {
 
       return res.status(200).json({
         success: true,
+        search: normalizedSearch || undefined,
         serviceName: normalizedServiceName || undefined,
         jobService: normalizedJobService || undefined,
+        businessName: normalizedBusinessName || undefined,
         fixedPrice: parsedFixedPrice,
         rating: parsedMinimumRating,
         location: { latitude, longitude },
@@ -1568,6 +1653,9 @@ class BookingController {
     jobService = null,
     fixedPrice = undefined,
     minimumRating = undefined,
+    businessName = null,
+    includeBusinesses = false,
+    search = null,
   ) {
     try {
       const modeOfDeliveryMap = {
@@ -1610,19 +1698,45 @@ class BookingController {
       const normalizedServiceName = serviceName
         ? String(serviceName).trim()
         : null;
+      const normalizedBusinessName = businessName
+        ? String(businessName).trim()
+        : null;
       const serviceNameRegex = normalizedServiceName
         ? new RegExp(
             `^${normalizedServiceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
             "i",
           )
         : null;
+      const businessNameRegex = normalizedBusinessName
+        ? new RegExp(
+            normalizedBusinessName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            "i",
+          )
+        : null;
+      // Free-text search: partial, case-insensitive, OR across names and
+      // services. ANDed onto the rest of the query (which may have its own $or).
+      const normalizedSearch = search ? String(search).trim() : null;
+      const searchRegex = normalizedSearch
+        ? new RegExp(
+            normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            "i",
+          )
+        : null;
       const providerServiceFilters = [
         ...(jobQuery ? [{ job: jobQuery }] : []),
         ...(serviceNameRegex || fixedPrice !== undefined
-          ? [{ service: { $elemMatch: {
-              ...(serviceNameRegex ? { serviceName: serviceNameRegex } : {}),
-              ...(fixedPrice !== undefined ? { fixedPrice } : {}),
-            } } }]
+          ? [
+              {
+                service: {
+                  $elemMatch: {
+                    ...(serviceNameRegex
+                      ? { serviceName: serviceNameRegex }
+                      : {}),
+                    ...(fixedPrice !== undefined ? { fixedPrice } : {}),
+                  },
+                },
+              },
+            ]
           : []),
       ];
       const providerServiceQuery =
@@ -1633,7 +1747,9 @@ class BookingController {
                 {
                   service: {
                     $elemMatch: {
-                      ...(serviceNameRegex ? { serviceName: serviceNameRegex } : {}),
+                      ...(serviceNameRegex
+                        ? { serviceName: serviceNameRegex }
+                        : {}),
                       fixedPrice,
                     },
                   },
@@ -1642,7 +1758,9 @@ class BookingController {
             }
           : providerServiceFilters.length === 1
             ? providerServiceFilters[0]
-            : { $or: providerServiceFilters };
+            : providerServiceFilters.length > 1
+              ? { $or: providerServiceFilters }
+              : {};
 
       const baseQuery = {
         isActive: true,
@@ -1653,8 +1771,23 @@ class BookingController {
         ...(minimumRating !== undefined
           ? { "rating.average": { $gte: minimumRating } }
           : {}),
+        ...(businessNameRegex ? { BusinessName: businessNameRegex } : {}),
         ...providerServiceQuery,
       };
+      const providerQuery = searchRegex
+        ? {
+            $and: [
+              baseQuery,
+              {
+                $or: [
+                  { fullName: searchRegex },
+                  { BusinessName: searchRegex },
+                  { "service.serviceName": searchRegex },
+                ],
+              },
+            ],
+          }
+        : baseQuery;
 
       // ── Geo query ──────────────────────────────────────────────────────────────
       let rawProviders = await Provider.aggregate([
@@ -1671,7 +1804,7 @@ class BookingController {
             distanceField: "distanceFromPickup", // meters
             maxDistance: radiusKm * 1000,
             spherical: true,
-            query: baseQuery,
+            query: providerQuery,
           },
         },
         {
@@ -1679,6 +1812,8 @@ class BookingController {
             fullName: 1,
             email: 1,
             profilePicture: 1,
+            BusinessName: 1,
+            accountType: 1,
             service: 1,
             job: 1,
             rating: 1,
@@ -1693,16 +1828,131 @@ class BookingController {
         { $limit: 30 }, // fetch more, filter down after booking check
       ]);
 
-      if (!rawProviders.length) return [];
+      const businessServiceFilters = [];
+      if (normalizedServiceName || fixedPrice !== undefined) {
+        businessServiceFilters.push({
+          service: {
+            $elemMatch: {
+              ...(serviceNameRegex ? { serviceName: serviceNameRegex } : {}),
+              ...(fixedPrice !== undefined ? { fixedPrice } : {}),
+            },
+          },
+        });
+      }
+      if (normalizedJobService) {
+        const jobServiceRegex = new RegExp(
+          `^${normalizedJobService.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+          "i",
+        );
+        businessServiceFilters.push({
+          $or: [
+            { businessCategory: jobServiceRegex },
+            { service: { $elemMatch: { serviceName: jobServiceRegex } } },
+          ],
+        });
+      }
+      const businessQuery = {
+        isActive: true,
+        isDeleted: { $ne: true },
+        "currentLocation.coordinates": { $exists: true, $ne: [] },
+        // Online = toggled available + socket/heartbeat says online + a
+        // heartbeat recently enough to cover disconnects we never saw.
+        "availability.isAvailable": true,
+        isOnline: true,
+        lastSeenAt: { $gte: staleThreshold },
+        ...(minimumRating !== undefined
+          ? { "rating.average": { $gte: minimumRating } }
+          : {}),
+        ...(businessNameRegex ? { BusinessName: businessNameRegex } : {}),
+        ...(businessServiceFilters.length === 1
+          ? businessServiceFilters[0]
+          : businessServiceFilters.length > 1
+            ? fixedPrice !== undefined
+              ? { $and: businessServiceFilters }
+              : { $or: businessServiceFilters }
+            : {}),
+      };
+
+      let rawBusinesses = [];
+      if (includeBusinesses) {
+        rawBusinesses = await Business.aggregate([
+          {
+            $geoNear: {
+              key: "currentLocation",
+              near: {
+                type: "Point",
+                coordinates: [coordinates.longitude, coordinates.latitude],
+              },
+              distanceField: "distanceFromPickup",
+              maxDistance: radiusKm * 1000,
+              spherical: true,
+              query: searchRegex
+                ? {
+                    $and: [
+                      businessQuery,
+                      {
+                        $or: [
+                          { BusinessName: searchRegex },
+                          { fullName: searchRegex },
+                          { "service.serviceName": searchRegex },
+                          { businessCategory: searchRegex },
+                        ],
+                      },
+                    ],
+                  }
+                : businessQuery,
+            },
+          },
+          {
+            $project: {
+              fullName: 1,
+              BusinessName: 1,
+              email: 1,
+              profilePicture: 1,
+              service: 1,
+              businessCategory: 1,
+              rating: 1,
+              currentLocation: 1,
+              lastLocationUpdate: 1,
+              lastSeenAt: 1,
+              availableDays: 1,
+              businessHours: 1,
+              timezone: 1,
+              distanceFromPickup: 1,
+            },
+          },
+          { $limit: 30 },
+        ]);
+
+        // ── Drop businesses that are closed or short-staffed ─────────────────
+        const now = new Date();
+        rawBusinesses = rawBusinesses.filter((business) =>
+          businessService.isWithinBusinessHours(business, now),
+        );
+        const onDutyCounts = await staffService.countOnDutyStaffByBusiness(
+          rawBusinesses.map((business) => business._id),
+        );
+        rawBusinesses = rawBusinesses
+          .map((business) => ({
+            ...business,
+            onDutyStaffCount: onDutyCounts.get(String(business._id)) || 0,
+          }))
+          .filter(
+            (business) =>
+              business.onDutyStaffCount >= staffService.MIN_ON_DUTY_STAFF,
+          );
+      }
 
       // ── Filter out providers with disqualifying active bookings ────────────────
       const providerIds = rawProviders.map((p) => p._id);
 
       // Find any provider who has an active booking NOT in the eligible set
-      const disqualified = await Booking.distinct("providerId", {
-        providerId: { $in: providerIds },
-        status: { $nin: ELIGIBLE_ACTIVE_STATUSES },
-      });
+      const disqualified = providerIds.length
+        ? await Booking.distinct("providerId", {
+            providerId: { $in: providerIds },
+            status: { $nin: ELIGIBLE_ACTIVE_STATUSES },
+          })
+        : [];
 
       const disqualifiedSet = new Set(disqualified.map(String));
 
@@ -1730,7 +1980,10 @@ class BookingController {
 
           return {
             id: p._id,
+            accountType: "provider",
+            providerAccountType: p.accountType,
             fullName: p.fullName,
+            BusinessName: p.BusinessName,
             email: p.email,
             profilePicture: p.profilePicture,
             rating: p.rating,
@@ -1741,7 +1994,7 @@ class BookingController {
               ? (p.service || []).filter((item) =>
                   serviceNameRegex.test(item.serviceName || ""),
                 )
-              : p.job,
+              : p.service,
             jobs: normalizedJobService
               ? (p.job || []).filter(
                   (item) => item.service === normalizedJobService,
@@ -1755,7 +2008,42 @@ class BookingController {
             locationFresh: !isStale,
             _raw: p, // used internally, stripped before response
           };
-        })
+        });
+      const businesses = rawBusinesses.map((business) => {
+        const distanceFromPickupKm = parseFloat(
+          (business.distanceFromPickup / 1000).toFixed(2),
+        );
+        const providerETAMinutes = Math.ceil(
+          (distanceFromPickupKm / 20) * 60,
+        );
+
+        return {
+          id: business._id,
+          accountType: "business",
+          fullName: business.fullName || business.BusinessName,
+          BusinessName: business.BusinessName,
+          email: business.email,
+          profilePicture: business.profilePicture,
+          rating: business.rating,
+          currentLocation: business.currentLocation,
+          lastLocationUpdate: business.lastLocationUpdate,
+          onDutyStaffCount: business.onDutyStaffCount,
+          services: serviceNameRegex
+            ? (business.service || []).filter((item) =>
+                serviceNameRegex.test(item.serviceName || ""),
+              )
+            : business.service,
+          jobs: undefined,
+          distanceFromPickup: distanceFromPickupKm,
+          providerETA: {
+            value: providerETAMinutes,
+            unit: "minutes",
+          },
+          locationFresh: true,
+          _raw: business,
+        };
+      });
+      const nearbyAccounts = [...providers, ...businesses]
         // Sort: fresh location first, then by proximity, then rating as tiebreak
         .sort((a, b) => {
           if (a.locationFresh !== b.locationFresh)
@@ -1767,9 +2055,9 @@ class BookingController {
         .slice(0, MAX_PROVIDERS_RETURNED);
 
       console.log(
-        `✅ ${providers.length} eligible providers within ${radiusKm}km (${normalizedModeOfDelivery ?? serviceType})`,
+        `✅ ${nearbyAccounts.length} eligible accounts within ${radiusKm}km (${normalizedModeOfDelivery ?? serviceType})`,
       );
-      return providers;
+      return nearbyAccounts;
     } catch (error) {
       console.error("❌ findNearbyProviders error:", error);
       return [];
@@ -1870,7 +2158,6 @@ class BookingController {
             packageImage: booking.packageImage,
             calculatedPrice: booking.driverReceives,
             urgency: "high",
-
           })
           .catch((err) => {
             console.error(
@@ -2327,9 +2614,30 @@ class BookingController {
       const userId = req.user.id;
       const { reason } = req.body;
 
-      const paidStatuses = ["paid_escrow", "paid_escrow_scheduled", "in_progress", "arrived_at_pickup", "enroute_to_dropoff", "arrived_at_dropoff", "disputed"];
-      const cancellableStatuses = ["pending_providers", "awaiting_provider_acceptance", "provider_selected","provider_accepted", "payment_pending", ...paidStatuses, "accept_selection"];
-      const booking = await Booking.findOne({ _id: bookingId, userId, status: { $in: cancellableStatuses } });
+      const paidStatuses = [
+        "paid_escrow",
+        "paid_escrow_scheduled",
+        "in_progress",
+        "arrived_at_pickup",
+        "enroute_to_dropoff",
+        "arrived_at_dropoff",
+        "disputed",
+      ];
+      const cancellableStatuses = [
+        "pending_providers",
+        "awaiting_provider_acceptance",
+        "provider_selected",
+        "provider_accepted",
+        "payment_pending",
+        ...paidStatuses,
+        "accept_selection",
+        "cancellation_requested",
+      ];
+      let booking = await Booking.findOne({
+        _id: bookingId,
+        userId,
+        status: { $in: cancellableStatuses },
+      });
 
       if (!booking) {
         return res.status(404).json({
@@ -2338,15 +2646,41 @@ class BookingController {
         });
       }
 
-
+      if (booking.status === "cancellation_requested") {
+        return res.status(409).json({
+          success: false,
+          message: "A cancellation request is already under review",
+        });
+      }
 
       if (paidStatuses.includes(booking.status)) {
-        if (booking.cancellationRequest?.status === "pending") {
-          return res.status(409).json({ success: false, message: "A cancellation request is already under review" });
+        const previousStatus = booking.status;
+        booking = await Booking.findOneAndUpdate(
+          {
+            _id: booking._id,
+            userId,
+            status: { $in: paidStatuses },
+          },
+          {
+            $set: {
+              status: "cancellation_requested",
+              cancellationReason: reason,
+              cancellationRequest: {
+                status: "pending",
+                previousStatus,
+                requestedAt: new Date(),
+                requestedBy: userId,
+              },
+            },
+          },
+          { new: true, runValidators: true },
+        );
+        if (!booking) {
+          return res.status(409).json({
+            success: false,
+            message: "A cancellation request is already under review",
+          });
         }
-        booking.cancellationReason = reason;
-        booking.cancellationRequest = { status: "pending", requestedAt: new Date(), requestedBy: userId };
-        await booking.save();
         await notificationService.notifyUser(userId, {
           type: "booking_cancellation_requested",
           title: "Cancellation Request Received",
@@ -2359,10 +2693,15 @@ class BookingController {
           scheduledTime: booking.scheduledTime,
         });
         if (booking.providerId) {
-          const serviceLabel = [booking.serviceType, booking.subCategory]
-            .filter(Boolean)
-            .join(" · ") || "this booking";
-          const scheduleLabel = [booking.scheduleType, booking.scheduleDate, booking.scheduledTime]
+          const serviceLabel =
+            [booking.serviceType, booking.subCategory]
+              .filter(Boolean)
+              .join(" · ") || "this booking";
+          const scheduleLabel = [
+            booking.scheduleType,
+            booking.scheduleDate,
+            booking.scheduledTime,
+          ]
             .filter(Boolean)
             .join(" · ");
           await notificationService.notifyProvider(booking.providerId, {
@@ -2376,17 +2715,42 @@ class BookingController {
             scheduleDate: booking.scheduleDate,
             scheduledTime: booking.scheduledTime,
           });
+        } else if (booking.businessId) {
+          await notificationService.notifyBusiness(booking.businessId, {
+            type: "booking_cancellation_requested",
+            title: "Buyer Requested Cancellation",
+            message: `The buyer has requested cancellation of ${booking.subCategory || booking.serviceType || "this booking"}. The request is under review.${reason ? ` Reason: ${reason}` : ""}`,
+            bookingId: booking._id,
+            serviceType: booking.serviceType,
+            subCategory: booking.subCategory,
+          });
         }
         try {
-          const { sendCancellationRequestAdminEmail } = require("../../config/emailVerification");
+          const {
+            sendCancellationRequestAdminEmail,
+          } = require("../../config/emailVerification");
           const buyer = await Buyer.findById(userId)
             .select("firstName lastName fullName email")
             .lean();
-          await sendCancellationRequestAdminEmail(booking, reason, buyer || req.user);
+          await sendCancellationRequestAdminEmail(
+            booking,
+            reason,
+            buyer || req.user,
+          );
         } catch (emailError) {
-          console.error("Failed to email admin about cancellation request:", emailError.message);
+          console.error(
+            "Failed to email admin about cancellation request:",
+            emailError.message,
+          );
         }
-        return res.status(200).json({ success: true, message: "Cancellation request submitted. Our team will get back to you soon.", data: booking });
+        return res
+          .status(200)
+          .json({
+            success: true,
+            message:
+              "Cancellation request submitted. Our team will get back to you soon.",
+            data: booking,
+          });
       }
 
       booking.status = "cancelled";

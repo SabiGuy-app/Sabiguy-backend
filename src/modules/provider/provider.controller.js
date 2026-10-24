@@ -1117,88 +1117,12 @@ class ProviderController {
           message: "KYC verification required to update location",
         });
       }
-      const isRawCoords = (addr) =>
-        addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
-
-      const existingAddress = existingProvider.currentLocation?.address;
-      const hasValidProvidedAddress = address && !isRawCoords(address);
-      const hasValidCachedAddress =
-        existingAddress && !isRawCoords(existingAddress);
-
-      let finalAddress = null;
-      let shouldReverseGeocode = false; // default OFF — Mapbox Nigeria data is too poor
-
-      if (hasValidProvidedAddress) {
-        // App sent a real address (e.g. from device GPS + Google on frontend) — use it
-        finalAddress = address;
-      } else if (hasValidCachedAddress) {
-        // Check if moved more than 500m before bothering to re-geocode
-        const oldCoords = existingProvider.currentLocation?.coordinates || [
-          0, 0,
-        ];
-        const [oldLng, oldLat] = oldCoords;
-        const isFirstLocation = oldLat === 0 && oldLng === 0;
-
-        if (isFirstLocation) {
-          shouldReverseGeocode = true;
-        } else {
-          const R = 6371;
-          const dLat = ((latitude - oldLat) * Math.PI) / 180;
-          const dLon = ((longitude - oldLng) * Math.PI) / 180;
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos((oldLat * Math.PI) / 180) *
-              Math.cos((latitude * Math.PI) / 180) *
-              Math.sin(dLon / 2) *
-              Math.sin(dLon / 2);
-          const distanceMoved =
-            R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-          if (distanceMoved > 0.5) {
-            // Moved more than 500m — re-geocode only if app didn't send address
-            console.log(
-              `📍 Moved ${distanceMoved.toFixed(2)}km — attempting re-geocode`,
-            );
-            shouldReverseGeocode = true;
-          } else {
-            // // Barely moved — reuse cached address
-            // console.log(`📌 Reusing cached address (moved ${distanceMoved.toFixed(2)}km)`);
-            // finalAddress = existingAddress;
-          }
-        }
-      } else {
-        // No provided address, no valid cache — have to try geocoding
-        shouldReverseGeocode = true;
-      }
-
-      if (shouldReverseGeocode) {
-        try {
-          console.log(`🔄 Reverse geocoding: ${latitude}, ${longitude}`);
-          const geoData = await geolocationService.reverseGeocode(
-            longitude,
-            latitude,
-          );
-
-          if (
-            geoData?.formattedAddress &&
-            !isRawCoords(geoData.formattedAddress)
-          ) {
-            finalAddress = geoData.formattedAddress;
-            console.log(`✅ Got address: ${finalAddress}`);
-          } else {
-            // Mapbox returned something vague — prefer cache over bad address
-            console.warn("⚠️ Mapbox returned vague address, preferring cache");
-            finalAddress = hasValidCachedAddress
-              ? existingAddress
-              : `${latitude}, ${longitude}`;
-          }
-        } catch (geoError) {
-          console.warn("Reverse geocoding failed:", geoError.message);
-          finalAddress = hasValidCachedAddress
-            ? existingAddress
-            : `${latitude}, ${longitude}`;
-        }
-      }
+      const finalAddress = await geolocationService.resolveLocationAddress({
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        providedAddress: address,
+        existingLocation: existingProvider.currentLocation,
+      });
 
       const provider = await Provider.findByIdAndUpdate(
         providerId,
@@ -1797,10 +1721,10 @@ class ProviderController {
       const { reason } = req.body;
 
       const paidReviewStatuses = ["paid_escrow", "paid_escrow_scheduled", "in_progress", "arrived_at_pickup", "enroute_to_dropoff", "arrived_at_dropoff", "disputed"];
-      const booking = await Booking.findOne({
+      let booking = await Booking.findOne({
         _id: bookingId,
         providerId,
-        status: { $in: ["provider_selected", "provider_accepted", ...paidReviewStatuses] },
+        status: { $in: ["provider_selected", "provider_accepted", ...paidReviewStatuses, "cancellation_requested"] },
       });
 
       if (!booking) {
@@ -1810,13 +1734,44 @@ class ProviderController {
         });
       }
 
+      if (booking.status === "cancellation_requested") {
+        return res.status(409).json({ success: false, message: "A cancellation request is already under review" });
+      }
+
       if (paidReviewStatuses.includes(booking.status)) {
-        if (booking.cancellationRequest?.status === "pending") {
-          return res.status(409).json({ success: false, message: "A cancellation request is already under review" });
+        const previousStatus = booking.status;
+        booking = await Booking.findOneAndUpdate(
+          {
+            _id: booking._id,
+            providerId,
+            status: { $in: paidReviewStatuses },
+          },
+          {
+            $set: {
+              status: "cancellation_requested",
+              cancellationReason: reason,
+              cancellationRequest: {
+                status: "pending",
+                previousStatus,
+                requestedAt: new Date(),
+                requestedBy: providerId,
+              },
+            },
+          },
+          { new: true, runValidators: true },
+        );
+        if (!booking) {
+          return res.status(409).json({
+            success: false,
+            message: "A cancellation request is already under review",
+          });
         }
-        booking.cancellationReason = reason;
-        booking.cancellationRequest = { status: "pending", requestedAt: new Date(), requestedBy: providerId };
-        await booking.save();
+        await notificationService.notifyProvider(providerId, {
+          type: "booking_cancellation_requested",
+          title: "Cancellation Request Submitted",
+          message: "Your cancellation request is under review. The booking is temporarily locked while our team reviews it.",
+          bookingId: booking._id,
+        });
         await notificationService.notifyUser(booking.userId, {
           type: "booking_cancellation_requested",
           title: "Cancellation Request Received",

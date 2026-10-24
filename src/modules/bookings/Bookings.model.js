@@ -1,15 +1,54 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
 const bookingSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Buyer",
+      ref: 'Buyer',
       required: true,
     },
     providerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Provider",
+      ref: 'Provider',
+    },
+
+    // Business bookings: set when the job belongs to a business (the buyer
+    // booked the business, and the owner assigns its own staff). Left null for
+    // marketplace bookings. `providerId` stays null for business bookings; the
+    // assigned people live in `assignedS taff`.
+    businessId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Business',
+      default: null,
+      index: true,
+    },
+    assignedStaff: [
+      {
+        staff: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Staff',
+          required: true,
+        },
+        provider: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Provider',
+          default: null,
+        },
+        assignedAt: { type: Date, default: Date.now },
+      },
+    ],
+    // Business-facing lifecycle, kept separate from the provider `status` enum
+    // below so the two flows don't interfere. Only set on business bookings.
+    businessStatus: {
+      type: String,
+      enum: [
+        'needs_staff',
+        'assigned',
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      default: null,
     },
 
     // Service info
@@ -25,7 +64,7 @@ const bookingSchema = new mongoose.Schema(
       duration: String,
       pricingOption: {
         type: String,
-        enum: ["walk_in", "provider_address", "customer_address", "fixedprice"],
+        enum: ['walk_in', 'provider_address', 'customer_address', 'fixedprice'],
       },
       price: Number,
       items: [
@@ -34,7 +73,12 @@ const bookingSchema = new mongoose.Schema(
           duration: String,
           pricingOption: {
             type: String,
-            enum: ["walk_in", "provider_address", "customer_address", "fixedprice"],
+            enum: [
+              'walk_in',
+              'provider_address',
+              'customer_address',
+              'fixedprice',
+            ],
           },
           price: Number,
         },
@@ -59,7 +103,7 @@ const bookingSchema = new mongoose.Schema(
       coordinates: {
         type: {
           type: String,
-          enum: ["Point"],
+          enum: ['Point'],
         },
         coordinates: {
           type: [Number], // [lng, lat]
@@ -74,7 +118,7 @@ const bookingSchema = new mongoose.Schema(
       coordinates: {
         type: {
           type: String,
-          enum: ["Point"],
+          enum: ['Point'],
         },
         coordinates: {
           type: [Number], // [lng, lat]
@@ -91,7 +135,7 @@ const bookingSchema = new mongoose.Schema(
       coordinates: {
         type: {
           type: String,
-          enum: ["Point"],
+          enum: ['Point'],
         },
         coordinates: {
           type: [Number], // [lng, lat]
@@ -103,23 +147,23 @@ const bookingSchema = new mongoose.Schema(
       value: Number, // in kilometers
       unit: {
         type: String,
-        default: "km",
+        default: 'km',
       },
     },
     // Booking schema additions
     providerETA: {
       value: Number,
-      unit: { type: String, default: "minutes" },
+      unit: { type: String, default: 'minutes' },
     },
 
     rideDuration: {
       value: Number,
-      unit: { type: String, default: "minutes" },
+      unit: { type: String, default: 'minutes' },
       isEstimate: { type: Boolean, default: false },
     },
 
     jobCompletedImages: [
-       {
+      {
         pictures: [{ type: String }],
         videos: [{ type: String }],
       },
@@ -129,7 +173,7 @@ const bookingSchema = new mongoose.Schema(
 
     bookingDuration: {
       value: Number,
-      unit: { type: String, default: "minutes" },
+      unit: { type: String, default: 'minutes' },
       breakdown: {
         providerToPickup: Number,
         pickupToDropoff: Number,
@@ -137,7 +181,7 @@ const bookingSchema = new mongoose.Schema(
     },
     providerDistances: [
       {
-        providerId: { type: mongoose.Schema.Types.ObjectId, ref: "Provider" },
+        providerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Provider' },
         distanceFromPickup: Number,
         providerETAMinutes: Number,
         vehicleProductionYear: Number,
@@ -146,7 +190,7 @@ const bookingSchema = new mongoose.Schema(
     providerPricingOptions: {
       type: [
         {
-          providerId: { type: mongoose.Schema.Types.ObjectId, ref: "Provider" },
+          providerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Provider' },
           riderPays: Number,
           driverReceives: Number,
           platformEarns: Number,
@@ -167,7 +211,7 @@ const bookingSchema = new mongoose.Schema(
       value: Number,
       unit: {
         type: String,
-        default: "minutes",
+        default: 'minutes',
       },
       isEstimate: {
         type: Boolean,
@@ -179,7 +223,7 @@ const bookingSchema = new mongoose.Schema(
     // Schedule
     scheduleType: {
       type: String,
-      enum: ["immediate", "scheduled"],
+      enum: ['immediate', 'scheduled'],
       required: true,
     },
     scheduleDate: Date,
@@ -217,49 +261,50 @@ const bookingSchema = new mongoose.Schema(
     suggestedProviders: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Provider",
+        ref: 'Provider',
       },
     ],
     notifiedProviders: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Provider",
+        ref: 'Provider',
       },
     ],
 
     providerOffer: Number,
     providerResponse: {
       type: String,
-      enum: ["pending", "accepted", "declined", "counter_offer"],
-      default: "pending",
+      enum: ['pending', 'accepted', 'declined', 'counter_offer'],
+      default: 'pending',
     },
 
     // Status
     status: {
       type: String,
       enum: [
-        "no_provider_available", // No provider available for the service
-        "pending_providers", // User created, awaiting provider selection
-        "awaiting_provider_acceptance", // Transport: waiting for fastest finger
-        "provider_selected", // Provider selected/accepted
-        "payment_pending", // Awaiting payment
-        "booking_expired", // No provider accepted within the acceptance window
-        "paid_escrow",
-        "paid_escrow_scheduled", // Paid and scheduled for later
-        "provider_accepted",
-        "accept_selection",
-        "in_progress",
-        "arrived_at_pickup",
-        "enroute_to_dropoff",
-        "arrived_at_dropoff",
-        "completed", // Service completed
-        "expired", // Payment window expired before user paid
-        "cancelled", // Cancelled
-        "user_accepted_completion",
-        "funds_released", // Payment released to provider
-        "disputed", // Dispute raised
+        'no_provider_available', // No provider available for the service
+        'pending_providers', // User created, awaiting provider selection
+        'awaiting_provider_acceptance', // Transport: waiting for fastest finger
+        'provider_selected', // Provider selected/accepted
+        'payment_pending', // Awaiting payment
+        'booking_expired', // No provider accepted within the acceptance window
+        'paid_escrow',
+        'paid_escrow_scheduled', // Paid and scheduled for later
+        'provider_accepted',
+        'accept_selection',
+        'in_progress',
+        'arrived_at_pickup',
+        'enroute_to_dropoff',
+        'arrived_at_dropoff',
+        'completed', // Service completed
+        'expired', // Payment window expired before user paid
+        'cancelled', // Cancelled
+        'cancellation_requested',
+        'user_accepted_completion',
+        'funds_released', // Payment released to provider
+        'disputed', // Dispute raised
       ],
-      default: "pending_providers",
+      default: 'pending_providers',
     },
 
     paymentDeadlineAt: {
@@ -285,7 +330,7 @@ const bookingSchema = new mongoose.Schema(
       },
       escrowStatus: {
         type: String,
-        enum: ["held", "pending", "released", "refunded"],
+        enum: ['held', 'pending', 'released', 'refunded'],
       },
       paidAt: Date,
       releasedAt: Date,
@@ -296,7 +341,7 @@ const bookingSchema = new mongoose.Schema(
       },
       verificationMethod: {
         type: String,
-        enum: ["paystack", "admin_manual"],
+        enum: ['paystack', 'admin_manual'],
         default: null,
       },
       verificationNote: {
@@ -306,7 +351,7 @@ const bookingSchema = new mongoose.Schema(
     },
     modeOfDelivery: {
       type: String,
-      enum: ["Car", "Bike"],
+      enum: ['Car', 'Bike'],
     },
     // Timestamps for tracking
     acceptedAt: Date,
@@ -327,22 +372,27 @@ const bookingSchema = new mongoose.Schema(
     // Cancellation
     cancellationReason: String,
     cancellationRequest: {
-      status: { type: String, enum: ["pending", "approved"], default: null },
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: null,
+      },
+      previousStatus: String,
       requestedAt: Date,
-      requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       reviewedAt: Date,
-      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
       buyerMessage: String,
       providerMessage: String,
       refundAmount: Number,
     },
     cancelledBy: {
       type: mongoose.Schema.Types.ObjectId,
-      refPath: "cancelledByModel",
+      refPath: 'cancelledByModel',
     },
     cancelledByModel: {
       type: String,
-      enum: ["User", "Provider", "Admin"],
+      enum: ['User', 'Provider', 'Admin'],
     },
 
     // Ratings
@@ -362,7 +412,7 @@ const bookingSchema = new mongoose.Schema(
     disputeRaisedAt: Date,
     disputeRaisedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "ServiceUser",
+      ref: 'ServiceUser',
     },
     disputeReason: String,
     disputeResolution: String,
@@ -377,8 +427,8 @@ const bookingSchema = new mongoose.Schema(
 bookingSchema.index({ userId: 1, status: 1 });
 bookingSchema.index({ providerId: 1, status: 1 });
 bookingSchema.index({ status: 1 });
-bookingSchema.index({ "location.coordinates": "2dsphere" });
-bookingSchema.index({ "pickupLocation.coordinates": "2dsphere" });
-bookingSchema.index({ "dropoffLocation.coordinates": "2dsphere" });
+bookingSchema.index({ 'location.coordinates': '2dsphere' });
+bookingSchema.index({ 'pickupLocation.coordinates': '2dsphere' });
+bookingSchema.index({ 'dropoffLocation.coordinates': '2dsphere' });
 
-module.exports = mongoose.model("Booking", bookingSchema);
+module.exports = mongoose.model('Booking', bookingSchema);

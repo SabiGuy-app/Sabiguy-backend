@@ -56,6 +56,7 @@ class NotificationService {
           "booking_taken",
           "counter_offer",
           "booking_cancellation_requested",
+          "booking_cancellation_rejected",
           'booking_cancellation_approved',
           "booking_disputed",
           "booking_completed_awaiting_acceptance",
@@ -101,6 +102,7 @@ class NotificationService {
       booking_taken: "bookings",
       booking_completed_awaiting_acceptance: "bookings",
       booking_cancellation_requested: "bookings",
+      booking_cancellation_rejected: "bookings",
       booking_cancellation_approved: "bookings",
       booking_expired: "bookings",
       expired: "bookings",
@@ -177,6 +179,14 @@ class NotificationService {
 
   setSocketIO(io) {
     this.io = io;
+  }
+
+  // Socket rooms are `${jwtRole}:${id}` (see src/index.js). Business owners
+  // authenticate with role "businessOwner", not the model name "Business".
+  getRecipientRoom(recipientModel, recipientId) {
+    const roleByModel = { Business: "businessOwner" };
+    const role = roleByModel[recipientModel] || recipientModel.toLowerCase();
+    return `${role}:${recipientId}`;
   }
 
   logNotificationError(operation, recipientId, recipientModel, error) {
@@ -290,7 +300,7 @@ class NotificationService {
         data,
       );
 
-      const room = `business:${businessId}`;
+      const room = this.getRecipientRoom("Business", businessId);
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
       }
@@ -338,7 +348,7 @@ class NotificationService {
         ? await this.createNotification(userId, userModel, data)
         : null;
 
-      const room = `${userModel.toLowerCase()}:${userId}`;
+      const room = this.getRecipientRoom(userModel, userId);
 
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);

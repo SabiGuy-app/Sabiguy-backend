@@ -134,6 +134,7 @@ jobs:
             GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
             METERED_APP_DOMAIN=${{ secrets.METERED_APP_DOMAIN }}
             METERED_API_KEY=${{ secrets.METERED_API_KEY }}
+            ADMIN_URL=${{ secrets.ADMIN_URL }}
 
             ENVEOF
 
