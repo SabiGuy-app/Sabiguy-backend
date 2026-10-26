@@ -37,6 +37,11 @@ const bookingSchema = new mongoose.Schema(
         assignedAt: { type: Date, default: Date.now },
       },
     ],
+    requestedStaffCode: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     // Business-facing lifecycle, kept separate from the provider `status` enum
     // below so the two flows don't interfere. Only set on business bookings.
     businessStatus: {

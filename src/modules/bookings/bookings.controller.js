@@ -1,6 +1,7 @@
 const Booking = require("./Bookings.model.js");
 const Provider = require("../../../models/ServiceProvider");
 const Business = require("../business/business.model");
+const Staff = require("../business/staff.model");
 const businessService = require("../business/business.service");
 const staffService = require("../business/staff.service");
 const Buyer = require("../../../models/ServiceUser");
@@ -1119,7 +1120,29 @@ class BookingController {
 
   async createServiceBooking(req, res) {
     try {
-      const { category, date, time, location, providerId } = req.body || {};
+      const {
+        category,
+        date,
+        time,
+        location,
+        providerId,
+        businessId,
+        staffCode,
+      } = req.body || {};
+      const isBusinessBooking = Boolean(businessId);
+      const targetId = isBusinessBooking ? businessId : providerId;
+      const normalizedStaffCode =
+        typeof staffCode === "string" ? staffCode.trim().toUpperCase() : "";
+      if (
+        staffCode !== undefined &&
+        staffCode !== null &&
+        typeof staffCode !== "string"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "staffCode must be a string",
+        });
+      }
       const serviceInput = req.body?.service;
       const requestedServices = Array.isArray(serviceInput)
         ? serviceInput
@@ -1150,20 +1173,22 @@ class BookingController {
         !date ||
         !time ||
         !location ||
-        !providerId ||
+        !targetId ||
+        (providerId && businessId) ||
+        (staffCode && !isBusinessBooking) ||
         !pricingOption
       ) {
         return res.status(400).json({
           success: false,
           message:
-            "category, at least one service.serviceName and pricingOption, date, time, location, and providerId are required",
+            "category, at least one service.serviceName and pricingOption, date, time, location, and exactly one of providerId or businessId are required; staffCode can only be used with businessId",
         });
       }
 
-      if (!mongoose.Types.ObjectId.isValid(providerId)) {
+      if (!mongoose.Types.ObjectId.isValid(targetId)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid providerId",
+          message: `Invalid ${isBusinessBooking ? "businessId" : "providerId"}`,
         });
       }
 
@@ -1199,37 +1224,86 @@ class BookingController {
         });
       }
 
-      const provider = await Provider.findOne({
-        _id: providerId,
-        isActive: true,
-        isDeleted: { $ne: true },
-      }).select("fullName job service availability");
+      let provider = null;
+      let business = null;
+      if (isBusinessBooking) {
+        business = await Business.findOne({
+          _id: businessId,
+          isActive: true,
+          isDeleted: { $ne: true },
+        }).select("fullName BusinessName businessCategory service availability");
 
-      if (!provider) {
-        return res.status(404).json({
-          success: false,
-          message: "Provider not found",
-        });
-      }
+        if (!business) {
+          return res.status(404).json({
+            success: false,
+            message: "Business not found",
+          });
+        }
 
-      if (!provider.availability?.isAvailable) {
-        return res.status(409).json({
-          success: false,
-          message: "Provider is currently unavailable",
-        });
-      }
+        if (!business.availability?.isAvailable) {
+          return res.status(409).json({
+            success: false,
+            message: "Business is currently unavailable",
+          });
+        }
 
-      const categoryMatches = provider.job?.some(
-        (job) =>
-          String(job.service || "")
-            .trim()
-            .toLowerCase() === normalizedCategory.toLowerCase(),
-      );
-      if (!categoryMatches) {
-        return res.status(400).json({
-          success: false,
-          message: "Provider does not offer this category",
-        });
+        if (
+          business.businessCategory &&
+          business.businessCategory.trim().toLowerCase() !==
+            normalizedCategory.toLowerCase()
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "Business does not offer this category",
+          });
+        }
+
+        if (normalizedStaffCode) {
+          const requestedStaff = await Staff.exists({
+            business: businessId,
+            staffCode: normalizedStaffCode,
+            status: "ACTIVE",
+          });
+          if (!requestedStaff) {
+            return res.status(400).json({
+              success: false,
+              message: "staffCode does not belong to an active staff member of this business",
+            });
+          }
+        }
+      } else {
+        provider = await Provider.findOne({
+          _id: providerId,
+          isActive: true,
+          isDeleted: { $ne: true },
+        }).select("fullName job service availability");
+
+        if (!provider) {
+          return res.status(404).json({
+            success: false,
+            message: "Provider not found",
+          });
+        }
+
+        if (!provider.availability?.isAvailable) {
+          return res.status(409).json({
+            success: false,
+            message: "Provider is currently unavailable",
+          });
+        }
+
+        const categoryMatches = provider.job?.some(
+          (job) =>
+            String(job.service || "")
+              .trim()
+              .toLowerCase() === normalizedCategory.toLowerCase(),
+        );
+        if (!categoryMatches) {
+          return res.status(400).json({
+            success: false,
+            message: "Provider does not offer this category",
+          });
+        }
       }
 
       const pricingOptions = [
@@ -1250,36 +1324,37 @@ class BookingController {
 
       const serviceItems = [];
       for (const requested of normalizedServices) {
-        const providerService = provider.service?.find(
+        const catalog = isBusinessBooking ? business.service : provider.service;
+        const selectedService = catalog?.find(
           (item) =>
             String(item.serviceName || "")
               .trim()
               .toLowerCase() === requested.serviceName.toLowerCase(),
         );
-        if (!providerService) {
+        if (!selectedService) {
           return res
             .status(400)
             .json({
               success: false,
-              message: `Provider does not offer ${requested.serviceName}`,
+              message: `${isBusinessBooking ? "Business" : "Provider"} does not offer ${requested.serviceName}`,
             });
         }
         const price = Number(
           requested.pricingOption === "fixedprice"
-            ? providerService.fixedPrice
-            : providerService.pricingModel?.[requested.pricingOption],
+            ? selectedService.fixedPrice
+            : selectedService.pricingModel?.[requested.pricingOption],
         );
         if (!Number.isFinite(price) || price <= 0) {
           return res
             .status(400)
             .json({
               success: false,
-              message: `The selected pricing option for ${requested.serviceName} has no valid provider price`,
+              message: `The selected pricing option for ${requested.serviceName} has no valid ${isBusinessBooking ? "business" : "provider"} price`,
             });
         }
         serviceItems.push({
           serviceName: requested.serviceName,
-          duration: providerService.duration || null,
+          duration: selectedService.duration || null,
           pricingOption: requested.pricingOption,
           price,
         });
@@ -1353,7 +1428,12 @@ class BookingController {
 
       const booking = await Booking.create({
         userId: req.user.id,
-        providerId,
+        providerId: isBusinessBooking ? null : providerId,
+        businessId: isBusinessBooking ? businessId : null,
+        requestedStaffCode: isBusinessBooking
+          ? normalizedStaffCode || null
+          : null,
+        businessStatus: isBusinessBooking ? "needs_staff" : null,
         serviceType: normalizedCategory,
         subCategory: serviceName,
         title: serviceName,
@@ -1400,12 +1480,14 @@ class BookingController {
         status: "awaiting_provider_acceptance",
       });
 
-      let providerNotified = true;
+      let recipientNotified = true;
       try {
-        await notificationService.notifyProvider(providerId, {
+        const notificationData = {
           type: "new_booking_request",
           title: "New Service Booking Request",
-          message: `A customer requested ${serviceName} service for ${String(date)} at ${String(time)}. Please review and respond.`,
+          message: isBusinessBooking
+            ? `A customer requested ${serviceName} service for ${String(date)} at ${String(time)}.${normalizedStaffCode ? ` They requested staff ${normalizedStaffCode}; please assign staff to the booking.` : " Please assign staff to the booking."}`
+            : `A customer requested ${serviceName} service for ${String(date)} at ${String(time)}. Please review and respond.`,
           bookingId: booking._id,
           userId: req.user.id,
           serviceType: normalizedCategory,
@@ -1417,19 +1499,29 @@ class BookingController {
           scheduleDate,
           scheduledTime: String(time).trim(),
           address,
-        });
+          ...(normalizedStaffCode ? { staffCode: normalizedStaffCode } : {}),
+        };
+        if (isBusinessBooking) {
+          await notificationService.notifyBusiness(businessId, notificationData);
+        } else {
+          await notificationService.notifyProvider(providerId, notificationData);
+        }
       } catch (notificationError) {
-        providerNotified = false;
+        recipientNotified = false;
         console.error(
-          "Notify provider about service booking error:",
+          `Notify ${isBusinessBooking ? "business" : "provider"} about service booking error:`,
           notificationError,
         );
       }
 
       return res.status(201).json({
         success: true,
-        message: "Service booking created and sent to provider",
-        providerNotified,
+        message: isBusinessBooking
+          ? "Service booking created and sent to business for staff assignment"
+          : "Service booking created and sent to provider",
+        ...(isBusinessBooking
+          ? { businessNotified: recipientNotified }
+          : { providerNotified: recipientNotified }),
         data: this.prepareBookingResponse(booking),
       });
     } catch (error) {

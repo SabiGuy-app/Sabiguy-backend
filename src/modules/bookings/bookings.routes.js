@@ -136,7 +136,7 @@ router.post(
  * @swagger
  * /api/v1/bookings/service:
  *   post:
- *     summary: Create a scheduled service booking with a selected provider
+ *     summary: Create a scheduled service booking with a provider or business
  *     tags: [Bookings]
  *     security:
  *       - bearerAuth: []
@@ -146,11 +146,14 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [category, service, date, time, location, providerId]
+ *             required: [category, service, date, time, location]
+ *             oneOf:
+ *               - required: [providerId]
+ *               - required: [businessId]
  *             properties:
  *               category:
  *                 type: string
- *                 description: Must match the provider's job.service
+ *                 description: Must match the provider's category or the business's businessCategory
  *               service:
  *                 type: array
  *                 minItems: 1
@@ -194,13 +197,22 @@ router.post(
  *                         maxItems: 2
  *               providerId:
  *                 type: string
+ *                 description: Provider account ID. Use this for direct provider bookings; mutually exclusive with businessId.
+ *               businessId:
+ *                 type: string
+ *                 description: Business account ID. The booking is sent to the business owner for staff assignment; mutually exclusive with providerId.
+ *               staffCode:
+ *                 type: string
+ *                 description: Optional requested staff preference for a business booking. The business owner still assigns staff.
  *     responses:
  *       201:
- *         description: Booking created and sent to provider for acceptance
+ *         description: Booking created and sent to the provider or business owner. Business bookings remain unassigned until the owner assigns staff.
  *       400:
- *         description: Invalid booking details or provider pricing option
+ *         description: Invalid booking details, target, requested staff code, or pricing option
+ *       409:
+ *         description: Provider or business is currently unavailable
  *       404:
- *         description: Provider not found
+ *         description: Provider or business not found
  */
 router.post(
   "/service",

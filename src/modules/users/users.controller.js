@@ -1,4 +1,5 @@
 const usersService = require('./users.service');
+const staffService = require('../business/staff.service');
 
 const getPagination = (req) => usersService.getPagination(req);
 
@@ -57,7 +58,13 @@ exports.getUserById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    res.status(200).json({ success: true, data: user });
+    let responseUser = user;
+    if (user.role === 'businessOwner') {
+      responseUser = user.toObject();
+      responseUser.staffOnDuty = await staffService.getStaffOnDuty(id);
+    }
+
+    res.status(200).json({ success: true, data: responseUser });
   } catch (err) {
     const statusCode = err.statusCode || 500;
     res.status(statusCode).json({ success: false, message: err.message });
