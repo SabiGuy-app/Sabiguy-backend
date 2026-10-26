@@ -38,7 +38,7 @@ const io = socketIO(server, {
       "https://sabiguy.vercel.app",
       "https://www.sabiguy.com",
     ],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-client-platform"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     credentials: true,
   },
