@@ -323,17 +323,18 @@ router.get("/email/:email", getUserByEmail);
  *         description: The MongoDB ID of the user
  *     responses:
  *       200:
- *         description: User found successfully
+ *         description: User found successfully. For business accounts, data also includes staffOnDuty with the same count and staff fields as the business staff on-duty endpoint for any authenticated caller.
  *       404:
  *         description: User not found
  */
-router.get("/:id", getUserById);
+router.get("/:id", authMiddleware, getUserById);
 
 /**
  * @swagger
  * /api/v1/users/location:
  *   put:
  *     summary: Update user location
+ *     description: Updates the authenticated buyer's current location and resolves currentLocation.address the same way as PUT /api/v1/provider/location. An address sent by the app wins, otherwise the saved address is reused unless the buyer moved more than 500m, and only then is it reverse geocoded.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -346,10 +347,10 @@ router.get("/:id", getUserById);
  *             required:
  *               - latitude
  *               - longitude
- *               - address
  *             properties:
  *               address:
  *                 type: string
+ *                 description: Optional human-readable address from the device
  *                 example: Ikeja, Lagos
  *               latitude:
  *                 type: number

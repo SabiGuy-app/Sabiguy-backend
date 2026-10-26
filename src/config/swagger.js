@@ -204,6 +204,8 @@ const options = {
       'business.auth.routes.js',
     ),
     path.join(__dirname, '..', 'modules', 'business', 'business.routes.js'),
+    path.join(__dirname, '..', 'modules', 'business', 'staff.routes.js'),
+    path.join(__dirname, '..', 'modules', 'business', 'dashboard.routes.js'),
   ],
 };
 

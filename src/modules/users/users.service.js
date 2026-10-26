@@ -263,51 +263,12 @@ const updateUserLocation = async (buyerId, { latitude, longitude, address }) => 
     throw error;
   }
 
-  const isRawCoords = (addr) => addr && /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(addr.trim());
-  const existingAddress = existingBuyer.currentLocation?.address;
-  const hasValidProvidedAddress = address && !isRawCoords(address);
-  const hasValidCachedAddress = existingAddress && !isRawCoords(existingAddress);
-
-  let finalAddress = null;
-  let shouldReverseGeocode = false;
-
-  if (hasValidProvidedAddress) {
-    finalAddress = address;
-  } else if (hasValidCachedAddress) {
-    const oldCoords = existingBuyer.currentLocation?.coordinates || [0, 0];
-    const [oldLng, oldLat] = oldCoords;
-    const isFirstLocation = oldLat === 0 && oldLng === 0;
-
-    if (isFirstLocation) {
-      shouldReverseGeocode = true;
-    } else {
-      const R = 6371;
-      const dLat = ((latitude - oldLat) * Math.PI) / 180;
-      const dLon = ((longitude - oldLng) * Math.PI) / 180;
-      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos((oldLat * Math.PI) / 180) * Math.cos((latitude * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-      const distanceMoved = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-      if (distanceMoved > 0.5) {
-        shouldReverseGeocode = true;
-      }
-    }
-  } else {
-    shouldReverseGeocode = true;
-  }
-
-  if (shouldReverseGeocode) {
-    try {
-      const geoData = await geolocationService.reverseGeocode(longitude, latitude);
-      if (geoData?.formattedAddress && !isRawCoords(geoData.formattedAddress)) {
-        finalAddress = geoData.formattedAddress;
-      } else {
-        finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
-      }
-    } catch (geoError) {
-      console.warn('Reverse geocoding failed:', geoError.message);
-      finalAddress = hasValidCachedAddress ? existingAddress : `${latitude}, ${longitude}`;
-    }
-  }
+  const finalAddress = await geolocationService.resolveLocationAddress({
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+    providedAddress: address,
+    existingLocation: existingBuyer.currentLocation,
+  });
 
   const buyer = await Buyer.findByIdAndUpdate(
     buyerId,

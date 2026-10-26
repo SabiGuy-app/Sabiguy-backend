@@ -47,12 +47,36 @@ const businessSchema = new mongoose.Schema(
     BusinessName: { type: String },
     regNumber: { type: String },
     BusinessAddress: { type: String },
+    currentLocation: {
+      type: {
+        type: String,
+        enum: ['Point'],
+      },
+      coordinates: {
+        type: [Number],
+      },
+      address: { type: String },
+    },
+    lastLocationUpdate: { type: Date, default: Date.now },
+    // Presence for fast-booking search. `isOnline` flips on with every
+    // heartbeat (location ping) and off on socket disconnect; `lastSeenAt`
+    // covers disconnects that never reach the server.
+    isOnline: { type: Boolean, default: false },
+    lastSeenAt: { type: Date, default: null },
+    availability: {
+      isAvailable: { type: Boolean, default: false },
+      lastUpdated: { type: Date, default: null },
+    },
+    rating: {
+      average: { type: Number, default: 0 },
+      count: { type: Number, default: 0 },
+    },
     cacFile: { type: String },
     ninSlip: { type: String },
     cityOfOperation: { type: String },
     businessCategory: { type: String, required: false, default: null },
     businessPhotos: [{ type: String }],
-   service: [
+    service: [
       {
         serviceName: { type: String },
         duration: { type: String },
@@ -127,10 +151,28 @@ const businessSchema = new mongoose.Schema(
       default: null,
     },
     kycLevel: { type: Number, default: 0 },
+    currency: { type: String, default: 'NGN' },
+    timezone: { type: String, default: 'Africa/Lagos' },
+    weekStarts: { type: String, default: 'Monday' },
+    payoutAccount: {
+      bankName: { type: String },
+      bankCode: { type: String },
+      accountNumber: { type: String },
+      accountName: { type: String },
+      taxId: { type: String },
+      verified: { type: Boolean, default: false },
+    },
+    payoutSchedule: {
+      automatic: { type: Boolean, default: false },
+      day: { type: String, default: 'Friday' },
+      minimumThreshold: { type: Number, default: 0 },
+    },
   },
   {
     timestamps: true,
   },
 );
+
+businessSchema.index({ currentLocation: '2dsphere' });
 
 module.exports = mongoose.model('Business', businessSchema);

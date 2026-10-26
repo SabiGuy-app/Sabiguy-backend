@@ -2,6 +2,7 @@ const jwt = require("jsonwebtoken");
 const { getPagination } = require("../../shared/utils/pagination");
 const Business = require("./business.model");
 const businessService = require("./business.service");
+const staffService = require("./staff.service");
 
 const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || "20h";
 
@@ -357,6 +358,216 @@ const getKycLevel = async (req, res) => {
   }
 };
 
+// PUT /profile — update the authenticated business owner's identity fields.
+const updateBusinessProfile = async (req, res) => {
+  try {
+    const profile = await businessService.updateBusinessProfile(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Business profile updated successfully",
+      data: profile,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update business profile");
+  }
+};
+
+// PUT /operating-defaults — update currency, timezone and week start.
+const updateBusinessOperatingDefaults = async (req, res) => {
+  try {
+    const defaults = await businessService.updateBusinessOperatingDefaults(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Operating defaults updated successfully",
+      data: defaults,
+    });
+  } catch (error) {
+    return handleServiceError(
+      res,
+      error,
+      "Failed to update operating defaults",
+    );
+  }
+};
+
+// PUT /payout-account — update the business company payout bank account.
+const updateBusinessPayoutAccount = async (req, res) => {
+  try {
+    const account = await businessService.updateBusinessPayoutAccount(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Payout account updated successfully",
+      data: account,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update payout account");
+  }
+};
+
+// PUT /payout-schedule — update the business default payout schedule.
+const updateBusinessPayoutSchedule = async (req, res) => {
+  try {
+    const schedule = await businessService.updateBusinessPayoutSchedule(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Payout schedule updated successfully",
+      data: schedule,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update payout schedule");
+  }
+};
+
+// PUT /details/services — replace the business service catalog.
+const updateBusinessServices = async (req, res) => {
+  try {
+    const data = await businessService.updateBusinessServices(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Business services updated successfully",
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update business services");
+  }
+};
+
+// PUT /details/available-days — update operating days.
+const updateBusinessAvailableDays = async (req, res) => {
+  try {
+    const data = await businessService.updateBusinessAvailableDays(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Available days updated successfully",
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update available days");
+  }
+};
+
+// PUT /details/service-place — update service places.
+const updateBusinessServicePlace = async (req, res) => {
+  try {
+    const data = await businessService.updateBusinessServicePlace(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Service places updated successfully",
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update service places");
+  }
+};
+
+// PUT /details/hours — update opening hours (start/end).
+const updateBusinessHours = async (req, res) => {
+  try {
+    const data = await businessService.updateBusinessHours(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Business hours updated successfully",
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update business hours");
+  }
+};
+
+// PUT /details/studio-images — update the studio gallery.
+const updateBusinessStudioImages = async (req, res) => {
+  try {
+    const data = await businessService.updateBusinessStudioImages(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Studio images updated successfully",
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update studio images");
+  }
+};
+
+// PUT /availability — toggle whether the business receives fast bookings.
+const setBusinessAvailability = async (req, res) => {
+  try {
+    const [data, onDutyCounts] = await Promise.all([
+      businessService.setBusinessAvailability(req.user.id, req.body),
+      staffService.countOnDutyStaffByBusiness([req.user.id]),
+    ]);
+    const onDutyStaffCount = onDutyCounts.get(String(req.user.id)) || 0;
+
+    return res.status(200).json({
+      success: true,
+      message: `Business is now ${data.availability.isAvailable ? "available" : "unavailable"}`,
+      data: {
+        ...data,
+        onDutyStaffCount,
+        minimumOnDutyStaff: staffService.MIN_ON_DUTY_STAFF,
+        eligibleForBookings:
+          data.availability.isAvailable &&
+          onDutyStaffCount >= staffService.MIN_ON_DUTY_STAFF,
+      },
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update availability");
+  }
+};
+
+// PUT /location — location heartbeat from the business app.
+const updateBusinessLocation = async (req, res) => {
+  try {
+    const data = await businessService.updateBusinessLocation(
+      req.user.id,
+      req.body,
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Location updated successfully",
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to update location");
+  }
+};
+
 module.exports = {
   getAllBusinesses,
   getBusinessById,
@@ -370,4 +581,15 @@ module.exports = {
   addVehicleDetails,
   addServiceDetails,
   getKycLevel,
+  updateBusinessProfile,
+  updateBusinessOperatingDefaults,
+  updateBusinessPayoutAccount,
+  updateBusinessPayoutSchedule,
+  updateBusinessServices,
+  updateBusinessAvailableDays,
+  updateBusinessServicePlace,
+  updateBusinessHours,
+  updateBusinessStudioImages,
+  setBusinessAvailability,
+  updateBusinessLocation,
 };

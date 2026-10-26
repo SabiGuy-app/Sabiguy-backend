@@ -42,6 +42,7 @@ const notificationController = require("./notifications.controller");
  *             - booking_taken
  *             - booking_cancelled
  *             - booking_cancellation_requested
+ *             - booking_cancellation_rejected
  *             - booking_cancellation_approved
  *             - booking_declined
  *             - job_started
@@ -242,6 +243,7 @@ router.get(
  *                             - booking_selected
  *                             - booking_cancelled
  *                             - booking_cancellation_requested
+ *                             - booking_cancellation_rejected
  *                             - booking_cancellation_approved
  *                             - booking_declined
  *                             - booking_status_updated

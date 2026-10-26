@@ -16,6 +16,10 @@ const PHONE_MODELS = [
   { role: 'businessOwner', model: BusinessOwner },
 ];
 
+const ROLE_MODELS = Object.fromEntries(
+  [...EMAIL_MODELS, ...PHONE_MODELS].map(({ role, model }) => [role, model]),
+);
+
 const normalizeEmail = (email) =>
   String(email || '')
     .trim()
@@ -77,6 +81,19 @@ const findUserByEmailAcrossDb = async (email) => {
   return null;
 };
 
+const findEmailProfiles = async (email, roles = Object.keys(ROLE_MODELS)) => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return [];
+
+  const profiles = await Promise.all(roles.map(async (role) => {
+    const model = ROLE_MODELS[role];
+    if (!model) return null;
+    const user = await findByEmailInModel(model, normalizedEmail);
+    return user ? { user, role, model } : null;
+  }));
+  return profiles.filter(Boolean);
+};
+
 const findUserByPhoneAcrossDb = async (phoneNumber) => {
   const normalizedPhone = normalizePhoneNumber(phoneNumber);
   if (!normalizedPhone) return null;
@@ -95,5 +112,6 @@ module.exports = {
   normalizeEmail,
   normalizePhoneNumber,
   findUserByEmailAcrossDb,
+  findEmailProfiles,
   findUserByPhoneAcrossDb,
 };

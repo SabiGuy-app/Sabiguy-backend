@@ -205,6 +205,8 @@ jobs:
             METERED_API_KEY=${{ secrets.METERED_API_KEY }}
             GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }}
             GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}
+            ADMIN_INVITE_URL=${{ secrets.ADMIN_INVITE_URL }}
+            ADMIN_BOOTSTRAP_EMAILS=${{ secrets.ADMIN_BOOTSTRAP_EMAILS }}
             ENVEOF
 
       - name: Deploy to EC2

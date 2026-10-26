@@ -19,6 +19,9 @@ const {
   verifyAccountDeletionOtp,
   confirmAccountDeletion,
   me,
+  getProfiles,
+  switchProfile,
+  switchToBuyer,
 } = require("./auth.controller.js");
 const authMiddleware = require("../../../middleware/authMiddleware.js");
 const {
@@ -589,5 +592,75 @@ router.post(
  *         description: User not found
  */
 router.get("/me", authMeLimiter, authMiddleware, me);
+
+/**
+ * @swagger
+ * /api/v1/auth/profiles:
+ *   get:
+ *     summary: List profiles linked to the authenticated account
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Linked profiles and the active profile
+ */
+router.get("/profiles", authMiddleware, getProfiles);
+
+/**
+ * @swagger
+ * /api/v1/auth/switch-profile:
+ *   post:
+ *     summary: Switch to a linked profile or securely link a new profile
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [targetRole, targetProfileId]
+ *             properties:
+ *               targetRole:
+ *                 type: string
+ *                 enum: [buyer, provider, businessOwner]
+ *               targetProfileId:
+ *                 type: string
+ *               targetPassword:
+ *                 type: string
+ *                 description: Required the first time profiles are linked unless using targetGoogleToken
+ *               targetGoogleToken:
+ *                 type: string
+ *                 description: Use instead of targetPassword for a Google-authenticated target profile
+ *     responses:
+ *       200:
+ *         description: Profile switched; response contains new access and refresh tokens
+ *       401:
+ *         description: Target credentials required or invalid when linking
+ *       409:
+ *         description: Target profile is linked to another account group
+ */
+router.post("/switch-profile", authMiddleware, switchProfile);
+
+/**
+ * @swagger
+ * /api/v1/auth/switch-to-buyer:
+ *   post:
+ *     summary: Create or reuse a linked buyer profile and switch to it
+ *     description: For an authenticated provider or business owner. When no buyer profile exists for the verified email, creates one from the account's shared identity details and authentication credentials.
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Buyer profile returned with buyer-scoped access and refresh tokens
+ *       403:
+ *         description: Source profile is not a provider/business or its email is not verified
+ *       409:
+ *         description: An unlinked buyer profile or conflicting phone number already exists
+ */
+router.post("/switch-to-buyer", authMiddleware, switchToBuyer);
 
 module.exports = router;
