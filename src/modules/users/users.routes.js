@@ -323,11 +323,11 @@ router.get("/email/:email", getUserByEmail);
  *         description: The MongoDB ID of the user
  *     responses:
  *       200:
- *         description: User found successfully
+ *         description: User found successfully. For business accounts, data also includes staffOnDuty with the same count and staff fields as the business staff on-duty endpoint for any authenticated caller.
  *       404:
  *         description: User not found
  */
-router.get("/:id", getUserById);
+router.get("/:id", authMiddleware, getUserById);
 
 /**
  * @swagger
