@@ -383,15 +383,17 @@ const addBusinessVerification = async (businessId, payload) => {
     throw new ValidationError('profilePhotoUrl must be a valid URL');
   }
 
-  if (!Array.isArray(businessPhotos) || businessPhotos.length === 0) {
-    throw new ValidationError('businessPhotos must be a non-empty array');
-  }
-
-  (businessPhotos || []).forEach((photoUrl, index) => {
-    if (!isValidUrl(photoUrl)) {
-      throw new ValidationError(`businessPhotos[${index}] must be a valid URL`);
+  if (businessPhotos !== undefined) {
+    if (!Array.isArray(businessPhotos)) {
+      throw new ValidationError('businessPhotos must be an array');
     }
-  });
+
+    businessPhotos.forEach((photoUrl, index) => {
+      if (!isValidUrl(photoUrl)) {
+        throw new ValidationError(`businessPhotos[${index}] must be a valid URL`);
+      }
+    });
+  }
 
   const business = await businessRepository.findBusinessById(businessId);
   if (!business || business.isDeleted) {
