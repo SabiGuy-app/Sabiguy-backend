@@ -64,6 +64,7 @@ const createApp = () => {
   app.use('/api/v1/businesses', businessRoutes);
   app.use('/api/v1/business', businessStaffRoutes);
   app.use('/api/v1/business', businessDashboardRoutes);
+  app.use('/api/v1/products', productRoutes);
 
   app.get('/api-docs/swagger.json', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
