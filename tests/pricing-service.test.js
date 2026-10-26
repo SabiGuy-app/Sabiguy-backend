@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const pricingService = require("../src/services/pricing.service");
-
+// Test cases for the pricing service
 test("service booking pricing adds 5% for the buyer and deducts 7% for the provider", () => {
   const pricing = pricingService.calculateServiceBookingPrice(10000);
 
