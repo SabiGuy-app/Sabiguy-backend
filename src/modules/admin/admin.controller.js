@@ -521,13 +521,17 @@ class AdminController {
         return res.status(404).json({ message: "Provider not found" });
       }
 
+      const verifiedAt = new Date();
       provider.kycVerified = true;
-      provider.kycVerifiedAt = new Date();
+      provider.kycVerifiedAt = verifiedAt;
       provider.kycVerifiedBy = {
         id: admin._id,
         email: admin.email,
         fullName: admin.fullName,
       };
+      provider.availability = provider.availability || {};
+      provider.availability.isAvailable = true;
+      provider.availability.lastUpdated = verifiedAt;
       if (note) provider.kycVerificationNote = note;
 
       await provider.save();
@@ -552,6 +556,7 @@ class AdminController {
           kycVerifiedAt: provider.kycVerifiedAt,
           kycVerifiedBy: provider.kycVerifiedBy,
           kycVerificationNote: provider.kycVerificationNote,
+          availability: provider.availability,
         },
       });
     } catch (error) {
@@ -587,14 +592,18 @@ class AdminController {
         return res.status(404).json({ message: "Business not found" });
       }
 
+      const verifiedAt = new Date();
       business.kycCompleted = true;
       business.kycVerified = true;
-      business.kycVerifiedAt = new Date();
+      business.kycVerifiedAt = verifiedAt;
       business.kycVerifiedBy = {
         id: admin._id,
         email: admin.email,
         fullName: admin.fullName,
       };
+      business.availability = business.availability || {};
+      business.availability.isAvailable = true;
+      business.availability.lastUpdated = verifiedAt;
       business.kycRejected = false;
       business.kycRejectedAt = null;
       business.kycRejectedBy = undefined;
@@ -629,6 +638,7 @@ class AdminController {
           kycVerifiedBy: business.kycVerifiedBy,
           kycVerificationNote: business.kycVerificationNote,
           kycLevel: business.kycLevel,
+          availability: business.availability,
         },
       });
     } catch (error) {
