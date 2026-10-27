@@ -9,7 +9,7 @@ const ADMIN_ROLES = ["super_admin", "verification_admin"];
 
 const createProduct = async (req, res) => {
   try {
-    const { name, price, description, currency } = req.body || {};
+    const { name, price, description, currency, productImage } = req.body || {};
     if (typeof name !== "string" || !name.trim()) {
       return res.status(400).json({ success: false, message: "Product name is required" });
     }
@@ -30,6 +30,8 @@ const createProduct = async (req, res) => {
       ownerModel,
       name: name.trim(),
       description: typeof description === "string" ? description.trim() : undefined,
+      productImage:
+        typeof productImage === "string" ? productImage.trim() : undefined,
       price: numericPrice,
       currency: currency || "NGN",
       status: "pending",

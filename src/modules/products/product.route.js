@@ -37,6 +37,10 @@ const router = express.Router();
  *               description:
  *                 type: string
  *                 example: Full-grain leather wallet, handcrafted in Lagos.
+ *               productImage:
+ *                 type: string
+ *                 description: Optional URL for the product image
+ *                 example: https://res.cloudinary.com/demo/image/upload/product.jpg
  *               currency:
  *                 type: string
  *                 default: NGN
