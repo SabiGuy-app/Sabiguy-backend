@@ -38,7 +38,7 @@ const io = socketIO(server, {
       "https://sabiguy.vercel.app",
       "https://www.sabiguy.com",
     ],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-client-platform"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     credentials: true,
   },
@@ -171,6 +171,12 @@ io.on("connection", (socket) => {
 
   socket.on("update_location", async (data) => {
     try {
+      if (socket.userType === "businessOwner") {
+        const businessService = require("./modules/business/business.service");
+        await businessService.updateBusinessLocation(socket.userId, data);
+        console.log(`📍 Business ${socket.userId} location updated`);
+        return;
+      }
       if (socket.userType !== "provider") return;
       const { latitude, longitude } = data;
       const Provider = require("../models/ServiceProvider");
@@ -187,6 +193,20 @@ io.on("connection", (socket) => {
 
   socket.on("set_availability", async (data) => {
     try {
+      if (socket.userType === "businessOwner") {
+        const businessService = require("./modules/business/business.service");
+        const result = await businessService.setBusinessAvailability(
+          socket.userId,
+          data,
+        );
+        socket.emit("availability_updated", {
+          isAvailable: result.availability.isAvailable,
+        });
+        console.log(
+          `🟢 Business ${socket.userId} availability: ${result.availability.isAvailable}`,
+        );
+        return;
+      }
       if (socket.userType !== "provider") return;
       const { isAvailable } = data;
       const Provider = require("../models/ServiceProvider");
@@ -199,6 +219,7 @@ io.on("connection", (socket) => {
       console.log(`🟢 Provider ${socket.userId} availability: ${isAvailable}`);
     } catch (error) {
       console.error("Set availability error:", error.message);
+      socket.emit("error", { message: error.message });
     }
   });
 
@@ -498,6 +519,18 @@ io.on("connection", (socket) => {
         console.log(`🔴 Provider ${socket.userId} went offline`);
       } catch (error) {
         console.error("Update offline status error:", error.message);
+      }
+    } else if (socket.userType === "businessOwner") {
+      try {
+        const Business = require("./modules/business/business.model");
+        // Like providers, availability.isAvailable survives reconnects.
+        await Business.findByIdAndUpdate(socket.userId, {
+          isOnline: false,
+          lastSeenAt: new Date(),
+        });
+        console.log(`🔴 Business ${socket.userId} went offline`);
+      } catch (error) {
+        console.error("Update business offline status error:", error.message);
       }
     }
   });

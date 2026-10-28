@@ -5,6 +5,7 @@ const Product = require('../products/product.model');
 const FleetInvitation = require('./fleetInvitation.model');
 const businessRepository = require('./business.repository');
 const notificationService = require('../../services/notification.service');
+const geolocationService = require('../../services/geolocation.service');
 const { sendDriverInvitationEmail } = require('../../config/emailVerification');
 const {
   notifyKycCompleted,
@@ -382,15 +383,17 @@ const addBusinessVerification = async (businessId, payload) => {
     throw new ValidationError('profilePhotoUrl must be a valid URL');
   }
 
-  if (!Array.isArray(businessPhotos) || businessPhotos.length === 0) {
-    throw new ValidationError('businessPhotos must be a non-empty array');
-  }
-
-  (businessPhotos || []).forEach((photoUrl, index) => {
-    if (!isValidUrl(photoUrl)) {
-      throw new ValidationError(`businessPhotos[${index}] must be a valid URL`);
+  if (businessPhotos !== undefined) {
+    if (!Array.isArray(businessPhotos)) {
+      throw new ValidationError('businessPhotos must be an array');
     }
-  });
+
+    businessPhotos.forEach((photoUrl, index) => {
+      if (!isValidUrl(photoUrl)) {
+        throw new ValidationError(`businessPhotos[${index}] must be a valid URL`);
+      }
+    });
+  }
 
   const business = await businessRepository.findBusinessById(businessId);
   if (!business || business.isDeleted) {
@@ -639,9 +642,45 @@ const isWeekday = (value) =>
     'Sunday',
   ].includes(value);
 
-// 8. Update the business profile identity fields (name, city, address).
+// Validates a latitude/longitude pair and returns the $set fields for the
+// business's GeoJSON location.
+const buildLocationUpdates = (latitude, longitude) => {
+  const parsedLatitude = Number(latitude);
+  const parsedLongitude = Number(longitude);
+  if (
+    latitude === null ||
+    latitude === undefined ||
+    latitude === '' ||
+    longitude === null ||
+    longitude === undefined ||
+    longitude === '' ||
+    !Number.isFinite(parsedLatitude) ||
+    parsedLatitude < -90 ||
+    parsedLatitude > 90 ||
+    !Number.isFinite(parsedLongitude) ||
+    parsedLongitude < -180 ||
+    parsedLongitude > 180
+  ) {
+    throw new ValidationError(
+      'latitude and longitude must be valid coordinates',
+    );
+  }
+  return {
+    'currentLocation.type': 'Point',
+    'currentLocation.coordinates': [parsedLongitude, parsedLatitude],
+    lastLocationUpdate: new Date(),
+  };
+};
+
+// 8. Update business identity and nearby-search location.
 const updateBusinessProfile = async (businessId, payload = {}) => {
-  const { businessName, cityOfOperation, businessAddress } = payload;
+  const {
+    businessName,
+    cityOfOperation,
+    businessAddress,
+    latitude,
+    longitude,
+  } = payload;
 
   const updates = {};
   applyStringField('BusinessName', 'businessName', businessName, updates);
@@ -657,6 +696,12 @@ const updateBusinessProfile = async (businessId, payload = {}) => {
     businessAddress,
     updates,
   );
+  if (typeof businessAddress === 'string') {
+    updates['currentLocation.address'] = businessAddress.trim();
+  }
+  if (latitude !== undefined || longitude !== undefined) {
+    Object.assign(updates, buildLocationUpdates(latitude, longitude));
+  }
 
   if (Object.keys(updates).length === 0) {
     throw new ValidationError('No valid fields provided for update');
@@ -673,6 +718,8 @@ const updateBusinessProfile = async (businessId, payload = {}) => {
     businessName: updated.BusinessName,
     cityOfOperation: updated.cityOfOperation,
     businessAddress: updated.BusinessAddress,
+    currentLocation: updated.currentLocation,
+    lastLocationUpdate: updated.lastLocationUpdate,
   };
 };
 
@@ -939,6 +986,151 @@ const updateBusinessStudioImages = async (businessId, payload = {}) => {
   return { studioImages: updated.studioImages };
 };
 
+// 17. Toggle whether the business accepts fast bookings.
+const setBusinessAvailability = async (businessId, payload = {}) => {
+  const { isAvailable } = payload;
+
+  if (typeof isAvailable !== 'boolean') {
+    throw new ValidationError('isAvailable must be a boolean');
+  }
+
+  const now = new Date();
+  const updates = {
+    'availability.isAvailable': isAvailable,
+    'availability.lastUpdated': now,
+  };
+  // Going available is a sign of life; going unavailable leaves presence alone.
+  if (isAvailable) {
+    updates.isOnline = true;
+    updates.lastSeenAt = now;
+  }
+
+  const business = await requireActiveBusiness(businessId);
+  // Turning availability off is always allowed; turning it on needs KYC.
+  if (isAvailable && !business.kycVerified) {
+    throw new ForbiddenError(
+      'KYC must be verified before turning on availability',
+    );
+  }
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return {
+    availability: updated.availability,
+    isOnline: updated.isOnline,
+    lastSeenAt: updated.lastSeenAt,
+  };
+};
+
+// Parses "09:00", "9:00", "9am", "6:30 PM" into minutes since midnight.
+const parseClockMinutes = (value) => {
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])?\.?\s*m?\.?$/i);
+  if (!match) return null;
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2] || 0);
+  const meridiem = match[3]?.toLowerCase();
+  if (minutes > 59) return null;
+  if (meridiem) {
+    if (hours < 1 || hours > 12) return null;
+    hours = (hours % 12) + (meridiem === 'p' ? 12 : 0);
+  } else if (hours > 23) {
+    return null;
+  }
+  return hours * 60 + minutes;
+};
+
+const getLocalDayAndMinutes = (now, timeZone) => {
+  const format = (zone) =>
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(now);
+  let parts;
+  try {
+    parts = format(timeZone || 'Africa/Lagos');
+  } catch {
+    parts = format('Africa/Lagos');
+  }
+  const part = (type) => parts.find((p) => p.type === type)?.value;
+  return {
+    weekday: part('weekday').toLowerCase(),
+    minutes: Number(part('hour')) * 60 + Number(part('minute')),
+  };
+};
+
+// Whether the business is open right now in its own timezone. Missing or
+// unparseable days/hours never exclude a business — they are free-text today.
+// Overnight hours (e.g. 20:00–02:00) are supported; the day check uses the
+// current local day.
+const isWithinBusinessHours = (business = {}, now = new Date()) => {
+  const { weekday, minutes } = getLocalDayAndMinutes(now, business.timezone);
+
+  const days = (business.availableDays || [])
+    .map((day) => String(day).trim().toLowerCase())
+    .filter(Boolean);
+  if (
+    days.length &&
+    !days.some((day) => day === weekday || day === weekday.slice(0, 3))
+  ) {
+    return false;
+  }
+
+  const start = parseClockMinutes(business.businessHours?.start);
+  const end = parseClockMinutes(business.businessHours?.end);
+  if (start === null || end === null || start === end) return true;
+
+  return start < end
+    ? minutes >= start && minutes < end
+    : minutes >= start || minutes < end;
+};
+
+// 18. Location heartbeat — called regularly by the business app. Doubles as
+// the presence signal used by nearby search. Mirrors PUT /provider/location:
+// KYC-gated, and resolves a human-readable address (never null).
+const updateBusinessLocation = async (businessId, payload = {}) => {
+  const { latitude, longitude, address } = payload;
+
+  const updates = buildLocationUpdates(latitude, longitude);
+  updates.isOnline = true;
+  updates.lastSeenAt = updates.lastLocationUpdate;
+
+  const business = await requireActiveBusiness(businessId);
+  if (!business.kycVerified) {
+    throw new ForbiddenError('KYC verification required to update location');
+  }
+
+  const [parsedLongitude, parsedLatitude] =
+    updates['currentLocation.coordinates'];
+  updates['currentLocation.address'] =
+    await geolocationService.resolveLocationAddress({
+      latitude: parsedLatitude,
+      longitude: parsedLongitude,
+      providedAddress: address,
+      existingLocation: business.currentLocation,
+    });
+
+  const updated = await businessRepository.saveBusinessDetails(
+    businessId,
+    updates,
+  );
+
+  return {
+    currentLocation: updated.currentLocation,
+    lastLocationUpdate: updated.lastLocationUpdate,
+    isOnline: updated.isOnline,
+    lastSeenAt: updated.lastSeenAt,
+  };
+};
+
 module.exports = {
   getBusinessesWithPagination,
   getBusinessById,
@@ -960,6 +1152,9 @@ module.exports = {
   updateBusinessServicePlace,
   updateBusinessHours,
   updateBusinessStudioImages,
+  setBusinessAvailability,
+  updateBusinessLocation,
+  isWithinBusinessHours,
 
   ValidationError,
   NotFoundError,

@@ -40,7 +40,7 @@ const createApp = () => {
         'https://www.sabiguy.com',
       ],
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-client-platform'],
       credentials: true,
     }),
   );

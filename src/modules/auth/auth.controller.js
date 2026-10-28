@@ -7,6 +7,7 @@ const Provider = require('../../../models/ServiceProvider');
 const Buyer = require('../../../models/ServiceUser');
 const Admin = require('../admin/Admin.model');
 const authService = require('./auth.service');
+const AccountLink = require('./accountLink.model');
 const { notifyAdminTeam } = require('../../services/adminNotification.service');
 const { getClientPlatform } = require('../../services/clientPlatform.service');
 
@@ -19,7 +20,7 @@ const {
   sendAccountDeletionOtp,
 } = require('../../config/emailVerification');
 const {
-  findUserByEmailAcrossDb,
+  findEmailProfiles,
   findUserByPhoneAcrossDb,
   normalizePhoneNumber,
 } = require('../../services/identity.service');
@@ -75,10 +76,10 @@ exports.googleSignUp = async (req, res) => {
     const normalizedEmail = normalizeEmail(email);
 
     // Check if email already exists
-    const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
+    const existingEmailProfiles = await findEmailProfiles(normalizedEmail);
+    const existingEmail = existingEmailProfiles.find(({ role }) => role === "provider");
 
     if (existingEmail) {
-      if (existingEmail.role === 'provider') {
         const user = existingEmail.user;
         let message = 'Account successfully linked and logged in.';
 
@@ -113,10 +114,9 @@ exports.googleSignUp = async (req, res) => {
           user: buildAuthUserPayload(user),
           newUser: false, // flag for frontend
         });
-      }
-      return res
-        .status(400)
-        .json({ message: 'Email already in use by another role' });
+    }
+    if (existingEmailProfiles.some(({ role }) => role !== "buyer")) {
+      return res.status(400).json({ message: "Email already in use by an incompatible account type" });
     }
 
     // Create new provider
@@ -188,10 +188,10 @@ exports.googleSignUpBuyer = async (req, res) => {
       await googleHelper.verifyToken(token);
     const normalizedEmail = normalizeEmail(email);
 
-    const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
+    const existingEmailProfiles = await findEmailProfiles(normalizedEmail);
+    const existingEmail = existingEmailProfiles.find(({ role }) => role === "buyer");
 
     if (existingEmail) {
-      if (existingEmail.role === 'buyer') {
         const user = existingEmail.user;
         let message = 'Account successfully linked and logged in.';
 
@@ -223,10 +223,9 @@ exports.googleSignUpBuyer = async (req, res) => {
           user: buildAuthUserPayload(user),
           newUser: false,
         });
-      }
-      return res
-        .status(400)
-        .json({ message: 'Email already in use by another role' });
+    }
+    if (existingEmailProfiles.some(({ role }) => !["provider", "businessOwner"].includes(role))) {
+      return res.status(400).json({ message: "Email already in use by an incompatible account type" });
     }
 
     // Create new buyer
@@ -343,14 +342,14 @@ exports.registerBuyer = async (req, res) => {
   const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
   try {
-    const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
-    if (existingEmail) {
-      if (existingEmail.role === 'buyer' && !existingEmail.user.emailVerified) {
+    const existingBuyer = await findUserByEmail(Buyer, normalizedEmail);
+    if (existingBuyer) {
+      if (!existingBuyer.emailVerified) {
         const otp = accountHelper.generateOtp();
         const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-        existingEmail.user.otp = otp;
-        existingEmail.user.otpExpiresAt = otpExpiresAt;
-        await existingEmail.user.save();
+        existingBuyer.otp = otp;
+        existingBuyer.otpExpiresAt = otpExpiresAt;
+        await existingBuyer.save();
 
         try {
           await sendEmailOtp(normalizedEmail, otp);
@@ -366,6 +365,13 @@ exports.registerBuyer = async (req, res) => {
         });
       }
       return res.status(400).json({ message: 'Email already in use' });
+    }
+
+    const existingEmailProfiles = await findEmailProfiles(normalizedEmail);
+    const conflicts = existingEmailProfiles.some(({ role }) =>
+      !["provider", "businessOwner"].includes(role));
+    if (conflicts) {
+      return res.status(400).json({ message: "Email already in use by an incompatible account type" });
     }
 
     if (normalizedPhoneNumber) {
@@ -435,17 +441,14 @@ exports.registerProvider = async (req, res) => {
 
   try {
     const normalizedEmail = normalizeEmail(email);
-    const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
-    if (existingEmail) {
-      if (
-        existingEmail.role === 'provider' &&
-        !existingEmail.user.emailVerified
-      ) {
+    const existingProvider = await findUserByEmail(Provider, normalizedEmail);
+    if (existingProvider) {
+      if (!existingProvider.emailVerified) {
         const otp = accountHelper.generateOtp();
         const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-        existingEmail.user.otp = otp;
-        existingEmail.user.otpExpiresAt = otpExpiresAt;
-        await existingEmail.user.save();
+        existingProvider.otp = otp;
+        existingProvider.otpExpiresAt = otpExpiresAt;
+        await existingProvider.save();
 
         try {
           await sendEmailOtp(normalizedEmail, otp);
@@ -461,6 +464,11 @@ exports.registerProvider = async (req, res) => {
         });
       }
       return res.status(400).json({ message: 'Email already in use' });
+    }
+
+    const existingEmailProfiles = await findEmailProfiles(normalizedEmail);
+    if (existingEmailProfiles.some(({ role }) => role !== "buyer")) {
+      return res.status(400).json({ message: "Email already in use by an incompatible account type" });
     }
 
     if (normalizedPhoneNumber) {
@@ -1337,5 +1345,211 @@ exports.me = async (req, res) => {
       message: 'Error fetching profile',
       error: error.message,
     });
+  }
+};
+
+const switchableRoles = ["buyer", "provider", "businessOwner"];
+
+const profileSummary = (profile, role) => ({
+  profileId: profile._id,
+  role,
+  email: profile.email,
+  fullName: profile.fullName,
+  profilePicture: profile.profilePicture || null,
+});
+
+exports.getProfiles = async (req, res) => {
+  try {
+    const { id, role } = req.user || {};
+    if (!switchableRoles.includes(role)) {
+      return res.status(403).json({ success: false, message: "This account cannot switch profiles" });
+    }
+
+    const link = await AccountLink.findOne({ profiles: { $elemMatch: { role, profileId: id } } });
+    const entries = link?.profiles?.length
+      ? link.profiles
+      : [{ role, profileId: id }];
+    const profiles = await Promise.all(entries.map(async (entry) => {
+      const Model = roleModelMap[entry.role];
+      if (!Model) return null;
+      const profile = await Model.findById(entry.profileId).select("email fullName profilePicture isActive isDeleted");
+      if (!profile || profile.isDeleted || profile.isActive === false) return null;
+      return profileSummary(profile, entry.role);
+    }));
+
+    return res.status(200).json({ success: true, profiles: profiles.filter(Boolean), activeProfile: { profileId: id, role } });
+  } catch (error) {
+    console.error("Get linked profiles error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch linked profiles" });
+  }
+};
+
+exports.switchProfile = async (req, res) => {
+  try {
+    const { id: currentId, role: currentRole } = req.user || {};
+    const { targetRole, targetProfileId, targetPassword } = req.body || {};
+    if (!switchableRoles.includes(currentRole) || !switchableRoles.includes(targetRole)) {
+      return res.status(400).json({ success: false, message: "Unsupported profile role" });
+    }
+    if (!targetProfileId || String(targetProfileId) === String(currentId) && targetRole === currentRole) {
+      return res.status(400).json({ success: false, message: "A different target profile is required" });
+    }
+
+    const sourceLink = await AccountLink.findOne({ profiles: { $elemMatch: { role: currentRole, profileId: currentId } } });
+    const isAlreadyLinked = Boolean(sourceLink?.profiles?.some((entry) =>
+      entry.role === targetRole && String(entry.profileId) === String(targetProfileId)));
+
+    const TargetModel = roleModelMap[targetRole];
+    const target = await TargetModel.findById(targetProfileId).select("+password");
+    if (!target || target.isDeleted || target.isActive === false) {
+      return res.status(404).json({ success: false, message: "Target profile not found or inactive" });
+    }
+
+    if (!isAlreadyLinked) {
+      let targetCredentialVerified = Boolean(
+        targetPassword && target.password &&
+        await passwordHelper.compare(targetPassword, target.password),
+      );
+      if (!targetCredentialVerified && target.isGoogleUser && target.googleId && req.body?.targetGoogleToken) {
+        try {
+          const googleIdentity = await googleHelper.verifyToken(req.body.targetGoogleToken);
+          targetCredentialVerified = normalizeEmail(googleIdentity.email) === normalizeEmail(target.email) &&
+            googleIdentity.googleId === target.googleId;
+        } catch (_error) {
+          targetCredentialVerified = false;
+        }
+      }
+      if (!targetCredentialVerified) {
+        return res.status(401).json({ success: false, message: "Valid target profile credentials are required to link this profile" });
+      }
+      const targetLink = await AccountLink.findOne({ profiles: { $elemMatch: { role: targetRole, profileId: target._id } } });
+      if ((sourceLink && sourceLink !== targetLink) || targetLink) {
+        return res.status(409).json({ success: false, message: "One of these profiles is already linked to another account group" });
+      }
+
+      const sourceEntry = { role: currentRole, profileId: currentId };
+      const targetEntry = { role: targetRole, profileId: target._id };
+      if (sourceLink) {
+        sourceLink.profiles.push(targetEntry);
+        await sourceLink.save();
+      } else {
+        await AccountLink.create({ profiles: [sourceEntry, targetEntry] });
+      }
+    }
+
+    const refreshToken = generateRefreshToken(target);
+    target.refreshToken = refreshToken;
+    target.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+    await target.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile switched successfully",
+      token: generateAccessToken(target),
+      refreshToken,
+      user: buildAuthUserPayload(target),
+      activeProfile: profileSummary(target, targetRole),
+    });
+  } catch (error) {
+    console.error("Switch profile error:", error);
+    return res.status(500).json({ success: false, message: "Failed to switch profile" });
+  }
+};
+
+exports.switchToBuyer = async (req, res) => {
+  try {
+    const { id: sourceId, role: sourceRole } = req.user || {};
+    if (!["provider", "businessOwner"].includes(sourceRole)) {
+      return res.status(403).json({ success: false, message: "Only provider and business profiles can switch to buyer" });
+    }
+
+    const SourceModel = roleModelMap[sourceRole];
+    const source = await SourceModel.findById(sourceId).select("+password");
+    if (!source || source.isDeleted || source.isActive === false) {
+      return res.status(404).json({ success: false, message: "Source profile not found or inactive" });
+    }
+    if (!source.email || !source.emailVerified) {
+      return res.status(403).json({ success: false, message: "Verify your email before creating a buyer profile" });
+    }
+
+    const sourceLink = await AccountLink.findOne({ profiles: { $elemMatch: { role: sourceRole, profileId: source._id } } });
+    const linkedBuyerEntry = sourceLink?.profiles?.find((entry) => entry.role === "buyer");
+    let buyer = linkedBuyerEntry ? await Buyer.findById(linkedBuyerEntry.profileId).select("+password") : null;
+    let buyerProfileCreated = false;
+
+    if (!buyer) {
+      if (linkedBuyerEntry && sourceLink) {
+        sourceLink.profiles = sourceLink.profiles.filter((entry) =>
+          !(entry.role === "buyer" && String(entry.profileId) === String(linkedBuyerEntry.profileId)));
+      }
+      const existingBuyer = await Buyer.findOne({ email: normalizeEmail(source.email) }).select("+password");
+      if (existingBuyer) {
+        return res.status(409).json({
+          success: false,
+          message: "A buyer profile already exists for this email. Verify that profile with /auth/switch-profile before switching.",
+          buyerProfileId: existingBuyer._id,
+        });
+      }
+
+      if (source.phoneNumber) {
+        const existingPhone = await Buyer.findOne({ phoneNumber: source.phoneNumber });
+        if (existingPhone) {
+          return res.status(409).json({ success: false, message: "This phone number is already used by another buyer profile" });
+        }
+      }
+
+      buyer = new Buyer({
+        email: normalizeEmail(source.email),
+        password: source.password || null,
+        fullName: source.fullName || source.BusinessName || "",
+        profilePicture: source.profilePicture || null,
+        phoneNumber: source.phoneNumber || undefined,
+        city: source.city || source.cityOfOperation || "",
+        address: source.address || source.BusinessAddress || "",
+        emailVerified: true,
+        isGoogleUser: Boolean(source.isGoogleUser),
+        googleId: source.googleId || undefined,
+        authMethods: Array.isArray(source.authMethods) ? [...source.authMethods] : [],
+        role: "buyer",
+      });
+      await buyer.save();
+      buyerProfileCreated = true;
+
+      const targetEntry = { role: "buyer", profileId: buyer._id };
+      try {
+        if (sourceLink) {
+          sourceLink.profiles.push(targetEntry);
+          await sourceLink.save();
+        } else {
+          await AccountLink.create({
+            profiles: [
+              { role: sourceRole, profileId: source._id },
+              targetEntry,
+            ],
+          });
+        }
+      } catch (linkError) {
+        await Buyer.deleteOne({ _id: buyer._id });
+        throw linkError;
+      }
+    }
+
+    const refreshToken = generateRefreshToken(buyer);
+    buyer.refreshToken = refreshToken;
+    buyer.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+    await buyer.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Switched to buyer profile",
+      token: generateAccessToken(buyer),
+      refreshToken,
+      user: buildAuthUserPayload(buyer),
+      activeProfile: profileSummary(buyer, "buyer"),
+      buyerProfileCreated,
+    });
+  } catch (error) {
+    console.error("Switch to buyer error:", error);
+    return res.status(500).json({ success: false, message: "Failed to switch to buyer profile" });
   }
 };

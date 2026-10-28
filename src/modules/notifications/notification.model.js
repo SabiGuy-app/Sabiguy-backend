@@ -23,6 +23,7 @@ const notificationSchema = new mongoose.Schema({
       'booking_taken',
       'booking_cancelled',
       'booking_cancellation_requested',
+      'booking_cancellation_rejected',
       'booking_cancellation_approved',
       'booking_declined',
       'expired',
@@ -42,7 +43,12 @@ const notificationSchema = new mongoose.Schema({
       'booking_completed_awaiting_acceptance',
       'driver_invitation_received',
       'driver_invitation_accepted',
-      'driver_invitation_rejected'
+      'driver_invitation_rejected',
+      'staff_clock_in_requested',
+      'staff_clock_out_requested',
+      'staff_clock_request_approved',
+      'staff_clock_request_rejected',
+      'staff_clocked_out_by_business'
     ]
   },
   title: {

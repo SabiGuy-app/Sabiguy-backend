@@ -399,6 +399,50 @@ router.patch(
 
 /**
  * @swagger
+ * /api/v1/admin/bookings/{bookingId}/reject-cancellation:
+ *   patch:
+ *     summary: Reject a booking cancellation
+ *     description: Rejects a pending cancellation request and restores the booking's previous status.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [buyerMessage, providerMessage]
+ *             properties:
+ *               buyerMessage:
+ *                 type: string
+ *               providerMessage:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Cancellation rejected and booking restored
+ *       400:
+ *         description: Missing messages
+ *       404:
+ *         description: Pending cancellation request not found
+ *       409:
+ *         description: Previous booking status is unavailable
+ */
+router.patch(
+  "/bookings/:bookingId/reject-cancellation",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.rejectBookingCancellation,
+);
+
+/**
+ * @swagger
  * /api/v1/admin/providers/by-service:
  *   get:
  *     summary: Get providers by job service

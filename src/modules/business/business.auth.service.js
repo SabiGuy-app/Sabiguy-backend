@@ -11,7 +11,7 @@ const {
 } = require('../../config/emailVerification');
 const {
   normalizeEmail,
-  findUserByEmailAcrossDb,
+  findEmailProfiles,
 } = require('../../services/identity.service');
 const {
   AppError,
@@ -74,18 +74,15 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber, signup
 
   passwordHelper.validateStrength(password);
 
-  const existingEmail = await findUserByEmailAcrossDb(normalizedEmail);
-  if (existingEmail) {
-    if (
-      existingEmail.role === 'businessOwner' &&
-      !existingEmail.user.emailVerified
-    ) {
+  const existingBusiness = await findBusinessByEmail(normalizedEmail);
+  if (existingBusiness) {
+    if (!existingBusiness.emailVerified) {
       const otp = accountHelper.generateOtp();
-      existingEmail.user.otp = otp;
-      existingEmail.user.emailVerificationExpires = new Date(
+      existingBusiness.otp = otp;
+      existingBusiness.emailVerificationExpires = new Date(
         Date.now() + 10 * 60 * 1000,
       );
-      await existingEmail.user.save();
+      await existingBusiness.save();
       try {
         await sendEmailOtp(normalizedEmail, otp);
       } catch (OtpError) {
@@ -101,6 +98,11 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber, signup
       };
     }
     throw new AppError('Email already in use', 400);
+  }
+
+  const existingProfiles = await findEmailProfiles(normalizedEmail);
+  if (existingProfiles.some(({ role }) => role !== 'buyer')) {
+    throw new AppError('Email already in use by an incompatible account type', 400);
   }
 
   if (phoneNumber) {
@@ -321,9 +323,9 @@ const googleAuthBusiness = async (token, signupPlatform = "unknown") => {
   }
 
   // No business account — check if email is used by another role
-  const existingGlobalUser = await findUserByEmailAcrossDb(normalizedEmail);
-  if (existingGlobalUser) {
-    throw new AppError('Email already in use by another account type', 400);
+  const existingProfiles = await findEmailProfiles(normalizedEmail);
+  if (existingProfiles.some(({ role }) => role !== 'buyer')) {
+    throw new AppError('Email already in use by an incompatible account type', 400);
   }
 
   // Create new business with Google
