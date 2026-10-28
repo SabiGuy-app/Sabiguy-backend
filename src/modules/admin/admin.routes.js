@@ -730,7 +730,8 @@ router.get(
  * @swagger
  * /api/v1/admin/providers/{providerId}/kyc/verify:
  *   patch:
- *     summary: Verify provider KYC
+ *     summary: Verify provider KYC and enable availability
+ *     description: Verifies the provider's KYC and turns on account availability.
  *     tags: [Admins]
  *     security:
  *       - bearerAuth: []
@@ -753,7 +754,7 @@ router.get(
  *                 example: "Verified documents and identity"
  *     responses:
  *       200:
- *         description: KYC verified successfully
+ *         description: KYC verified and provider availability enabled
  *       403:
  *         description: Admin access required
  *       404:
@@ -814,7 +815,8 @@ router.patch(
  * @swagger
  * /api/v1/admin/businesses/{businessId}/kyc/verify:
  *   patch:
- *     summary: Verify business KYC
+ *     summary: Verify business KYC and enable availability
+ *     description: Verifies the business's KYC and turns on account availability.
  *     tags: [Admins]
  *     security:
  *       - bearerAuth: []
@@ -837,7 +839,7 @@ router.patch(
  *                 example: "Verified business registration documents"
  *     responses:
  *       200:
- *         description: Business KYC verified successfully
+ *         description: KYC verified and business availability enabled
  *       403:
  *         description: Admin access required
  *       404:
