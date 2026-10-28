@@ -1064,28 +1064,7 @@ const generateStaffCode = async (businessId) => {
 // matches the invitation. Declining soft-marks the record (the Provider
 // account is never touched); accepting flips status to ACTIVE, links the
 // provider and only then assigns the staffCode.
-// Remove a staff member. Only the business owner that invited them can remove
-// them. A staff record can only exist if invited by a business; removing it
-// deletes the staff record (the provider account remains).
-const removeStaff = async (businessId, staffId) => {
-  if (!mongoose.isValidObjectId(businessId)) {
-    throw new ValidationError('Invalid business ID');
-  }
-  if (!mongoose.isValidObjectId(staffId)) {
-    throw new ValidationError('Invalid staff ID');
-  }
-
-  const staff = await Staff.findOne({ _id: staffId, business: businessId });
-  if (!staff) {
-    throw new NotFoundError('Staff not found in your business');
-  }
-  if (String(staff.invitedBy) !== String(businessId)) {
-    throw new ForbiddenError('Only the business that invited this staff can remove them');
-  }
-
-  await Staff.deleteOne({ _id: staff._id });
-  return { staffId: staff._id, removed: true };
-};
+const respondToStaffInvite = async (payload, provider) => {
   const { staffEmail, businessEmail, status } = payload;
 
   if (!STAFF_RESPONSE_STATUSES.includes(status)) {
@@ -1190,6 +1169,26 @@ const removeStaff = async (businessId, staffId) => {
     businessId: business._id,
     businessName: business.BusinessName || business.fullName || 'the business',
   };
+};
+
+const removeStaff = async (businessId, staffId) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+  if (!mongoose.isValidObjectId(staffId)) {
+    throw new ValidationError('Invalid staff ID');
+  }
+
+  const staff = await Staff.findOne({ _id: staffId, business: businessId });
+  if (!staff) {
+    throw new NotFoundError('Staff not found in your business');
+  }
+  if (String(staff.invitedBy) !== String(businessId)) {
+    throw new ForbiddenError('Only the business that invited this staff can remove them');
+  }
+
+  await Staff.deleteOne({ _id: staff._id });
+  return { staffId: staff._id, removed: true };
 };
 
 module.exports = {

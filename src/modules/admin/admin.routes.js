@@ -718,6 +718,14 @@ router.delete(
   AdminController.deleteUser,
 );
 
+router.get(
+  "/deleted-accounts",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getDeletedAccounts,
+);
+
 /**
  * @swagger
  * /api/v1/admin/providers/{providerId}/kyc/verify:
