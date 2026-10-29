@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 const Provider = require('../../../models/ServiceProvider');
 const Buyer = require('../../../models/ServiceUser');
-const Business = require('../business/business.model'); 
+const Business = require('../business/business.model');
+const Staff = require('../business/staff.model'); 
 const Product = require('../products/product.model');
 const geolocationService = require('../../services/geolocation.service');
 const { sendNinSubmittedEmail } = require('../../config/emailVerification');
@@ -191,6 +192,10 @@ const getUserByEmail = async (email) => {
   if (!account) return null;
   if (provider && account === provider) {
     account.products = await Product.find({ ownerType: 'provider', owner: provider._id }).sort({ createdAt: -1 }).lean();
+    const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' }).select('staffCode business _id').lean();
+    account.staffId = staffRecords.length ? staffRecords[0]._id : null;
+    account.staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
+    account.staffMemberships = staffRecords;
   } else if (business && account === business) {
     account.products = await Product.find({ ownerType: 'business', owner: business._id }).sort({ createdAt: -1 }).lean();
   }
@@ -207,6 +212,14 @@ const getUserById = async (id) => {
   const buyer = await Buyer.findById(id).select('-password');
   const provider = await Provider.findById(id).select('-password');
   const business = await Business.findById(id).select('-password');
+  if (provider) {
+    const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' }).select('staffCode business _id').lean();
+    const providerObj = provider.toObject ? provider.toObject() : { ...provider };
+    providerObj.staffId = staffRecords.length ? staffRecords[0]._id : null;
+    providerObj.staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
+    providerObj.staffMemberships = staffRecords;
+    return buyer || providerObj || business;
+  }
   return buyer || provider || business;
 };
 

@@ -6,6 +6,7 @@ const axios = require("axios");
 const Provider = require("../../../models/ServiceProvider");
 const Buyer = require("../../../models/ServiceUser");
 const Admin = require("../admin/Admin.model");
+const Staff = require("../business/staff.model");
 const authService = require("./auth.service");
 const AccountLink = require("./accountLink.model");
 const { notifyAdminTeam } = require("../../services/adminNotification.service");
@@ -1284,6 +1285,23 @@ exports.me = async (req, res) => {
       return res.status(404).json({ message: "If an account exists for this email, you'll receive instructions shortly." });
     }
 
+    let staffId = null;
+    let staffCode = null;
+    let staffMemberships = [];
+    if (role === "provider") {
+      const staffRecords = await Staff.find({ provider: user._id, status: "ACTIVE" })
+        .select("staffCode business _id")
+        .lean();
+      staffId = staffRecords.length ? staffRecords[0]._id : null;
+      staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
+      staffMemberships = staffRecords;
+    }
+
+    const userData = user.toObject ? user.toObject() : { ...user };
+    userData.staffId = staffId;
+    userData.staffCode = staffCode;
+    userData.staffMemberships = staffMemberships;
+
     return res.status(200).json({
       success: true,
       data: {
@@ -1294,7 +1312,10 @@ exports.me = async (req, res) => {
         phoneNumber: user.phoneNumber,
         profilePicture: user.profilePicture,
         emailVerified: user.emailVerified,
-        user,
+        staffId,
+        staffCode,
+        staffMemberships,
+        user: userData,
       },
     });
   } catch (error) {
