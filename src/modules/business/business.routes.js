@@ -24,6 +24,9 @@ const {
   updateBusinessStudioImages,
   setBusinessAvailability,
   updateBusinessLocation,
+  getBookingsForBusiness,
+  acceptBooking,
+  declineBooking,
 } = require("./business.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
 const onlyRole = require("../../../middleware/roleMiddleware");
@@ -1052,5 +1055,218 @@ router.post(
  *         description: Business not found
  */
 router.get("/:businessId", authMiddleware, getBusinessById);
+
+/**
+ * @swagger
+ * /api/v1/businesses/{businessId}/bookings:
+ *   get:
+ *     summary: Get bookings for a specific business
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "507f191e810c19729de860ea"
+ *       - in: query
+ *         name: status
+ *         description: Filter by booking status (e.g. paid_escrow, in_progress, completed)
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: businessStatus
+ *         description: Filter by business-facing status
+ *         schema:
+ *           type: string
+ *           enum: [needs_staff, assigned, in_progress, completed, cancelled]
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         example: 10
+ *     responses:
+ *       200:
+ *         description: Bookings fetched successfully
+ *       400:
+ *         description: Invalid business ID or pagination parameters
+ *       401:
+ *         description: Invalid or missing token
+ *       404:
+ *         description: Business not found
+ */
+router.get("/:businessId/bookings", authMiddleware, getBookingsForBusiness);
+
+/**
+ * @swagger
+ * /api/v1/businesses/{businessId}/accept:
+ *   patch:
+ *     summary: Accept a booking for a specific business
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "507f191e810c19729de860ea"
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "507f191e810c19729de860eb"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Booking accepted successfully
+ *       400:
+ *         description: Invalid business ID or booking ID
+ *       401:
+ *         description: Invalid or missing token
+ *       404:*         description: Business or booking not found
+ */
+/**
+ * @swagger
+ * /api/v1/businesses/{businessId}/accept:
+ *   patch:
+ *     summary: Accept a booking (business)
+ *     description: Business owner accepts an available booking. bookingId is provided in the request body.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bookingId
+ *             properties:
+ *               bookingId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Booking accepted successfully
+ *       400:
+ *         description: Invalid business or booking ID
+ *       403:
+ *         description: Business owner access only
+ *       404:
+ *         description: Booking not found
+ *       409:
+ *         description: Booking no longer available
+ */
+router.patch(
+  "/:businessId/accept",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  acceptBooking,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/bookings/{bookingId}/decline:
+ *   patch:
+ *     summary: Decline a booking for a specific business
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "507f191e810c19729de860ea"
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "507f191e810c19729de860eb"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Reason for declining the booking
+ *     responses:
+ *       200:
+ *         description: Booking declined successfully
+ *       400:
+ *         description: Invalid business ID or booking ID
+ *       401:
+ *         description: Invalid or missing token
+ *       404:
+ *         description: Business or booking not found
+ */
+/**
+ * @swagger
+ * /api/v1/businesses/bookings/{bookingId}/decline:
+ *   patch:
+ *     summary: Decline a booking (business)
+ *     description: Business owner declines an available booking. Reason is optional.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Booking declined
+ *       400:
+ *         description: Invalid business or booking ID
+ *       403:
+ *         description: Business owner access only
+ *       404:
+ *         description: Booking not found or cannot be declined
+ */
+router.patch(
+  "/bookings/:bookingId/decline",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  declineBooking,
+);
 
 module.exports = router;

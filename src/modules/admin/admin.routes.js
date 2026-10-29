@@ -718,6 +718,44 @@ router.delete(
   AdminController.deleteUser,
 );
 
+/**
+ * @swagger
+ * /api/v1/admin/deleted-accounts:
+ *   get:
+ *     summary: List deleted accounts (users/providers/businesses)
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userType
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [buyer, provider, businessOwner]
+ *       - in: query
+ *         name: email
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Deleted accounts
+ *       403:
+ *         description: Admin access required
+ */
 router.get(
   "/deleted-accounts",
   adminAuthLimiter,

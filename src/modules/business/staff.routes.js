@@ -703,6 +703,40 @@ router.post(
  *       500:
  *         description: Server error
  */
+/**
+ * @swagger
+ * /api/v1/business/{businessId}/staff/{staffId}:
+ *   delete:
+ *     summary: Remove a staff member
+ *     description: Only the business owner that invited the staff member can remove them. Deletes the staff record.
+ *     tags: [Business Staff]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Staff removed successfully
+ *       400:
+ *         description: Invalid IDs
+ *       401:
+ *         description: Invalid or missing token
+ *       403:
+ *         description: Not your business or not the inviting business
+ *       404:
+ *         description: Staff not found in your business
+ *       500:
+ *         description: Server error
+ */
 router.delete(
   '/:businessId/staff/:staffId',
   authMiddleware,

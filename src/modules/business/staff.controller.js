@@ -305,7 +305,10 @@ const businessClockOutStaff = async (req, res) => {
 const removeStaff = async (req, res) => {
   try {
     assertSelfBusiness(req);
-    const data = await staffService.removeStaff(req.params.businessId, req.params.staffId);
+    const data = await staffService.removeStaff(
+      req.params.businessId,
+      req.params.staffId,
+    );
     return res.status(200).json({
       success: true,
       message: 'Staff removed successfully',
@@ -316,6 +319,42 @@ const removeStaff = async (req, res) => {
   }
 };
 
+const acceptBooking = async (req, res) => {
+  try {
+    const businessId = req.params.businessId || req.user.id;
+    const bookingId =
+      req.params.bookingId ||
+      req.body?.bookingId ||
+      req.body?.id ||
+      req.body?.booking;
+    const data = await staffService.acceptBooking(businessId, bookingId);
+    return res
+      .status(200)
+      .json({ success: true, message: 'Booking accepted successfully', data });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to accept booking');
+  }
+};
+const declineBooking = async (req, res) => {
+  try {
+    const businessId = req.params.businessId || req.user.id;
+    const bookingId =
+      req.params.bookingId ||
+      req.body?.bookingId ||
+      req.body?.id ||
+      req.body?.booking;
+    const data = await staffService.declineBooking(
+      businessId,
+      bookingId,
+      req.body?.reason,
+    );
+    return res
+      .status(200)
+      .json({ success: true, message: 'Booking declined', data });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to decline booking');
+  }
+};
 module.exports = {
   clockIn,
   clockOut,
@@ -330,5 +369,7 @@ module.exports = {
   getAllStaff,
   getStaffDetail,
   respondToStaffInvite,
+  acceptBooking,
+  declineBooking,
   removeStaff,
 };

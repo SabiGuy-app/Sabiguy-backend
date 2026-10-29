@@ -377,8 +377,8 @@ class paymentService {
           userModel: "Buyer",
         },
         to: {
-          userId: booking.providerId._id,
-          userModel: "Provider",
+          userId: booking.businessId || booking.providerId?._id || booking.providerId,
+          userModel: booking.businessId ? "Business" : "Provider",
         },
         amount: totalAmount,
         breakdown: {

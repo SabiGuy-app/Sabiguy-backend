@@ -25,6 +25,7 @@ const allowedCategories = [
   "automobiles",
   "identity_docs",
   "certificates",
+  "productImages",
 ];
 
 exports.uploadFile = async ({ email, rawCategory, file }) => {
