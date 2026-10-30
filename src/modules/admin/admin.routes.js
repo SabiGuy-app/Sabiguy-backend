@@ -562,6 +562,20 @@ router.get(
   AdminController.getOnlineBuyers,
 );
 
+router.get(
+  "/online-business",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getOnlineBusiness,
+);
+
+router.get(
+  "/online-businesses",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getOnlineBusiness,
+);
+
 /**
  * @swagger
  * /api/v1/admin/platform-fee-report:

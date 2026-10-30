@@ -33,6 +33,8 @@ class AdminController {
     this.deleteUser = this.deleteUser.bind(this);
     this.getPlatformFeeReport = this.getPlatformFeeReport.bind(this);
     this.getPlatformBalance = this.getPlatformBalance.bind(this);
+    this.getOnlineBusiness = this.getOnlineBusiness.bind(this);
+    this.getOnlineBusinesses = this.getOnlineBusinesses.bind(this);
     this.approveBookingCancellation = this.approveBookingCancellation.bind(this);
     this.rejectBookingCancellation = this.rejectBookingCancellation.bind(this);
   }
@@ -1372,6 +1374,81 @@ class AdminController {
         error: error.message,
       });
     }
+  }
+
+  async getOnlineBusiness(req, res) {
+    try {
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+      const safeLimit = Math.min(limit, 100);
+      const skip = (page - 1) * safeLimit;
+
+      const staleThreshold = new Date(
+        Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
+      );
+
+      const query = {
+        isActive: true,
+        isDeleted: { $ne: true },
+        currentLocation: {
+          $exists: true,
+          $ne: null,
+        },
+        "currentLocation.coordinates": { $exists: true, $ne: [] },
+        lastLocationUpdate: { $gte: staleThreshold },
+      };
+
+      const [businesses, total] = await Promise.all([
+        Business.find(query)
+          .select(
+            "fullName BusinessName profilePicture phoneNumber email service rating availability currentLocation lastLocationUpdate cityOfOperation BusinessAddress kycVerified isOnline lastSeenAt",
+          )
+          .sort({ lastLocationUpdate: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(safeLimit)
+          .lean(),
+        Business.countDocuments(query),
+      ]);
+
+      const data = businesses.map((business) => {
+        const lastLocationUpdate = business.lastLocationUpdate
+          ? new Date(business.lastLocationUpdate)
+          : null;
+
+        return {
+          ...business,
+          online: true,
+          locationFresh: true,
+          locationAgeMinutes: lastLocationUpdate
+            ? Math.max(
+                0,
+                Math.round((Date.now() - lastLocationUpdate.getTime()) / 60000),
+              )
+            : null,
+        };
+      });
+
+      return res.status(200).json({
+        success: true,
+        count: data.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / safeLimit) || 1,
+        data,
+      });
+    } catch (error) {
+      console.error("Get online business error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching online business",
+        error: error.message,
+      });
+    }
+  }
+
+  // Alias for callers/tests that use the plural form.
+  async getOnlineBusinesses(req, res) {
+    return this.getOnlineBusiness(req, res);
   }
 
   async getDashboardStats(req, res) {

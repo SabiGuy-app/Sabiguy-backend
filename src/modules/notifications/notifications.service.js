@@ -22,41 +22,27 @@ const DEFAULT_PREFERENCES = {
   bookings: {
     push: true,
     email: true,
-    types: [
-      "new_booking_request",
-      "provider_accepted",
-      "booking_selected",
-      "booking_cancelled",
-      "booking_cancellation_requested",
-      "booking_cancellation_rejected",
-      "booking_cancellation_approved",
-      "booking_declined",
-      "booking_status_updated",
-      "booking_taken",
-      "counter_offer",
-      "booking_completed_awaiting_acceptance",
-      "booking_auto_completed"
-    ],
+    types: [],
   },
   jobCompleted: {
     push: true,
     email: true,
-    types: ["job_started", "booking_completed", "job_completed_confirmed"],
+    types: [],
   },
   chatMessages: {
     push: true,
     email: false,
-    types: ["new_message", "message_received"],
+    types: [],
   },
   walletPayments: {
     push: true,
     email: true,
-    types: ["wallet_funded", "wallet_payment", "payment_received", "payment_sent"],
+    types: [],
   },
   promotions: {
-    push: false,
+    push: true,
     email: false,
-    types: ["test"],
+    types: [],
   },
 };
 
