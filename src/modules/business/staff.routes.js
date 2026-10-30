@@ -257,7 +257,7 @@ router.put(
  * /api/v1/business/{businessId}/staff/on-duty:
  *   get:
  *     summary: List staff on duty
- *     description: Returns the business's active staff with a working status (in_service / en_route / available / offline) and their current job, for the staff-on-duty board.
+ *     description: Returns the business's active staff with a working status (in_service / booked / available / offline) and their current job, for the staff-on-duty board.
  *     tags: [Business Staff]
  *     security:
  *       - bearerAuth: []
@@ -305,7 +305,7 @@ router.put(
  *                               type: string
  *                           workStatus:
  *                             type: string
- *                             enum: [offline, available, en_route, in_service]
+ *                             enum: [offline, available, booked, in_service]
  *                           currentJob:
  *                             nullable: true
  *                             type: object

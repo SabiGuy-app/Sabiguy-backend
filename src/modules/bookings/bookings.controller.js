@@ -1814,6 +1814,16 @@ class BookingController {
             "i",
           )
         : null;
+      // When searching providers and businesses together, don't surface a
+      // provider as an independent option while they're clocked in as staff.
+      // Their business remains discoverable through the business results.
+      const clockedInProviderIds = includeBusinesses
+        ? await Staff.distinct("provider", {
+            status: "ACTIVE",
+            "onDuty.active": true,
+            provider: { $ne: null },
+          })
+        : [];
       const providerServiceFilters = [
         ...(jobQuery ? [{ job: jobQuery }] : []),
         ...(serviceNameRegex || fixedPrice !== undefined
@@ -1855,6 +1865,9 @@ class BookingController {
               : {};
 
       const baseQuery = {
+        ...(clockedInProviderIds.length
+          ? { _id: { $nin: clockedInProviderIds } }
+          : {}),
         isActive: true,
         isDeleted: { $ne: true },
         "availability.isAvailable": true,

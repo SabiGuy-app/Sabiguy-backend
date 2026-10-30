@@ -57,7 +57,7 @@ const getDashboardStats = async (businessId) => {
     getStaffOnDuty(businessId),
   ]);
 
-  const onRoad = onDuty.staff.filter((s) => s.workStatus === 'en_route').length;
+  const onRoad = onDuty.staff.filter((s) => s.workStatus === 'booked').length;
   const onSite = onDuty.staff.filter(
     (s) => s.workStatus === 'in_service',
   ).length;

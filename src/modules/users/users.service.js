@@ -192,7 +192,9 @@ const getUserByEmail = async (email) => {
   if (!account) return null;
   if (provider && account === provider) {
     account.products = await Product.find({ ownerType: 'provider', owner: provider._id }).sort({ createdAt: -1 }).lean();
-    const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' }).select('staffCode business _id').lean();
+    const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' })
+      .select('staffCode business _id status role services canDoHomeService workStatus onDuty clockRequest acceptedAt')
+      .lean();
     account.staffId = staffRecords.length ? staffRecords[0]._id : null;
     account.staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
     account.staffMemberships = staffRecords;
@@ -213,7 +215,9 @@ const getUserById = async (id) => {
   const provider = await Provider.findById(id).select('-password');
   const business = await Business.findById(id).select('-password');
   if (provider) {
-    const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' }).select('staffCode business _id').lean();
+    const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' })
+      .select('staffCode business _id status role services canDoHomeService workStatus onDuty clockRequest acceptedAt')
+      .lean();
     const providerObj = provider.toObject ? provider.toObject() : { ...provider };
     providerObj.staffId = staffRecords.length ? staffRecords[0]._id : null;
     providerObj.staffCode = staffRecords.length ? staffRecords[0].staffCode : null;

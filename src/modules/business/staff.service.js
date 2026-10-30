@@ -120,6 +120,14 @@ const inviteStaff = async (businessId, payload = {}) => {
     inviteExpiresAt,
   });
 
+  // Keep the business attribution on an existing provider profile so it is
+  // returned by both auth/me and user lookup by email. New providers receive
+  // the same field when they accept the invitation below.
+  await Provider.updateOne(
+    { email: normalizedEmail },
+    { $set: { invitedBy: business._id } },
+  );
+
   const businessName =
     business.BusinessName || business.fullName || 'the business';
 
@@ -422,7 +430,7 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
 
   // Reflect the new assignment on the staff member's working state.
   if (staff.workStatus !== 'in_service') {
-    staff.workStatus = 'en_route';
+    staff.workStatus = 'booked';
     await staff.save();
   }
 
@@ -442,7 +450,7 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
 
 const WORK_STATUS_RANK = {
   in_service: 0,
-  en_route: 1,
+  booked: 1,
   available: 2,
   offline: 3,
 };
@@ -591,8 +599,8 @@ const applyDutyChange = (staff, onDuty, now = new Date()) => {
       'onDuty.since': now,
       'onDuty.lastClockInAt': now,
     });
-    // Keep busy states (en_route / in_service); otherwise mark available.
-    if (!['en_route', 'in_service'].includes(staff.workStatus)) {
+    // Keep busy states (booked / in_service); otherwise mark available.
+    if (!['booked', 'in_service'].includes(staff.workStatus)) {
       staff.workStatus = 'available';
     }
   } else {
@@ -646,6 +654,19 @@ const requestClockChange = async (providerId, action, { businessId } = {}) => {
   await staff.save();
 
   const label = wantsOnDuty ? 'clock in' : 'clock out';
+  await notifySafely(
+    () =>
+      notificationService.notifyProvider(providerId, {
+        type: wantsOnDuty
+          ? 'staff_clock_in_requested'
+          : 'staff_clock_out_requested',
+        title: `Clock-${wantsOnDuty ? 'in' : 'out'} request sent`,
+        message: `Your ${label} request was sent to the business for approval.`,
+        businessId: staff.business,
+        staffId: staff._id,
+      }),
+    'Clock request provider',
+  );
   await notifySafely(
     () =>
       notificationService.notifyBusiness(staff.business, {
@@ -740,6 +761,19 @@ const respondToClockRequest = async (
       }),
     'Clock response',
   );
+  await notifySafely(
+    () =>
+      notificationService.notifyBusiness(staff.business, {
+        type:
+          action === 'approve'
+            ? 'staff_clock_request_approved'
+            : 'staff_clock_request_rejected',
+        title: `Staff ${label} request ${action === 'approve' ? 'approved' : 'rejected'}`,
+        message: `You ${action === 'approve' ? 'approved' : 'rejected'} ${staff.email}'s ${label} request${reason?.trim() ? `: ${reason.trim()}` : ''}.`,
+        staffId: staff._id,
+      }),
+    'Clock response business',
+  );
 
   return toClockState(staff);
 };
@@ -776,13 +810,23 @@ const businessClockOutStaff = async (businessId, staffId, { reason } = {}) => {
       }),
     'Business clock-out',
   );
+  await notifySafely(
+    () =>
+      notificationService.notifyBusiness(staff.business, {
+        type: 'staff_clocked_out_by_business',
+        title: 'Staff clocked out',
+        message: `${staff.email} was clocked out by the business${reason?.trim() ? `: ${reason.trim()}` : ''}.`,
+        staffId: staff._id,
+      }),
+    'Business clock-out business',
+  );
 
   return toClockState(staff);
 };
 
 // The "Staff on duty" board: every active staff member with a working status.
 // Busy states are derived from the staff's not-yet-completed assigned bookings
-// (in_progress -> in_service, assigned -> en_route); everyone else falls back
+// (in_progress -> in_service, assigned -> booked); everyone else falls back
 // to their stored workStatus (available / offline).
 const getStaffOnDuty = async (businessId) => {
   if (!mongoose.isValidObjectId(businessId)) {
@@ -832,7 +876,7 @@ const getStaffOnDuty = async (businessId) => {
       let workStatus = s.workStatus;
       if (job) {
         workStatus =
-          job.businessStatus === 'in_progress' ? 'in_service' : 'en_route';
+          job.businessStatus === 'in_progress' ? 'in_service' : 'booked';
       }
       return {
         staffId: s._id,
@@ -982,7 +1026,7 @@ const getStaffDetail = async (businessId, identifier) => {
   const workStatus = current
     ? current.businessStatus === 'in_progress'
       ? 'in_service'
-      : 'en_route'
+      : 'booked'
     : staff.workStatus;
 
   return {
@@ -1096,6 +1140,27 @@ const respondToStaffInvite = async (payload = {}, provider = {}) => {
     staff.status = 'DECLINED';
     staff.declinedAt = new Date();
     await staff.save();
+    await notifySafely(
+      () =>
+        notificationService.notifyProvider(provider.id, {
+          type: 'staff_invitation_declined',
+          title: 'Invitation declined',
+          message: `You declined the staff invitation from ${business.BusinessName || business.fullName || 'the business'}.`,
+          businessId: business._id,
+          staffId: staff._id,
+        }),
+      'Staff invitation decline provider',
+    );
+    await notifySafely(
+      () =>
+        notificationService.notifyBusiness(business._id, {
+          type: 'staff_invitation_declined',
+          title: 'Staff invitation declined',
+          message: `${normalizedStaffEmail} declined your staff invitation.`,
+          staffId: staff._id,
+        }),
+      'Staff invitation decline business',
+    );
     return {
       status: 'DECLINED',
       staffId: staff._id,
@@ -1118,6 +1183,31 @@ const respondToStaffInvite = async (payload = {}, provider = {}) => {
   staff.acceptedAt = new Date();
   staff.staffCode = await generateStaffCode(business._id);
   await staff.save();
+  await Provider.updateOne(
+    { _id: provider.id },
+    { $set: { invitedBy: business._id } },
+  );
+  await notifySafely(
+    () =>
+      notificationService.notifyProvider(provider.id, {
+        type: 'staff_invitation_accepted',
+        title: 'Invitation accepted',
+        message: `You joined ${business.BusinessName || business.fullName || 'the business'} as ${staff.role}.`,
+        businessId: business._id,
+        staffId: staff._id,
+      }),
+    'Staff invitation acceptance provider',
+  );
+  await notifySafely(
+    () =>
+      notificationService.notifyBusiness(business._id, {
+        type: 'staff_invitation_accepted',
+        title: 'Staff invitation accepted',
+        message: `${normalizedStaffEmail} accepted your staff invitation.`,
+        staffId: staff._id,
+      }),
+    'Staff invitation acceptance business',
+  );
 
   return {
     status: 'ACTIVE',

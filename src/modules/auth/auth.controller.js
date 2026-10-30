@@ -1290,7 +1290,7 @@ exports.me = async (req, res) => {
     let staffMemberships = [];
     if (role === "provider") {
       const staffRecords = await Staff.find({ provider: user._id, status: "ACTIVE" })
-        .select("staffCode business _id")
+        .select("staffCode business _id status role services canDoHomeService workStatus onDuty clockRequest acceptedAt")
         .lean();
       staffId = staffRecords.length ? staffRecords[0]._id : null;
       staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
