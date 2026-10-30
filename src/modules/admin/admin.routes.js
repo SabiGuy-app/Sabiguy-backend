@@ -562,6 +562,120 @@ router.get(
   AdminController.getOnlineBuyers,
 );
 
+/**
+ * @swagger
+ * /api/v1/admin/online-business:
+ *   get:
+ *     summary: Get online businesses
+ *     description: Returns active businesses whose location was updated within the configured online window. Results are sorted by most recent location update.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Number of businesses per page (maximum 100)
+ *     responses:
+ *       200:
+ *         description: Online businesses retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 count:
+ *                   type: integer
+ *                   description: Number of businesses on this page
+ *                 total:
+ *                   type: integer
+ *                   description: Total number of matching businesses
+ *                 page:
+ *                   type: integer
+ *                 totalPages:
+ *                   type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       fullName:
+ *                         type: string
+ *                       BusinessName:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                         format: email
+ *                       phoneNumber:
+ *                         type: string
+ *                       online:
+ *                         type: boolean
+ *                         example: true
+ *                       locationFresh:
+ *                         type: boolean
+ *                         example: true
+ *                       locationAgeMinutes:
+ *                         type: integer
+ *                         nullable: true
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ * /api/v1/admin/online-businesses:
+ *   get:
+ *     summary: Get online businesses
+ *     description: Alias for GET /api/v1/admin/online-business.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - name: limit
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Number of businesses per page (maximum 100)
+ *     responses:
+ *       200:
+ *         description: Online businesses retrieved successfully
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Server error
+ */
 router.get(
   "/online-business",
   authMiddleware,
