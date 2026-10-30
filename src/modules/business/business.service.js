@@ -1188,6 +1188,7 @@ const getBookingsForBusiness = async (
 
 module.exports = {
   getBusinessesWithPagination,
+  getBusinessById,
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,
