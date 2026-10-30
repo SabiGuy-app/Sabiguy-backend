@@ -83,7 +83,15 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber, signup
         Date.now() + 10 * 60 * 1000,
       );
       await existingBusiness.save();
-      await sendEmailOtp(normalizedEmail, otp);
+      try {
+        await sendEmailOtp(normalizedEmail, otp);
+      } catch (OtpError) {
+        console.error(
+          'Failed to resend business signup OTP:',
+          normalizedEmail,
+          OtpError.message,
+        );
+      }
       return {
         resend: true,
         message: 'Email not verified. OTP resent to email.',
@@ -132,7 +140,15 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber, signup
 
   await newBusiness.save();
   await notifyAdminTeam({ event: 'account_created', accountType: 'business', account: newBusiness });
-  await sendEmailOtp(normalizedEmail, otp);
+  try {
+    await sendEmailOtp(normalizedEmail, otp);
+  } catch (OtpError) {
+    console.error(
+      'Failed to send business signup OTP:',
+      normalizedEmail,
+      OtpError.message,
+    );
+  }
 
   const token = authService.generateAccessToken(newBusiness);
   return {

@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const STAFF_STATUSES = ["INVITED", "ACTIVE", "DECLINED", "EXPIRED", "REMOVED"];
-const WORK_STATUSES = ["offline", "available", "en_route", "in_service"];
+const WORK_STATUSES = ["offline", "available", "booked", "in_service"];
 const CLOCK_ACTIONS = ["clock_in", "clock_out"];
 const CLOCK_REQUEST_STATUSES = ["pending", "approved", "rejected", "cancelled"];
 
@@ -106,6 +106,15 @@ staffSchema.index(
   {
     unique: true,
     partialFilterExpression: { status: { $in: ["INVITED", "ACTIVE"] } },
+  },
+);
+
+// A provider can only be linked to one business/staff record.
+staffSchema.index(
+  { provider: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { provider: { $type: "objectId" } },
   },
 );
 

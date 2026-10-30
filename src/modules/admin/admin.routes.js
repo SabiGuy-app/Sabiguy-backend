@@ -562,6 +562,20 @@ router.get(
   AdminController.getOnlineBuyers,
 );
 
+router.get(
+  "/online-business",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getOnlineBusiness,
+);
+
+router.get(
+  "/online-businesses",
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getOnlineBusiness,
+);
+
 /**
  * @swagger
  * /api/v1/admin/platform-fee-report:
@@ -720,9 +734,56 @@ router.delete(
 
 /**
  * @swagger
+ * /api/v1/admin/deleted-accounts:
+ *   get:
+ *     summary: List deleted accounts (users/providers/businesses)
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userType
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [buyer, provider, businessOwner]
+ *       - in: query
+ *         name: email
+ *         required: false
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Deleted accounts
+ *       403:
+ *         description: Admin access required
+ */
+router.get(
+  "/deleted-accounts",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminController.getDeletedAccounts,
+);
+
+/**
+ * @swagger
  * /api/v1/admin/providers/{providerId}/kyc/verify:
  *   patch:
- *     summary: Verify provider KYC
+ *     summary: Verify provider KYC and enable availability
+ *     description: Verifies the provider's KYC and turns on account availability.
  *     tags: [Admins]
  *     security:
  *       - bearerAuth: []
@@ -745,7 +806,7 @@ router.delete(
  *                 example: "Verified documents and identity"
  *     responses:
  *       200:
- *         description: KYC verified successfully
+ *         description: KYC verified and provider availability enabled
  *       403:
  *         description: Admin access required
  *       404:
@@ -806,7 +867,8 @@ router.patch(
  * @swagger
  * /api/v1/admin/businesses/{businessId}/kyc/verify:
  *   patch:
- *     summary: Verify business KYC
+ *     summary: Verify business KYC and enable availability
+ *     description: Verifies the business's KYC and turns on account availability.
  *     tags: [Admins]
  *     security:
  *       - bearerAuth: []
@@ -829,7 +891,7 @@ router.patch(
  *                 example: "Verified business registration documents"
  *     responses:
  *       200:
- *         description: Business KYC verified successfully
+ *         description: KYC verified and business availability enabled
  *       403:
  *         description: Admin access required
  *       404:

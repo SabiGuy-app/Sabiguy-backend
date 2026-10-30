@@ -568,6 +568,81 @@ const updateBusinessLocation = async (req, res) => {
   }
 };
 
+
+const getBookingsForBusiness = async (req, res) => {
+  try {
+    const { page, limit, skip } = getPagination(req, {
+      defaultPage: 1,
+      defaultLimit: 10,
+      maxLimit: 100,
+    });
+    const { status, businessStatus } = req.query;
+
+    const { bookings, total } = await businessService.getBookingsForBusiness(
+      req.user.id,
+      { status, businessStatus, skip, limit },
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: bookings,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      total,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, "Failed to fetch bookings");
+  }
+};
+
+const acceptBooking = async (req, res) => {
+  try {
+    const businessId = req.params.businessId || req.user.id;
+    const bookingId =
+      req.params.bookingId ||
+      req.body?.bookingId ||
+      req.body?.id ||
+      req.body?.booking;
+    const data = await businessService.acceptBooking(
+      businessId,
+      bookingId,
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Booking accepted successfully',
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to accept booking');
+  }
+};
+
+const declineBooking = async (req, res) => {
+  try {
+    const businessId = req.params.businessId || req.user.id;
+    const bookingId =
+      req.params.bookingId ||
+      req.body?.bookingId ||
+      req.body?.id ||
+      req.body?.booking;
+    const data = await businessService.declineBooking(
+      businessId,
+      bookingId,
+      req.body?.reason,
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Booking declined',
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to decline booking');
+  }
+};
+
+const acceptBusinessBooking = acceptBooking;
+const declineBusinessBooking = declineBooking;
+
 module.exports = {
   getAllBusinesses,
   getBusinessById,
@@ -592,4 +667,9 @@ module.exports = {
   updateBusinessStudioImages,
   setBusinessAvailability,
   updateBusinessLocation,
+  getBookingsForBusiness,
+  acceptBooking,
+  declineBooking,
+  acceptBusinessBooking,
+  declineBusinessBooking,
 };

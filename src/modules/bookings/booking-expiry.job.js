@@ -73,10 +73,10 @@ const processScheduledBookings = async (now = new Date()) => {
   const bookings = await Booking.find({
     scheduleType: "scheduled",
     status: "paid_escrow_scheduled",
-    providerId: { $ne: null },
+    $or: [{ providerId: { $ne: null } }, { businessId: { $ne: null } }],
   })
     .select(
-      "scheduleType scheduleDate scheduledTime startDate endDate providerId serviceType scheduledReminder10SentAt scheduledReminder5SentAt",
+      "scheduleType scheduleDate scheduledTime startDate endDate providerId businessId assignedStaff serviceType subCategory serviceDetails.serviceName scheduledReminder10SentAt scheduledReminder5SentAt",
     )
     .lean();
 
@@ -133,13 +133,57 @@ const processScheduledBookings = async (now = new Date()) => {
       if (!claimed) continue;
 
       try {
-        await notificationService.notifyProvider(booking.providerId, {
-          type: "booking_status_updated",
-          title: `Scheduled booking in ${reminder.minutes} minutes`,
-          message: `Your ${booking.subCategory} service booking is scheduled to start in about ${reminder.minutes} minutes.`,
-          bookingId: booking._id,
-          scheduledStartAt: scheduledStart,
-        });
+        const serviceName =
+          booking.subCategory ||
+          booking.serviceDetails?.serviceName ||
+          booking.serviceType ||
+          "service";
+        const notificationTasks = [];
+
+        if (booking.businessId) {
+          notificationTasks.push(
+            notificationService.notifyBusiness(booking.businessId, {
+              type: "booking_status_updated",
+              title: `Business booking in ${reminder.minutes} minutes`,
+              message: `Your ${serviceName} business booking is scheduled to start in about ${reminder.minutes} minutes.`,
+              bookingId: booking._id,
+              scheduledStartAt: scheduledStart,
+            }),
+          );
+
+          const assignedProviderIds = [
+            ...new Set(
+              (booking.assignedStaff || [])
+                .map((assignment) => assignment.provider)
+                .filter(Boolean)
+                .map(String),
+            ),
+          ];
+          for (const providerId of assignedProviderIds) {
+            notificationTasks.push(
+              notificationService.notifyProvider(providerId, {
+                type: "booking_status_updated",
+                title: `Assigned booking in ${reminder.minutes} minutes`,
+                message: `Your assigned ${serviceName} booking is scheduled to start in about ${reminder.minutes} minutes.`,
+                bookingId: booking._id,
+                businessId: booking.businessId,
+                scheduledStartAt: scheduledStart,
+              }),
+            );
+          }
+        } else if (booking.providerId) {
+          notificationTasks.push(
+            notificationService.notifyProvider(booking.providerId, {
+              type: "booking_status_updated",
+              title: `Scheduled booking in ${reminder.minutes} minutes`,
+              message: `Your ${serviceName} service booking is scheduled to start in about ${reminder.minutes} minutes.`,
+              bookingId: booking._id,
+              scheduledStartAt: scheduledStart,
+            }),
+          );
+        }
+
+        await Promise.all(notificationTasks);
         remindersSent += 1;
       } catch (error) {
         await Booking.updateOne(

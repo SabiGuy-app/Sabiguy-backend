@@ -12,6 +12,7 @@ const productSchema = new mongoose.Schema(
     ownerModel: { type: String, enum: ["Provider", "Business"], required: true },
     name: { type: String, required: true, trim: true, maxlength: 120 },
     description: { type: String, trim: true, maxlength: 2000 },
+    productImage: { type: String, trim: true },
     price: { type: Number, required: true, min: 0 },
     currency: { type: String, default: "NGN", uppercase: true, trim: true },
     status: {

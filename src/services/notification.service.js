@@ -47,49 +47,47 @@ class NotificationService {
       bookings: {
         push: true,
         email: true,
-        types: [
-          "new_booking_request",
-          "provider_accepted",
-          "booking_selected",
-          "booking_cancelled",
-          "booking_status_updated",
-          "booking_taken",
-          "counter_offer",
-          "booking_cancellation_requested",
-          "booking_cancellation_rejected",
-          'booking_cancellation_approved',
-          "booking_disputed",
-          "booking_completed_awaiting_acceptance",
-          "booking_auto_completed",
-          "booking_expired",
-        ],
+        // Empty means every notification type in this category is enabled.
+        types: [],
       },
       jobCompleted: {
         push: true,
         email: true,
-        types: ["job_started", "booking_completed", "job_completed_confirmed"],
+        types: [],
       },
       chatMessages: {
         push: true,
         email: false,
-        types: ["new_message", "message_received"],
+        types: [],
       },
       walletPayments: {
         push: true,
         email: true,
-        types: [
-          "wallet_funded",
-          "wallet_payment",
-          "payment_received",
-          "payment_sent",
-        ],
+        types: [],
       },
       promotions: {
-        push: false,
+        push: true,
         email: false,
-        types: ["test"],
+        types: [],
       },
     };
+  }
+
+  isLegacyDefaultTypes(category, types) {
+    const legacyDefaults = {
+      bookings: [
+        ["new_booking_request", "provider_accepted", "booking_selected", "booking_cancelled", "booking_status_updated", "booking_taken", "counter_offer", "booking_completed_awaiting_acceptance"],
+        ["new_booking_request", "provider_accepted", "booking_selected", "booking_cancelled", "booking_status_updated", "booking_taken", "counter_offer", "booking_cancellation_requested", "booking_cancellation_rejected", "booking_cancellation_approved", "booking_disputed", "booking_completed_awaiting_acceptance", "booking_auto_completed", "booking_expired"],
+      ],
+      jobCompleted: [["job_started", "booking_completed", "job_completed_confirmed"]],
+      chatMessages: [["new_message", "message_received"]],
+      walletPayments: [["wallet_funded", "wallet_payment", "payment_received", "payment_sent"]],
+      promotions: [["test"]],
+    };
+    const incoming = [...types].sort();
+    return (legacyDefaults[category] || []).some(
+      (legacy) => legacy.length === incoming.length && [...legacy].sort().every((type, index) => type === incoming[index]),
+    );
   }
 
   getTypeCategory(type) {
@@ -135,14 +133,18 @@ class NotificationService {
     for (const key of Object.keys(defaults)) {
       const base = defaults[key];
       const incoming = preferences?.[key] || {};
-      const baseTypes = Array.isArray(base.types) ? base.types : [];
       const incomingTypes = Array.isArray(incoming.types) ? incoming.types : [];
+      const types = this.isLegacyDefaultTypes(key, incomingTypes)
+        ? []
+        : Array.isArray(incoming.types)
+          ? incomingTypes
+          : base.types;
 
       merged[key] = {
         push: typeof incoming.push === "boolean" ? incoming.push : base.push,
         email:
           typeof incoming.email === "boolean" ? incoming.email : base.email,
-        types: Array.from(new Set([...baseTypes, ...incomingTypes])),
+        types,
       };
     }
 

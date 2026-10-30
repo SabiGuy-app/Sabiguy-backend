@@ -43,7 +43,7 @@ const transactionSchema = new mongoose.Schema(
       },
       userModel: {
         type: String,
-        enum: ["Buyer", "Provider", "Platform"],
+        enum: ["Buyer", "Provider", "Platform", "Business"],
       },
       walletId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -58,7 +58,7 @@ const transactionSchema = new mongoose.Schema(
       },
       userModel: {
         type: String,
-        enum: ["Buyer", "Provider", "Platform"],
+        enum: ["Buyer", "Provider", "Platform", "Business"],
       },
       walletId: {
         type: mongoose.Schema.Types.ObjectId,

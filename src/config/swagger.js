@@ -192,6 +192,7 @@ const options = {
     ),
     path.join(__dirname, '..', 'modules', 'files', 'files.routes.js'),
     path.join(__dirname, '..', 'modules', 'users', 'users.routes.js'),
+    path.join(__dirname, '..', 'modules', 'categories', 'category.routes.js'),
     path.join(__dirname, '..', 'modules', 'wallet', 'wallet.routes.js'),
     path.join(__dirname, '..', 'modules', 'products', 'product.route.js'),
 

@@ -48,6 +48,11 @@ const serviceProviderSchema = new mongoose.Schema(
       enum: ["provider"],
       default: "provider",
     },
+    invitedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Business",
+      default: null,
+    },
     // lastName: { type: String},
     dateOfBirth: { type: String },
     gender: { type: String },
@@ -161,16 +166,7 @@ const serviceProviderSchema = new mongoose.Schema(
         email: { type: Boolean, default: true },
         types: {
           type: [String],
-          default: [
-            "new_booking_request",
-            "provider_accepted",
-            "booking_selected",
-            "booking_cancelled",
-            "booking_status_updated",
-            "booking_taken",
-            "counter_offer",
-            "booking_completed_awaiting_acceptance",
-          ],
+          default: [],
         },
       },
       jobCompleted: {
@@ -178,35 +174,26 @@ const serviceProviderSchema = new mongoose.Schema(
         email: { type: Boolean, default: true },
         types: {
           type: [String],
-          default: [
-            "job_started",
-            "booking_completed",
-            "job_completed_confirmed",
-          ],
+          default: [],
         },
       },
       chatMessages: {
         push: { type: Boolean, default: true },
         email: { type: Boolean, default: false },
-        types: { type: [String], default: ["new_message", "message_received"] },
+        types: { type: [String], default: [] },
       },
       walletPayments: {
         push: { type: Boolean, default: true },
         email: { type: Boolean, default: true },
         types: {
           type: [String],
-          default: [
-            "wallet_funded",
-            "wallet_payment",
-            "payment_received",
-            "payment_sent",
-          ],
+          default: [],
         },
       },
       promotions: {
-        push: { type: Boolean, default: false },
+        push: { type: Boolean, default: true },
         email: { type: Boolean, default: false },
-        types: { type: [String], default: ["test"] },
+        types: { type: [String], default: [] },
       },
     },
 

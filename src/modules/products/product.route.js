@@ -1,6 +1,10 @@
-const express = require("express");
-const authMiddleware = require("../../../middleware/authMiddleware");
-const { createProduct, getPendingProducts, reviewProduct } = require("./product.controller");
+const express = require('express');
+const authMiddleware = require('../../../middleware/authMiddleware');
+const {
+  createProduct,
+  reviewProduct,
+  getProducts,
+} = require('./product.controller');
 
 const router = express.Router();
 
@@ -37,6 +41,10 @@ const router = express.Router();
  *               description:
  *                 type: string
  *                 example: Full-grain leather wallet, handcrafted in Lagos.
+ *               productImage:
+ *                 type: string
+ *                 description: Optional URL for the product image
+ *                 example: https://res.cloudinary.com/demo/image/upload/product.jpg
  *               currency:
  *                 type: string
  *                 default: NGN
@@ -51,33 +59,58 @@ const router = express.Router();
  *       403:
  *         description: Provider or business account required
  */
-router.post("/", authMiddleware, (req, res, next) => {
-  if (!["provider", "businessOwner", "business"].includes(req.user.role)) {
-    return res.status(403).json({ success: false, message: "Provider or business access only" });
-  }
-  return next();
-}, createProduct);
+router.post(
+  '/',
+  authMiddleware,
+  (req, res, next) => {
+    if (!['provider', 'businessOwner', 'business'].includes(req.user.role)) {
+      return res
+        .status(403)
+        .json({ success: false, message: 'Provider or business access only' });
+    }
+    return next();
+  },
+  createProduct,
+);
 
 /**
  * @swagger
- * /api/v1/products/pending:
+ * /api/v1/products:
  *   get:
- *     summary: List products awaiting approval
+ *     summary: List products for the authenticated provider/business
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [pending, approved, rejected]
+ *         description: Filter by status (default pending)
  *     responses:
  *       200:
- *         description: Pending products with their owner details
+ *         description: Products for the authenticated account
  *       401:
  *         description: Authentication required
  *       403:
- *         description: Super admin or verification admin access required
+ *         description: Provider or business account required
  */
-router.get("/pending", authMiddleware, (req, res, next) => {
-  if (req.user.role !== "admin") return res.status(403).json({ success: false, message: "Admin access only" });
-  return next();
-}, getPendingProducts);
+router.get(
+  '/',
+  authMiddleware,
+  (req, res, next) => {
+    if (req.user.role === 'admin') return next();
+    if (!['provider', 'businessOwner', 'business'].includes(req.user.role)) {
+      return res
+        .status(403)
+        .json({ success: false, message: 'Provider or business access only' });
+    }
+    return next();
+  },
+  getProducts,
+);
 
 /**
  * @swagger
@@ -120,9 +153,17 @@ router.get("/pending", authMiddleware, (req, res, next) => {
  *       404:
  *         description: Pending product not found
  */
-router.patch("/:id/review", authMiddleware, (req, res, next) => {
-  if (req.user.role !== "admin") return res.status(403).json({ success: false, message: "Admin access only" });
-  return next();
-}, reviewProduct);
+router.patch(
+  '/:id/review',
+  authMiddleware,
+  (req, res, next) => {
+    if (req.user.role !== 'admin')
+      return res
+        .status(403)
+        .json({ success: false, message: 'Admin access only' });
+    return next();
+  },
+  reviewProduct,
+);
 
 module.exports = router;

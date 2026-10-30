@@ -22,6 +22,7 @@ const businessRoutes = require('./modules/business/business.routes');
 const businessStaffRoutes = require('./modules/business/staff.routes');
 const businessDashboardRoutes = require('./modules/business/dashboard.routes');
 const productRoutes = require('./modules/products/product.route');
+const categoryRoutes = require('./modules/categories/category.routes');
 
 const createApp = () => {
   const app = express();
@@ -64,6 +65,8 @@ const createApp = () => {
   app.use('/api/v1/businesses', businessRoutes);
   app.use('/api/v1/business', businessStaffRoutes);
   app.use('/api/v1/business', businessDashboardRoutes);
+  app.use('/api/v1/products', productRoutes);
+  app.use('/api/v1/categories', categoryRoutes);
 
   app.get('/api-docs/swagger.json', (req, res) => {
     res.setHeader('Content-Type', 'application/json');

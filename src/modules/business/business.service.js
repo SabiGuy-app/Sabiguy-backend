@@ -10,7 +10,7 @@ const { sendDriverInvitationEmail } = require('../../config/emailVerification');
 const {
   notifyKycCompleted,
 } = require('../../services/adminNotification.service');
-
+const Booking = require('../bookings/Bookings.model');
 const INVITE_TOKEN_EXPIRY_DAYS = Number(
   process.env.DRIVER_INVITE_EXPIRY_DAYS || 7,
 );
@@ -220,7 +220,12 @@ const getBusinessByEmail = async (email) => {
     throw new NotFoundError('Business not found');
   }
 
-  return business;
+  // Required lazily: staff.service imports this module, so a top-level
+  // require would create a circular dependency.
+  const { getStaffOnDuty } = require('./staff.service');
+  const staffsOnDuty = await getStaffOnDuty(business._id);
+
+  return { ...business.toObject(), staffsOnDuty };
 };
 
 // 4. Confirm or reject a pending driver invitation.
@@ -1131,9 +1136,58 @@ const updateBusinessLocation = async (businessId, payload = {}) => {
   };
 };
 
+// 19. Bookings belonging to the business, newest first. Mirrors
+// GET /provider/bookings: optional `status` filter, plus `businessStatus`
+// for the business-facing lifecycle, and a derived `pricing` block.
+const getBookingsForBusiness = async (
+  businessId,
+  { status, businessStatus, skip = 0, limit = 10 } = {},
+) => {
+  await requireActiveBusiness(businessId);
+
+  const query = { businessId };
+  if (status) query.status = status;
+  if (businessStatus) query.businessStatus = businessStatus;
+
+  const [bookings, total] = await Promise.all([
+    Booking.find(query)
+      .populate('userId', 'fullName profilePicture phoneNumber email')
+      .populate(
+        'businessId',
+        'fullName profilePicture phoneNumber email currentLocation lastLocationUpdate',
+      )
+      .populate(
+        'providerId',
+        'fullName profilePicture phoneNumber email currentLocation lastLocationUpdate',
+      )
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Booking.countDocuments(query),
+  ]);
+
+  const bookingsWithPricing = bookings.map((booking) => ({
+    ...booking,
+    pricing: {
+      riderPays:
+        booking.calculatedPrice ??
+        booking.agreedPrice ??
+        booking.totalAmount ??
+        booking.budget ??
+        null,
+      driverReceives: booking.driverReceives ?? null,
+      platformEarns: booking.platformEarns ?? null,
+      breakdown: booking.pricingBreakdown ?? null,
+      meta: booking.pricingMeta ?? null,
+    },
+  }));
+
+  return { bookings: bookingsWithPricing, total };
+};
+
 module.exports = {
   getBusinessesWithPagination,
-  getBusinessById,
   inviteDriver,
   getBusinessDrivers,
   getBusinessVehicles,
@@ -1155,9 +1209,69 @@ module.exports = {
   setBusinessAvailability,
   updateBusinessLocation,
   isWithinBusinessHours,
+  getBookingsForBusiness,
 
   ValidationError,
   NotFoundError,
   ConflictError,
   ForbiddenError,
 };
+
+const acceptBooking = async (businessId, bookingIdInput, ...rest) => {
+  let bookingId = bookingIdInput;
+  let reason;
+  if (bookingIdInput && typeof bookingIdInput === 'object') {
+    bookingId = bookingIdInput.bookingId || bookingIdInput.id || bookingIdInput._id || bookingIdInput.booking;
+    reason = bookingIdInput.reason;
+  }
+  if (rest && rest.length && reason === undefined) reason = rest[0];
+  if (!mongoose.isValidObjectId(businessId)) throw new ValidationError('Invalid business ID');
+  if (!mongoose.isValidObjectId(bookingId)) throw new ValidationError('Invalid booking ID');
+  await requireActiveBusiness(businessId);
+  const booking = await Booking.findOne({ _id: bookingId, businessId });
+  if (!booking) throw new NotFoundError('Booking not found');
+  if (!['awaiting_provider_acceptance','pending_providers'].includes(booking.status)) throw new ConflictError('Booking is no longer available');
+  const acceptedAt = new Date();
+  booking.status = 'provider_selected';
+  booking.acceptedAt = acceptedAt;
+  booking.selectedAt = acceptedAt;
+  booking.paymentDeadlineAt = new Date(acceptedAt.getTime() + 5*60*1000);
+  booking.providerResponse = 'accepted';
+  await booking.save();
+  await notificationService.notifyUser(booking.userId, {
+    type: 'provider_accepted',
+    title: 'Business Accepted Your Booking',
+    message: 'A business accepted your service booking',
+    bookingId: booking._id,
+    businessId,
+  });
+  return booking;
+};
+
+const declineBooking = async (businessId, bookingIdInput, ...rest) => {
+  let bookingId = bookingIdInput;
+  let reason;
+  if (bookingIdInput && typeof bookingIdInput === 'object') {
+    bookingId = bookingIdInput.bookingId || bookingIdInput.id || bookingIdInput._id || bookingIdInput.booking;
+    reason = bookingIdInput.reason;
+  }
+  if (rest && rest.length && reason === undefined) reason = rest[0];
+  if (rest && rest.length && typeof rest[0] === 'object' && rest[0] !== null) reason = rest[0].reason || reason;
+  if (!mongoose.isValidObjectId(businessId)) throw new ValidationError('Invalid business ID');
+  if (!mongoose.isValidObjectId(bookingId)) throw new ValidationError('Invalid booking ID');
+  await requireActiveBusiness(businessId);
+  const booking = await Booking.findOne({ _id: bookingId, businessId, status: { $in: ['awaiting_provider_acceptance','pending_providers'] } });
+  if (!booking) throw new NotFoundError('Booking not found or cannot be declined');
+  if (booking.providerId && String(booking.providerId) === String(businessId)) booking.providerId = undefined;
+  booking.providerResponse = 'declined';
+  await booking.save();
+  await notificationService.notifyUser(booking.userId, {
+    type: 'booking_declined',
+    title: 'Business Declined Booking',
+    message: reason && String(reason).trim() ? 'A business declined your booking: ' + String(reason).trim() : 'A business declined your booking. We will continue looking for an available provider.',
+    bookingId: booking._id,
+  });
+  return booking;
+};
+
+Object.assign(module.exports, { acceptBooking, declineBooking, acceptBusinessBooking: acceptBooking, declineBusinessBooking: declineBooking });

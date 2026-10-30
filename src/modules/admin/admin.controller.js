@@ -10,6 +10,7 @@ const WalletService = require("../wallet/wallet.service");
 const Transaction = require("../transactions/transaction.model");
 const notificationService = require("../../services/notification.service");
 const paymentService = require("../payment/payment.service");
+const DeletedAccount = require("./deletedAccount.model");
 const {
   findUserByEmailAcrossDb,
   normalizeEmail,
@@ -32,6 +33,8 @@ class AdminController {
     this.deleteUser = this.deleteUser.bind(this);
     this.getPlatformFeeReport = this.getPlatformFeeReport.bind(this);
     this.getPlatformBalance = this.getPlatformBalance.bind(this);
+    this.getOnlineBusiness = this.getOnlineBusiness.bind(this);
+    this.getOnlineBusinesses = this.getOnlineBusinesses.bind(this);
     this.approveBookingCancellation = this.approveBookingCancellation.bind(this);
     this.rejectBookingCancellation = this.rejectBookingCancellation.bind(this);
   }
@@ -521,13 +524,17 @@ class AdminController {
         return res.status(404).json({ message: "Provider not found" });
       }
 
+      const verifiedAt = new Date();
       provider.kycVerified = true;
-      provider.kycVerifiedAt = new Date();
+      provider.kycVerifiedAt = verifiedAt;
       provider.kycVerifiedBy = {
         id: admin._id,
         email: admin.email,
         fullName: admin.fullName,
       };
+      provider.availability = provider.availability || {};
+      provider.availability.isAvailable = true;
+      provider.availability.lastUpdated = verifiedAt;
       if (note) provider.kycVerificationNote = note;
 
       await provider.save();
@@ -552,6 +559,7 @@ class AdminController {
           kycVerifiedAt: provider.kycVerifiedAt,
           kycVerifiedBy: provider.kycVerifiedBy,
           kycVerificationNote: provider.kycVerificationNote,
+          availability: provider.availability,
         },
       });
     } catch (error) {
@@ -587,14 +595,18 @@ class AdminController {
         return res.status(404).json({ message: "Business not found" });
       }
 
+      const verifiedAt = new Date();
       business.kycCompleted = true;
       business.kycVerified = true;
-      business.kycVerifiedAt = new Date();
+      business.kycVerifiedAt = verifiedAt;
       business.kycVerifiedBy = {
         id: admin._id,
         email: admin.email,
         fullName: admin.fullName,
       };
+      business.availability = business.availability || {};
+      business.availability.isAvailable = true;
+      business.availability.lastUpdated = verifiedAt;
       business.kycRejected = false;
       business.kycRejectedAt = null;
       business.kycRejectedBy = undefined;
@@ -629,6 +641,7 @@ class AdminController {
           kycVerifiedBy: business.kycVerifiedBy,
           kycVerificationNote: business.kycVerificationNote,
           kycLevel: business.kycLevel,
+          availability: business.availability,
         },
       });
     } catch (error) {
@@ -1363,6 +1376,81 @@ class AdminController {
     }
   }
 
+  async getOnlineBusiness(req, res) {
+    try {
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+      const safeLimit = Math.min(limit, 100);
+      const skip = (page - 1) * safeLimit;
+
+      const staleThreshold = new Date(
+        Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
+      );
+
+      const query = {
+        isActive: true,
+        isDeleted: { $ne: true },
+        currentLocation: {
+          $exists: true,
+          $ne: null,
+        },
+        "currentLocation.coordinates": { $exists: true, $ne: [] },
+        lastLocationUpdate: { $gte: staleThreshold },
+      };
+
+      const [businesses, total] = await Promise.all([
+        Business.find(query)
+          .select(
+            "fullName BusinessName profilePicture phoneNumber email service rating availability currentLocation lastLocationUpdate cityOfOperation BusinessAddress kycVerified isOnline lastSeenAt",
+          )
+          .sort({ lastLocationUpdate: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(safeLimit)
+          .lean(),
+        Business.countDocuments(query),
+      ]);
+
+      const data = businesses.map((business) => {
+        const lastLocationUpdate = business.lastLocationUpdate
+          ? new Date(business.lastLocationUpdate)
+          : null;
+
+        return {
+          ...business,
+          online: true,
+          locationFresh: true,
+          locationAgeMinutes: lastLocationUpdate
+            ? Math.max(
+                0,
+                Math.round((Date.now() - lastLocationUpdate.getTime()) / 60000),
+              )
+            : null,
+        };
+      });
+
+      return res.status(200).json({
+        success: true,
+        count: data.length,
+        total,
+        page,
+        totalPages: Math.ceil(total / safeLimit) || 1,
+        data,
+      });
+    } catch (error) {
+      console.error("Get online business error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching online business",
+        error: error.message,
+      });
+    }
+  }
+
+  // Alias for callers/tests that use the plural form.
+  async getOnlineBusinesses(req, res) {
+    return this.getOnlineBusiness(req, res);
+  }
+
   async getDashboardStats(req, res) {
     try {
       if (req.user?.role !== "admin") {
@@ -1741,6 +1829,25 @@ class AdminController {
         return res.status(404).json({ message: "User not found" });
       }
 
+      if (["buyer", "provider", "businessOwner"].includes(userType)) {
+        try {
+          const snapshot = user.toObject ? user.toObject() : user;
+          await DeletedAccount.create({
+            originalId: user._id,
+            userType,
+            email: snapshot.email || user.email || null,
+            fullName: snapshot.fullName || user.fullName || snapshot.BusinessName || null,
+            phoneNumber: snapshot.phoneNumber || user.phoneNumber || null,
+            data: snapshot,
+            deletedBy: req.user.id,
+            mode,
+            deletedAt: new Date(),
+          });
+        } catch (archiveError) {
+          console.error("Failed to archive deleted account:", archiveError);
+        }
+      }
+
       if (mode === "hard") {
         await Model.deleteOne({ _id: userId });
         return res.status(200).json({
@@ -1774,6 +1881,50 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error deleting user",
+        error: error.message,
+      });
+    }
+  }
+
+  async getDeletedAccounts(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { userType, email } = req.query;
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+      const filter = {};
+      if (userType && ["buyer", "provider", "businessOwner"].includes(userType)) {
+        filter.userType = userType;
+      }
+      if (email) {
+        filter.email = normalizeEmail(email);
+      }
+
+      const [items, total] = await Promise.all([
+        DeletedAccount.find(filter)
+          .sort({ deletedAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        DeletedAccount.countDocuments(filter),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        count: items.length,
+        total,
+        page,
+        pages: Math.ceil(total / limit) || 1,
+        data: items,
+      });
+    } catch (error) {
+      console.error("Get deleted accounts error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching deleted accounts",
         error: error.message,
       });
     }
