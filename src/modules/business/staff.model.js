@@ -109,6 +109,15 @@ staffSchema.index(
   },
 );
 
+// A provider can only be linked to one business/staff record.
+staffSchema.index(
+  { provider: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { provider: { $type: "objectId" } },
+  },
+);
+
 staffSchema.statics.STAFF_STATUSES = STAFF_STATUSES;
 staffSchema.statics.WORK_STATUSES = WORK_STATUSES;
 staffSchema.statics.CLOCK_ACTIONS = CLOCK_ACTIONS;

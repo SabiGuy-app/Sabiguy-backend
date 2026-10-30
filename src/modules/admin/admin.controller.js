@@ -10,6 +10,7 @@ const WalletService = require("../wallet/wallet.service");
 const Transaction = require("../transactions/transaction.model");
 const notificationService = require("../../services/notification.service");
 const paymentService = require("../payment/payment.service");
+const DeletedAccount = require("./deletedAccount.model");
 const {
   findUserByEmailAcrossDb,
   normalizeEmail,
@@ -1828,6 +1829,25 @@ class AdminController {
         return res.status(404).json({ message: "User not found" });
       }
 
+      if (["buyer", "provider", "businessOwner"].includes(userType)) {
+        try {
+          const snapshot = user.toObject ? user.toObject() : user;
+          await DeletedAccount.create({
+            originalId: user._id,
+            userType,
+            email: snapshot.email || user.email || null,
+            fullName: snapshot.fullName || user.fullName || snapshot.BusinessName || null,
+            phoneNumber: snapshot.phoneNumber || user.phoneNumber || null,
+            data: snapshot,
+            deletedBy: req.user.id,
+            mode,
+            deletedAt: new Date(),
+          });
+        } catch (archiveError) {
+          console.error("Failed to archive deleted account:", archiveError);
+        }
+      }
+
       if (mode === "hard") {
         await Model.deleteOne({ _id: userId });
         return res.status(200).json({
@@ -1861,6 +1881,50 @@ class AdminController {
       return res.status(500).json({
         success: false,
         message: "Error deleting user",
+        error: error.message,
+      });
+    }
+  }
+
+  async getDeletedAccounts(req, res) {
+    try {
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { userType, email } = req.query;
+      const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+      const filter = {};
+      if (userType && ["buyer", "provider", "businessOwner"].includes(userType)) {
+        filter.userType = userType;
+      }
+      if (email) {
+        filter.email = normalizeEmail(email);
+      }
+
+      const [items, total] = await Promise.all([
+        DeletedAccount.find(filter)
+          .sort({ deletedAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        DeletedAccount.countDocuments(filter),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        count: items.length,
+        total,
+        page,
+        pages: Math.ceil(total / limit) || 1,
+        data: items,
+      });
+    } catch (error) {
+      console.error("Get deleted accounts error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching deleted accounts",
         error: error.message,
       });
     }
