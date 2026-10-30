@@ -4,7 +4,7 @@ const Staff = require('./staff.model');
 const Booking = require('../bookings/Bookings.model');
 const businessRepository = require('./business.repository');
 const Provider = require('../../../models/ServiceProvider');
-const notificationService = require('../../services/notification.service');
+const { findEmailProfiles } = require('../../services/identity.service');
 const geolocationService = require('../../services/geolocation.service');
 const {
   ValidationError,
@@ -87,6 +87,30 @@ const inviteStaff = async (businessId, payload = {}) => {
   }
   if (business.isActive === false) {
     throw new ConflictError('Business account is not active');
+  }
+  if (business.kycVerified !== true) {
+    throw new ForbiddenError('Only a verified business email can send staff invitations');
+  }
+
+  const inviteeProfiles = await findEmailProfiles(normalizedEmail);
+  const providerProfile = inviteeProfiles.find((p) => p.role === 'provider');
+  if (!providerProfile) {
+    throw new ForbiddenError('You can only invite a verified provider');
+  }
+  const inviteeProvider = providerProfile.user;
+  if (inviteeProvider.kycVerified !== true) {
+    throw new ForbiddenError('You can only invite a verified provider');
+  }
+  if (inviteeProvider.isDeleted === true || inviteeProvider.isActive === false) {
+    throw new ForbiddenError('You can only invite a verified provider');
+  }
+
+  const providerStaffRecord = await Staff.findOne({ provider: inviteeProvider._id });
+  if (providerStaffRecord) {
+    if (providerStaffRecord.status === 'INVITED') {
+      throw new ConflictError('This provider already has a pending staff invitation');
+    }
+    throw new ConflictError('This provider already belongs to a business');
   }
 
   const matchedServices = matchServicesToCatalog(services, business.service);
@@ -380,8 +404,9 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
   if (!staff) {
     throw new NotFoundError('Staff not found in your business');
   }
-  if (!staff.provider) {
-    throw new ConflictError('Staff is not linked to a provider account yet');
+  const provider = await Provider.findById(staff.provider).select('kycVerified isDeleted isActive');
+  if (!provider || !Provider.isVerifiedAccount(provider)) {
+    throw new ForbiddenError('Only a verified provider can be linked');
   }
 
   const serviceName = bookingServiceName(booking);
@@ -1042,7 +1067,7 @@ const generateStaffCode = async (businessId) => {
 // matches the invitation. Declining soft-marks the record (the Provider
 // account is never touched); accepting flips status to ACTIVE, links the
 // provider and only then assigns the staffCode.
-const respondToStaffInvite = async (payload = {}, provider = {}) => {
+const respondToStaffInvite = async (payload, provider) => {
   const { staffEmail, businessEmail, status } = payload;
 
   if (!STAFF_RESPONSE_STATUSES.includes(status)) {
@@ -1113,11 +1138,30 @@ const respondToStaffInvite = async (payload = {}, provider = {}) => {
     throw new ForbiddenError('Valid provider account required to accept');
   }
 
+  const providerAccount = await Provider.findById(provider.id).select(
+    'kycVerified isDeleted isActive',
+  );
+  if (!providerAccount || providerAccount.kycVerified !== true || providerAccount.isDeleted === true || providerAccount.isActive === false) {
+    throw new ForbiddenError('Only a verified provider can accept this invitation');
+  }
+
+  const existingProviderStaff = await Staff.findOne({ provider: provider.id, _id: { $ne: staff._id } });
+  if (existingProviderStaff) {
+    throw new ConflictError('This provider already belongs to a business');
+  }
+
   staff.status = 'ACTIVE';
   staff.provider = provider.id;
   staff.acceptedAt = new Date();
   staff.staffCode = await generateStaffCode(business._id);
-  await staff.save();
+  try {
+    await staff.save();
+  } catch (error) {
+    if (error && error.code === 11000) {
+      throw new ConflictError('This provider already belongs to a business');
+    }
+    throw error;
+  }
 
   return {
     status: 'ACTIVE',
@@ -1128,6 +1172,26 @@ const respondToStaffInvite = async (payload = {}, provider = {}) => {
     businessId: business._id,
     businessName: business.BusinessName || business.fullName || 'the business',
   };
+};
+
+const removeStaff = async (businessId, staffId) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+  if (!mongoose.isValidObjectId(staffId)) {
+    throw new ValidationError('Invalid staff ID');
+  }
+
+  const staff = await Staff.findOne({ _id: staffId, business: businessId });
+  if (!staff) {
+    throw new NotFoundError('Staff not found in your business');
+  }
+  if (String(staff.invitedBy) !== String(businessId)) {
+    throw new ForbiddenError('Only the business that invited this staff can remove them');
+  }
+
+  await Staff.deleteOne({ _id: staff._id });
+  return { staffId: staff._id, removed: true };
 };
 
 module.exports = {
@@ -1150,6 +1214,7 @@ module.exports = {
   getAllStaff,
   getStaffDetail,
   respondToStaffInvite,
+  removeStaff,
 };
 
 const acceptBooking = async (...args) => { const { acceptBooking: fn } = require('./business.service'); return fn(...args); };
