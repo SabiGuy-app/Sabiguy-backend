@@ -191,7 +191,11 @@ const getUserByEmail = async (email) => {
   const account = buyer || provider || business;
   if (!account) return null;
   if (provider && account === provider) {
-    account.products = await Product.find({ ownerType: 'provider', owner: provider._id }).sort({ createdAt: -1 }).lean();
+    account.products = await Product.find({
+      ownerType: 'provider',
+      owner: provider._id,
+      status: 'approved',
+    }).sort({ createdAt: -1 }).lean();
     const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' })
       .select('staffCode business _id status role services canDoHomeService workStatus onDuty clockRequest acceptedAt')
       .lean();
@@ -199,7 +203,11 @@ const getUserByEmail = async (email) => {
     account.staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
     account.staffMemberships = staffRecords;
   } else if (business && account === business) {
-    account.products = await Product.find({ ownerType: 'business', owner: business._id }).sort({ createdAt: -1 }).lean();
+    account.products = await Product.find({
+      ownerType: 'business',
+      owner: business._id,
+      status: 'approved',
+    }).sort({ createdAt: -1 }).lean();
   }
   return account;
 };
@@ -215,16 +223,32 @@ const getUserById = async (id) => {
   const provider = await Provider.findById(id).select('-password');
   const business = await Business.findById(id).select('-password');
   if (provider) {
+    const products = await Product.find({
+      ownerType: 'provider',
+      owner: provider._id,
+      status: 'approved',
+    }).sort({ createdAt: -1 }).lean();
     const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' })
       .select('staffCode business _id status role services canDoHomeService workStatus onDuty clockRequest acceptedAt')
       .lean();
     const providerObj = provider.toObject ? provider.toObject() : { ...provider };
+    providerObj.products = products;
     providerObj.staffId = staffRecords.length ? staffRecords[0]._id : null;
     providerObj.staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
     providerObj.staffMemberships = staffRecords;
-    return buyer || providerObj || business;
+    return providerObj;
   }
-  return buyer || provider || business;
+  if (business) {
+    const products = await Product.find({
+      ownerType: 'business',
+      owner: business._id,
+      status: 'approved',
+    }).sort({ createdAt: -1 }).lean();
+    const businessObj = business.toObject ? business.toObject() : { ...business };
+    businessObj.products = products;
+    return businessObj;
+  }
+  return buyer;
 };
 
 const uploadUserNin = async (buyerId, ninSlip) => {

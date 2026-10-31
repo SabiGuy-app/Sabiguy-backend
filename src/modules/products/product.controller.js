@@ -48,6 +48,8 @@ const createProduct = async (req, res) => {
       name: name.trim(),
       description:
         typeof description === 'string' ? description.trim() : undefined,
+      productImage:
+        typeof productImage === 'string' ? productImage.trim() : undefined,
       price: numericPrice,
       currency: currency || 'NGN',
       status: 'pending',
@@ -97,19 +99,36 @@ const createProduct = async (req, res) => {
 const getProducts = async (req, res) => {
   try {
     const allowedStatuses = ['pending', 'approved', 'rejected'];
-    const status = allowedStatuses.includes(req.query.status)
-      ? req.query.status
-      : 'pending';
-    const filter = { status };
+    const status = typeof req.query.status === 'string' && req.query.status.trim()
+      ? req.query.status.trim()
+      : undefined;
+    if (status && !allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'status must be pending, approved, or rejected',
+      });
+    }
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const filter = status ? { status } : {};
 
     if (req.user.role === 'admin') {
-      const products = await Product.find(filter)
-        .populate('owner', 'fullName BusinessName email')
-        .sort({ createdAt: -1 })
-        .lean();
-      return res
-        .status(200)
-        .json({ success: true, count: products.length, data: products });
+      filter.ownerType = { $in: ['provider', 'business'] };
+      const [products, total] = await Promise.all([
+        Product.find(filter)
+          .populate('owner', 'fullName BusinessName email')
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        Product.countDocuments(filter),
+      ]);
+      return res.status(200).json({
+        success: true,
+        count: products.length,
+        data: products,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+      });
     }
 
     if (!['provider', 'businessOwner', 'business'].includes(req.user.role)) {
@@ -123,15 +142,173 @@ const getProducts = async (req, res) => {
     filter.owner = req.user.id;
     filter.ownerModel = ownerModel;
 
-    const products = await Product.find(filter).sort({ createdAt: -1 }).lean();
-    return res
-      .status(200)
-      .json({ success: true, count: products.length, data: products });
+    const [products, total] = await Promise.all([
+      Product.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Product.countDocuments(filter),
+    ]);
+    return res.status(200).json({
+      success: true,
+      count: products.length,
+      data: products,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+    });
   } catch (error) {
     console.error('Get products error:', error);
     return res
       .status(500)
       .json({ success: false, message: 'Failed to fetch products' });
+  }
+};
+
+const getAllProducts = async (req, res) => {
+  try {
+    const { status, ownerType } = req.query;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const filter = {};
+
+    if (status !== undefined) {
+      if (!['pending', 'approved', 'rejected'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'status must be pending, approved, or rejected',
+        });
+      }
+      filter.status = status;
+    }
+    if (ownerType !== undefined) {
+      if (!['provider', 'business'].includes(ownerType)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ownerType must be provider or business',
+        });
+      }
+      filter.ownerType = ownerType;
+    }
+
+    const [products, total] = await Promise.all([
+      Product.find(filter)
+        .populate('owner', 'fullName BusinessName email')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Product.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      count: products.length,
+      data: products,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  } catch (error) {
+    console.error('Get all products error:', error);
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to fetch products' });
+  }
+};
+
+const updateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid product ID' });
+    }
+
+    const ownerType = req.user.role === 'provider' ? 'provider' : 'business';
+    const ownerModel = ownerType === 'provider' ? 'Provider' : 'Business';
+    const body = req.body || {};
+    const updates = {};
+
+    if (Object.hasOwn(body, 'name')) {
+      if (typeof body.name !== 'string' || !body.name.trim()) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Product name is required' });
+      }
+      updates.name = body.name.trim();
+    }
+    if (Object.hasOwn(body, 'price')) {
+      const price = Number(body.price);
+      if (body.price === '' || !Number.isFinite(price) || price < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Price must be a non-negative number',
+        });
+      }
+      updates.price = price;
+    }
+    if (Object.hasOwn(body, 'description')) {
+      if (typeof body.description !== 'string') {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Description must be a string' });
+      }
+      updates.description = body.description.trim();
+    }
+    if (Object.hasOwn(body, 'currency')) {
+      if (typeof body.currency !== 'string' || !body.currency.trim()) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Currency must be a non-empty string' });
+      }
+      updates.currency = body.currency.trim();
+    }
+    if (Object.hasOwn(body, 'productImage')) {
+      if (typeof body.productImage !== 'string') {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Product image must be a string' });
+      }
+      updates.productImage = body.productImage.trim();
+    }
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Provide at least one field to update',
+      });
+    }
+
+    // Any content change must be reviewed again before it is treated as approved.
+    updates.status = 'pending';
+    updates.reviewedAt = null;
+    updates.reviewedBy = null;
+    updates.reviewNote = null;
+
+    const product = await Product.findOneAndUpdate(
+      { _id: id, owner: req.user.id, ownerModel },
+      { $set: updates },
+      { new: true, runValidators: true },
+    ).lean();
+
+    if (!product) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Product not found' });
+    }
+    return res.status(200).json({
+      success: true,
+      message: 'Product updated and submitted for approval',
+      data: product,
+    });
+  } catch (error) {
+    console.error('Update product error:', error);
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to update product' });
   }
 };
 
@@ -198,5 +375,7 @@ const reviewProduct = async (req, res) => {
 module.exports = {
   createProduct,
   getProducts,
+  getAllProducts,
+  updateProduct,
   reviewProduct,
 };
