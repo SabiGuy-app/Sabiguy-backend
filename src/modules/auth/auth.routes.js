@@ -625,7 +625,8 @@ router.get("/profiles", authMiddleware, getProfiles);
  *             properties:
  *               targetRole:
  *                 type: string
- *                 enum: [buyer, provider, businessOwner]
+ *                 enum: [buyer, provider, business, businessOwner]
+ *                 description: Use business or businessOwner for a business profile; both resolve to businessOwner.
  *               targetProfileId:
  *                 type: string
  *               targetPassword:

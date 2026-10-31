@@ -1387,6 +1387,7 @@ exports.me = async (req, res) => {
 };
 
 const switchableRoles = ['buyer', 'provider', 'businessOwner'];
+const normalizeSwitchRole = (role) => (role === 'business' ? 'businessOwner' : role);
 
 const profileSummary = (profile, role) => ({
   profileId: profile._id,
@@ -1440,8 +1441,10 @@ exports.getProfiles = async (req, res) => {
 
 exports.switchProfile = async (req, res) => {
   try {
-    const { id: currentId, role: currentRole } = req.user || {};
-    const { targetRole, targetProfileId, targetPassword } = req.body || {};
+    const { id: currentId, role: requestRole } = req.user || {};
+    const { targetRole: requestedTargetRole, targetProfileId, targetPassword } = req.body || {};
+    const currentRole = normalizeSwitchRole(requestRole);
+    const targetRole = normalizeSwitchRole(requestedTargetRole);
     if (
       !switchableRoles.includes(currentRole) ||
       !switchableRoles.includes(targetRole)
