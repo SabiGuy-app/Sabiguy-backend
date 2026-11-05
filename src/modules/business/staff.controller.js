@@ -196,7 +196,7 @@ const respondToStaffInvite = async (req, res) => {
     return res.status(200).json({
       success: true,
       message:
-        data.status === 'ACTIVE'
+        data.membershipStatus === 'ACTIVE'
           ? 'Invitation accepted'
           : 'Invitation declined',
       data,

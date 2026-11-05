@@ -216,7 +216,18 @@ class PaymentController {
 
   async withdrawToBank(req, res) {
     try {
-      const providerId = req.user.id;
+      const ownerModel =
+        req.user.role === "businessOwner"
+          ? "Business"
+          : req.user.role === "provider"
+            ? "Provider"
+            : null;
+      if (!ownerModel) {
+        return res.status(403).json({
+          success: false,
+          message: "Only providers and business owners can withdraw wallet funds",
+        });
+      }
       const { amount } = req.body;
 
       if (!amount) {
@@ -226,7 +237,12 @@ class PaymentController {
         });
       }
 
-      const result = await paymentService.withdrawToBank(providerId, amount);
+      const result = await paymentService.withdrawToBank(
+        req.user.id,
+        amount,
+        "available",
+        ownerModel,
+      );
 
       return res.status(200).json(result);
     } catch (error) {

@@ -58,9 +58,12 @@ exports.getUserById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    let responseUser = user;
-    if (user.role === 'businessOwner') {
-      responseUser = user.toObject();
+    const responseUser =
+      typeof user.toObject === 'function'
+        ? user.toObject()
+        : { ...user };
+
+    if (responseUser.role === 'businessOwner') {
       responseUser.staffOnDuty = await staffService.getStaffOnDuty(id);
     }
 

@@ -1081,7 +1081,7 @@ router.get("/:businessId", authMiddleware, getBusinessById);
  *         description: Filter by business-facing status
  *         schema:
  *           type: string
- *           enum: [needs_staff, assigned, in_progress, completed, cancelled]
+ *           enum: [needs_staff, assigned, staff_assigned, in_progress, completed, cancelled]
  *       - in: query
  *         name: page
  *         schema:

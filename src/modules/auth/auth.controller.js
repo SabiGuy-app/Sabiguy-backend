@@ -7,6 +7,7 @@ const Provider = require('../../../models/ServiceProvider');
 const Buyer = require('../../../models/ServiceUser');
 const Admin = require('../admin/Admin.model');
 const Staff = require('../business/staff.model');
+const { getPublicStaffStatus } = require('../business/staff-presence');
 const authService = require('./auth.service');
 const AccountLink = require('./accountLink.model');
 const { notifyAdminTeam } = require('../../services/adminNotification.service');
@@ -22,7 +23,7 @@ const {
 } = require('../../config/emailVerification');
 const {
   findEmailProfiles,
-  findUserByPhoneAcrossDb,
+  findPhoneProfiles,
   normalizePhoneNumber,
 } = require('../../services/identity.service');
 
@@ -391,11 +392,9 @@ exports.registerBuyer = async (req, res) => {
     }
 
     if (normalizedPhoneNumber) {
-      const existingPhone = await findUserByPhoneAcrossDb(
-        normalizedPhoneNumber,
-      );
-      if (existingPhone) {
-        return res.status(400).json({ message: 'Phone number already in use' });
+      const existingPhoneProfiles = await findPhoneProfiles(normalizedPhoneNumber);
+      if (existingPhoneProfiles.some(({ role }) => !['provider', 'businessOwner'].includes(role))) {
+        return res.status(400).json({ message: 'Phone number already in use by an incompatible account type' });
       }
     }
 
@@ -490,11 +489,9 @@ exports.registerProvider = async (req, res) => {
     }
 
     if (normalizedPhoneNumber) {
-      const existingPhone = await findUserByPhoneAcrossDb(
-        normalizedPhoneNumber,
-      );
-      if (existingPhone) {
-        return res.status(400).json({ message: 'Phone number already in use' });
+      const existingPhoneProfiles = await findPhoneProfiles(normalizedPhoneNumber);
+      if (existingPhoneProfiles.some(({ role }) => role !== 'buyer')) {
+        return res.status(400).json({ message: 'Phone number already in use by an incompatible account type' });
       }
     }
 
@@ -1348,11 +1345,16 @@ exports.me = async (req, res) => {
     let staffMemberships = [];
     if (role === "provider") {
       const staffRecords = await Staff.find({ provider: user._id, status: "ACTIVE" })
-        .select("staffCode business _id status role services canDoHomeService workStatus onDuty clockRequest acceptedAt")
+        .select("staffCode business _id status role services canDoHomeService workStatus clocked_in onDuty clockRequest acceptedAt")
         .lean();
-      staffId = staffRecords.length ? staffRecords[0]._id : null;
-      staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
-      staffMemberships = staffRecords;
+      staffMemberships = staffRecords.map((record) => ({
+        ...record,
+        membershipStatus: record.status,
+        status: getPublicStaffStatus(record.status, user),
+        clocked_in: Boolean(record.onDuty?.active),
+      }));
+      staffId = staffMemberships.length ? staffMemberships[0]._id : null;
+      staffCode = staffMemberships.length ? staffMemberships[0].staffCode : null;
     }
 
     const userData = user.toObject ? user.toObject() : { ...user };
@@ -1617,10 +1619,8 @@ exports.switchToBuyer = async (req, res) => {
       }
 
       if (source.phoneNumber) {
-        const existingPhone = await Buyer.findOne({
-          phoneNumber: source.phoneNumber,
-        });
-        if (existingPhone) {
+        const existingPhoneProfiles = await findPhoneProfiles(source.phoneNumber, ['buyer']);
+        if (existingPhoneProfiles.length > 0) {
           return res.status(409).json({
             success: false,
             message:

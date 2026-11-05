@@ -3,6 +3,7 @@ const Provider = require('../../../models/ServiceProvider');
 const Buyer = require('../../../models/ServiceUser');
 const Business = require('../business/business.model');
 const Staff = require('../business/staff.model'); 
+const { getPublicStaffStatus } = require('../business/staff-presence');
 const Product = require('../products/product.model');
 const geolocationService = require('../../services/geolocation.service');
 const { sendNinSubmittedEmail } = require('../../config/emailVerification');
@@ -197,11 +198,17 @@ const getUserByEmail = async (email) => {
       status: 'approved',
     }).sort({ createdAt: -1 }).lean();
     const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' })
-      .select('staffCode business _id status role services canDoHomeService workStatus onDuty clockRequest acceptedAt')
+      .select('staffCode business _id status role services canDoHomeService workStatus clocked_in onDuty clockRequest acceptedAt')
       .lean();
-    account.staffId = staffRecords.length ? staffRecords[0]._id : null;
-    account.staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
-    account.staffMemberships = staffRecords;
+    const staffMemberships = staffRecords.map((record) => ({
+      ...record,
+      membershipStatus: record.status,
+      status: getPublicStaffStatus(record.status, provider),
+      clocked_in: Boolean(record.onDuty?.active),
+    }));
+    account.staffId = staffMemberships.length ? staffMemberships[0]._id : null;
+    account.staffCode = staffMemberships.length ? staffMemberships[0].staffCode : null;
+    account.staffMemberships = staffMemberships;
   } else if (business && account === business) {
     account.products = await Product.find({
       ownerType: 'business',
@@ -229,13 +236,19 @@ const getUserById = async (id) => {
       status: 'approved',
     }).sort({ createdAt: -1 }).lean();
     const staffRecords = await Staff.find({ provider: provider._id, status: 'ACTIVE' })
-      .select('staffCode business _id status role services canDoHomeService workStatus onDuty clockRequest acceptedAt')
+      .select('staffCode business _id status role services canDoHomeService workStatus clocked_in onDuty clockRequest acceptedAt')
       .lean();
+    const staffMemberships = staffRecords.map((record) => ({
+      ...record,
+      membershipStatus: record.status,
+      status: getPublicStaffStatus(record.status, provider),
+      clocked_in: Boolean(record.onDuty?.active),
+    }));
     const providerObj = provider.toObject ? provider.toObject() : { ...provider };
     providerObj.products = products;
-    providerObj.staffId = staffRecords.length ? staffRecords[0]._id : null;
-    providerObj.staffCode = staffRecords.length ? staffRecords[0].staffCode : null;
-    providerObj.staffMemberships = staffRecords;
+    providerObj.staffId = staffMemberships.length ? staffMemberships[0]._id : null;
+    providerObj.staffCode = staffMemberships.length ? staffMemberships[0].staffCode : null;
+    providerObj.staffMemberships = staffMemberships;
     return providerObj;
   }
   if (business) {

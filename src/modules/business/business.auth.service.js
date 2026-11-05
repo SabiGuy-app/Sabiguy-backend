@@ -11,7 +11,9 @@ const {
 } = require('../../config/emailVerification');
 const {
   normalizeEmail,
+  normalizePhoneNumber,
   findEmailProfiles,
+  findPhoneProfiles,
 } = require('../../services/identity.service');
 const {
   AppError,
@@ -67,6 +69,7 @@ const guardAccountStatus = (business) => {
 
 const registerBusiness = async ({ email, password, fullName, phoneNumber, signupPlatform = "unknown" }) => {
   const normalizedEmail = normalizeEmail(email);
+  const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
   if (!normalizedEmail || !password) {
     throw new AppError('Email and password are required', 400);
@@ -105,16 +108,10 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber, signup
     throw new AppError('Email already in use by an incompatible account type', 400);
   }
 
-  if (phoneNumber) {
-    const { normalizePhoneNumber } = require('../../services/identity.service');
-    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
-    if (normalizedPhoneNumber) {
-      const existingPhone = await Business.findOne({
-        phoneNumber: normalizedPhoneNumber,
-      });
-      if (existingPhone) {
-        throw new AppError('Phone number already in use', 400);
-      }
+  if (normalizedPhoneNumber) {
+    const existingPhoneProfiles = await findPhoneProfiles(normalizedPhoneNumber);
+    if (existingPhoneProfiles.some(({ role }) => role !== 'buyer')) {
+      throw new AppError('Phone number already in use by an incompatible account type', 400);
     }
   }
 
@@ -127,7 +124,7 @@ const registerBusiness = async ({ email, password, fullName, phoneNumber, signup
     signupPlatform,
     password: hashedPassword,
     fullName,
-    phoneNumber: phoneNumber || undefined,
+    phoneNumber: normalizedPhoneNumber || undefined,
     accountType: 'business',
     otp,
     emailVerificationExpires,

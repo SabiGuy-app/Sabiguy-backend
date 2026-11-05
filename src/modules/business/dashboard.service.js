@@ -37,7 +37,7 @@ const getDashboardStats = async (businessId) => {
     }),
     Booking.countDocuments({
       businessId,
-      businessStatus: { $in: ['assigned', 'in_progress'] },
+      businessStatus: { $in: ['assigned', 'staff_assigned', 'in_progress'] },
     }),
     Booking.aggregate([
       {
