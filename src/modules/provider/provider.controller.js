@@ -1,8 +1,10 @@
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 const Provider = require("../../../models/ServiceProvider");
 const Product = require("../products/product.model");
 const Buyer = require("../../../models/ServiceUser");
 const Booking = require("../bookings/Bookings.model.js");
+const Staff = require("../business/staff.model.js");
 const notificationService = require("../../services/notification.service");
 const { notifyKycCompleted } = require("../../services/adminNotification.service");
 const paymentService = require("../payment/payment.service");
@@ -1488,6 +1490,172 @@ class ProviderController {
     }
   }
 
+  async getAssignedBusinessBookings(req, res) {
+    try {
+      const providerId = req.user.id;
+      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(
+        100,
+        Math.max(1, Number.parseInt(req.query.limit, 10) || 10),
+      );
+      const { businessStatus } = req.query;
+      const allowedBusinessStatuses = [
+        "needs_staff",
+        "assigned",
+        "staff_assigned",
+        "in_progress",
+        "completed",
+        "cancelled",
+      ];
+
+      if (
+        businessStatus &&
+        !allowedBusinessStatuses.includes(businessStatus)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid businessStatus. Allowed values: ${allowedBusinessStatuses.join(", ")}`,
+        });
+      }
+
+      const query = {
+        "assignedStaff.provider": providerId,
+        businessId: { $ne: null },
+        businessStatus: businessStatus || { $ne: null },
+      };
+
+      const [bookings, total] = await Promise.all([
+        Booking.find(query)
+          .populate("userId", "fullName profilePicture phoneNumber email")
+          .populate("businessId", "BusinessName fullName profilePicture phoneNumber")
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .skip((page - 1) * limit)
+          .lean(),
+        Booking.countDocuments(query),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        data: bookings,
+        totalPages: Math.ceil(total / limit),
+        currentPage: page,
+        total,
+      });
+    } catch (error) {
+      console.error("Get assigned business bookings error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching assigned business bookings",
+        error: error.message,
+      });
+    }
+  }
+
+  async getBusinessStaffDashboardStats(req, res) {
+    try {
+      const providerId = req.user.id;
+      if (!mongoose.isValidObjectId(providerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid provider ID",
+        });
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const assignedBookingQuery = {
+        "assignedStaff.provider": new mongoose.Types.ObjectId(providerId),
+        businessId: { $ne: null },
+        businessStatus: { $ne: null },
+      };
+      const activeStatuses = ["assigned", "staff_assigned", "in_progress"];
+
+      const [
+        totalAssignedBookings,
+        activeBookings,
+        completedBookings,
+        cancelledBookings,
+        bookingsToday,
+        completedToday,
+        activeToday,
+        [ratingAgg],
+      ] = await Promise.all([
+        Booking.countDocuments(assignedBookingQuery),
+        Booking.countDocuments({
+          ...assignedBookingQuery,
+          businessStatus: { $in: activeStatuses },
+        }),
+        Booking.countDocuments({
+          ...assignedBookingQuery,
+          businessStatus: "completed",
+        }),
+        Booking.countDocuments({
+          ...assignedBookingQuery,
+          businessStatus: "cancelled",
+        }),
+        Booking.countDocuments({
+          ...assignedBookingQuery,
+          createdAt: { $gte: today },
+        }),
+        Booking.countDocuments({
+          ...assignedBookingQuery,
+          createdAt: { $gte: today },
+          businessStatus: "completed",
+        }),
+        Booking.countDocuments({
+          ...assignedBookingQuery,
+          createdAt: { $gte: today },
+          businessStatus: { $in: activeStatuses },
+        }),
+        Booking.aggregate([
+          {
+            $match: {
+              ...assignedBookingQuery,
+              "rating.score": { $gt: 0 },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              average: { $avg: "$rating.score" },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          bookingsToday: {
+            total: bookingsToday,
+            completed: completedToday,
+            active: activeToday,
+          },
+          totalAssignedBookings,
+          activeBookings,
+          completedBookings,
+          cancelledBookings,
+          rating: {
+            average: ratingAgg?.average
+              ? Math.round(ratingAgg.average * 10) / 10
+              : 0,
+            count: ratingAgg?.count || 0,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Get business staff dashboard stats error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching business staff dashboard stats",
+        error: error.message,
+      });
+    }
+  }
+
   async acceptBooking(req, res) {
     try {
       const bookingId = req.params.id;
@@ -1914,8 +2082,11 @@ class ProviderController {
 
       const booking = await Booking.findOne({
         _id: bookingId,
-        providerId,
-      });
+        $or: [
+          { providerId },
+          { "assignedStaff.provider": providerId },
+        ],
+      }).populate("userId", "fullName");
 
       if (!booking) {
         return res.status(404).json({
@@ -1932,20 +2103,38 @@ class ProviderController {
       }
 
       booking.status = "in_progress";
+      if (booking.businessId) {
+        booking.businessStatus = "in_progress";
+      }
       await booking.save();
 
+      const assignedProvider = await Provider.findById(providerId).select(
+        "fullName",
+      );
       const isTransport =
         String(booking.serviceType || "").trim().toLowerCase() === "transport";
+      const customerId = booking.userId?._id || booking.userId;
+      const customerName = booking.userId?.fullName || "the customer";
 
-      await notificationService.notifyUser(booking.userId._id, {
+      await notificationService.notifyUser(customerId, {
         type: "job_started",
         title: isTransport ? "Enroute to Pickup Location" : "Your Service Has Started",
         message: isTransport
-          ? `${booking?.providerId?.fullName || "The rider"} is on their way to you!`
-          : `${booking?.providerId?.fullName || "Your provider"} has started your ${booking.subCategory?.replace(/_/g, " ") || "service"} service.`,
+          ? `${assignedProvider?.fullName || "The rider"} is on their way to you!`
+          : `${assignedProvider?.fullName || "Your provider"} has started your ${booking.subCategory?.replace(/_/g, " ") || "service"} service.`,
         bookingId: booking._id,
         providerId,
       });
+
+      if (booking.businessId) {
+        await notificationService.notifyBusiness(booking.businessId, {
+          type: "booking_status_updated",
+          title: "Staff Started a Booking",
+          message: `Staff ${assignedProvider?.fullName || "member"} started the ${booking.subCategory?.replace(/_/g, " ") || "service"} service for customer ${customerName}. Booking ID: ${booking._id}.`,
+          bookingId: booking._id,
+          providerId,
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -2058,9 +2247,12 @@ class ProviderController {
 
       const booking = await Booking.findOne({
         _id: bookingId,
-        providerId,
+        $or: [
+          { providerId },
+          { "assignedStaff.provider": providerId },
+        ],
         status: { $in: ["arrived_at_dropoff", "in_progress"] },
-      });
+      }).populate("userId", "fullName");
 
       if (!booking) {
         return res.status(404).json({
@@ -2070,6 +2262,9 @@ class ProviderController {
       }
 
       booking.status = "completed";
+      if (booking.businessId) {
+        booking.businessStatus = "completed";
+      }
       booking.completedAt = new Date();
       if (pictures !== undefined || videos !== undefined) {
         booking.jobCompletedImages.push({
@@ -2082,14 +2277,28 @@ class ProviderController {
       }
       await booking.save();
 
+      if (booking.businessId) {
+        await Staff.updateMany(
+          {
+            business: booking.businessId,
+            provider: providerId,
+            status: "ACTIVE",
+            "onDuty.active": true,
+          },
+          { $set: { workStatus: "available" } },
+        );
+      }
+
       // Update provider's completed jobs count
       await Provider.findByIdAndUpdate(providerId, {
         $inc: { completedJobs: 1 },
       });
 
       const provider = await Provider.findById(providerId).select("fullName");
+      const customerId = booking.userId?._id || booking.userId;
+      const customerName = booking.userId?.fullName || "the customer";
 
-      await notificationService.notifyUser(booking.userId, {
+      await notificationService.notifyUser(customerId, {
         type: "booking_completed",
         title: "✅ Service Completed",
         message:
@@ -2097,6 +2306,16 @@ class ProviderController {
         bookingId: booking._id,
         providerName: provider?.fullName,
       });
+
+      if (booking.businessId) {
+        await notificationService.notifyBusiness(booking.businessId, {
+          type: "booking_status_updated",
+          title: "Staff Completed a Booking",
+          message: `Staff ${provider?.fullName || "A staff member"} completed the ${booking.subCategory?.replace(/_/g, " ") || "service"} service for customer ${customerName}. Booking ID: ${booking._id}.`,
+          bookingId: booking._id,
+          providerId,
+        });
+      }
       return res.status(200).json({
         success: true,
         message: "Job marked as complete. Awaiting user confirmation.",

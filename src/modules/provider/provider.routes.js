@@ -948,6 +948,95 @@ router.put(
  */
 router.get("/bookings", authMiddleware, ProviderController.getBookings);
 
+/**
+ * @swagger
+ * /api/v1/provider/business-bookings:
+ *   get:
+ *     summary: Get business bookings assigned to the authenticated provider
+ *     description: Returns business bookings whose assigned staff entry matches the authenticated provider.
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: businessStatus
+ *         schema:
+ *           type: string
+ *           enum: [needs_staff, assigned, staff_assigned, in_progress, completed, cancelled]
+ *         description: Filter by the business booking lifecycle status
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 100
+ *     responses:
+ *       200:
+ *         description: Assigned business bookings retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/business-bookings",
+  authMiddleware,
+  ProviderController.getAssignedBusinessBookings,
+);
+
+/**
+ * @swagger
+ * /api/v1/provider/business-dashboard/stats:
+ *   get:
+ *     summary: Get dashboard statistics for the authenticated business staff member
+ *     description: Returns statistics from business bookings assigned to the authenticated provider.
+ *     tags: [Provider]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Business staff dashboard stats retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bookingsToday:
+ *                       type: object
+ *                       properties:
+ *                         total: { type: integer }
+ *                         completed: { type: integer }
+ *                         active: { type: integer }
+ *                     totalAssignedBookings: { type: integer }
+ *                     activeBookings: { type: integer }
+ *                     completedBookings: { type: integer }
+ *                     cancelledBookings: { type: integer }
+ *                     rating:
+ *                       type: object
+ *                       properties:
+ *                         average: { type: number }
+ *                         count: { type: integer }
+ *       400:
+ *         description: Invalid provider ID
+ *       401:
+ *         description: Invalid or missing token
+ *       500:
+ *         description: Server error
+ */
+router.get(
+  "/business-dashboard/stats",
+  authMiddleware,
+  ProviderController.getBusinessStaffDashboardStats,
+);
+
 // /**
 //  * @swagger
 //  * /api/v1/provider/bookings/{bookingId}:

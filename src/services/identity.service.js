@@ -108,10 +108,24 @@ const findUserByPhoneAcrossDb = async (phoneNumber) => {
   return null;
 };
 
+const findPhoneProfiles = async (phoneNumber, roles = PHONE_MODELS.map(({ role }) => role)) => {
+  const normalizedPhone = normalizePhoneNumber(phoneNumber);
+  if (!normalizedPhone) return [];
+
+  const profiles = await Promise.all(roles.map(async (role) => {
+    const model = ROLE_MODELS[role];
+    if (!model) return null;
+    const user = await findByPhoneInModel(model, normalizedPhone);
+    return user ? { user, role, model } : null;
+  }));
+  return profiles.filter(Boolean);
+};
+
 module.exports = {
   normalizeEmail,
   normalizePhoneNumber,
   findUserByEmailAcrossDb,
   findEmailProfiles,
   findUserByPhoneAcrossDb,
+  findPhoneProfiles,
 };

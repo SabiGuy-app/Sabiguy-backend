@@ -395,6 +395,19 @@ class BookingController {
       delete bookingObject.dropoffLocation.formattedAddress;
     }
 
+    const business = bookingObject.businessId;
+    if (business && typeof business === "object") {
+      bookingObject.businessId = {
+        ...business,
+        businessName: business.BusinessName ?? business.businessName ?? null,
+        businessAddress:
+          business.BusinessAddress ?? business.businessAddress ?? null,
+        workVisuals: business.studioImages ?? business.workVisuals ?? [],
+      };
+      delete bookingObject.businessId.BusinessName;
+      delete bookingObject.businessId.BusinessAddress;
+    }
+
     bookingObject.pricing = this.formatBookingPricingSummary(bookingObject);
     delete bookingObject.pricingBreakdown;
     delete bookingObject.pricingMeta;
@@ -2407,15 +2420,46 @@ class BookingController {
 
       await booking.save();
 
-      await notificationService.notifyProvider(providerId, {
-        type: "job_completed_confirmed",
-        // title: "Job Completion Confirmed And You got a bonus.🥳",
-        title: "Job Completion Confirmed.🥳",
-
-        message: `Your customer confirmed completion of the ${booking.subCategory} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
-        bookingId: booking._id,
-        userId,
-      });
+      if (booking.businessId) {
+        await notificationService.notifyBusiness(booking.businessId, {
+          type: "job_completed_confirmed",
+          title: "Business Booking Completed",
+          message: escrowReleased
+            ? `The customer confirmed completion of the ${booking.subCategory} service. The payout has been released to your business wallet.`
+            : `The customer confirmed completion of the ${booking.subCategory} service, but the payout could not be released. Please contact support.`,
+          bookingId: booking._id,
+          userId,
+        });
+        const assignedProviderIds = [
+          ...new Set(
+            (booking.assignedStaff || [])
+              .map((assignment) => assignment.provider?._id || assignment.provider)
+              .filter(Boolean)
+              .map(String),
+          ),
+        ];
+        await Promise.all(
+          assignedProviderIds.map((assignedProviderId) =>
+            notificationService.notifyProvider(assignedProviderId, {
+              type: "job_completed_confirmed",
+              title: "Job Completion Confirmed",
+              message: escrowReleased
+                ? `The customer confirmed completion of the ${booking.subCategory || "service"} service. The payout has been released to the business.`
+                : `The customer confirmed completion of the ${booking.subCategory || "service"} service, but the payout could not be released. Please contact the business or support.`,
+              bookingId: booking._id,
+              userId,
+            }),
+          ),
+        );
+      } else if (providerId) {
+        await notificationService.notifyProvider(providerId, {
+          type: "job_completed_confirmed",
+          title: "Job Completion Confirmed.🥳",
+          message: `Your customer confirmed completion of the ${booking.subCategory} service. Your payment has been released. Note that you will be able to withdraw the payment after 24 hours. Check your transaction history for details.`,
+          bookingId: booking._id,
+          userId,
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -3206,6 +3250,10 @@ class BookingController {
           "providerId",
           "fullName profilePicture phoneNumber email workVisuals.pictures",
         )
+        .populate(
+          "businessId",
+          "BusinessName email studioImages BusinessAddress currentLocation profilePicture",
+        )
         .sort(sortConfig)
         .limit(limit * 1)
         .skip((page - 1) * limit)
@@ -3262,6 +3310,10 @@ class BookingController {
         .populate(
           "providerId",
           "userId fullName job rating completedJobs workVisuals.pictures profilePicture currentLocation lastLocationUpdate",
+        )
+        .populate(
+          "businessId",
+          "BusinessName email studioImages BusinessAddress currentLocation profilePicture",
         );
 
       if (!booking) {
@@ -3305,6 +3357,10 @@ class BookingController {
         .populate(
           "providerId",
           "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
+        )
+        .populate(
+          "businessId",
+          "BusinessName email studioImages BusinessAddress currentLocation profilePicture",
         )
         .sort({ createdAt: -1 })
         .limit(limit * 1)
@@ -3357,6 +3413,10 @@ class BookingController {
           "providerId",
           "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
         )
+        .populate(
+          "businessId",
+          "BusinessName email studioImages BusinessAddress currentLocation profilePicture",
+        )
         .sort({ createdAt: -1 })
         .limit(limit * 1)
         .skip((page - 1) * limit)
@@ -3407,6 +3467,10 @@ class BookingController {
         .populate(
           "providerId",
           "fullName profilePicture phoneNumber email workVisuals.pictures currentLocation lastLocationUpdate",
+        )
+        .populate(
+          "businessId",
+          "BusinessName email studioImages BusinessAddress currentLocation profilePicture",
         )
         .sort({ createdAt: -1 })
         .limit(limit * 1)

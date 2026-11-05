@@ -2,6 +2,7 @@ const axios = require("axios");
 const crypto = require("crypto");
 const Booking = require("../bookings/Bookings.model.js");
 const Provider = require("../../../models/ServiceProvider.js");
+const Business = require("../business/business.model.js");
 const Buyer = require("../../../models/ServiceUser.js");
 const notificationService = require("../../services/notification.service.js");
 const Transaction = require("../transactions/transaction.model.js");
@@ -22,7 +23,7 @@ class paymentService {
     this.MAX_DAILY_WITHDRAWAL_AMOUNT = 500000;
   }
 
-  async validateDailyWithdrawalLimit(providerId, withdrawalAmount) {
+  async validateDailyWithdrawalLimit(ownerId, withdrawalAmount, ownerModel = "Provider") {
     const dayStart = new Date();
     dayStart.setHours(0, 0, 0, 0);
 
@@ -31,7 +32,8 @@ class paymentService {
 
     const withdrawalsToday = await Transaction.find({
       type: "withdrawal",
-      "from.userId": providerId,
+      "from.userId": ownerId,
+      "from.userModel": ownerModel,
       createdAt: {
         $gte: dayStart,
         $lt: dayEnd,
@@ -623,10 +625,13 @@ class paymentService {
         };
       }
 
-      const provider = await Provider.findById(booking.providerId._id);
-      if (!provider) {
-        throw new Error("Provider record missing");
-      }
+      const ownerModel = booking.businessId ? "Business" : "Provider";
+      const ownerId = booking.businessId || booking.providerId?._id;
+      if (!ownerId) throw new Error("Booking payout recipient is missing");
+      const recipient = ownerModel === "Business"
+        ? await Business.findById(ownerId)
+        : await Provider.findById(ownerId);
+      if (!recipient) throw new Error(`${ownerModel} payout recipient missing`);
 
       const providerPayout =
         booking.driverReceives ??
@@ -655,16 +660,17 @@ class paymentService {
 
       let escrowTransaction = existingTx;
       if (!existingTx) {
-        // Move funds from pending to available in provider's wallet
+        // Move funds from pending to available in the booking recipient's wallet.
         escrowTransaction = await WalletService.releaseEscrow(
-          booking.providerId._id,
+          ownerId,
           providerPayout,
           booking._id,
           notificationService,
+          ownerModel,
         );
         console.log("✅ Escrow release transaction created and wallet updated");
       }
-      console.log("✅ Escrow released to provider wallet");
+      console.log(`✅ Escrow released to ${ownerModel} wallet`);
 
       // Update booking
       booking.payment.escrowStatus = "released";
@@ -673,19 +679,33 @@ class paymentService {
       await booking.save();
       console.log("✅ Booking updated to funds_released");
 
-      // Notify provider
-      if (booking.providerId) {
-        await notificationService.notifyProvider(booking.providerId._id, {
-          type: "funds_released",
-          title: "💰 Payment Released",
-          message: `₦${providerPayout.toLocaleString()} has been added to your wallet for booking #${booking._id}`,
-          bookingId: booking._id,
-        });
+      // Notify the payout recipient.
+      try {
+        if (ownerModel === "Business") {
+          await notificationService.notifyBusiness(ownerId, {
+            type: "funds_released",
+            title: "Booking Payment Released",
+            message: `₦${providerPayout.toLocaleString()} has been added to your business wallet for booking #${booking._id}`,
+            bookingId: booking._id,
+          });
+        } else if (booking.providerId) {
+          await notificationService.notifyProvider(booking.providerId._id, {
+            type: "funds_released",
+            title: "💰 Payment Released",
+            message: `₦${providerPayout.toLocaleString()} has been added to your wallet for booking #${booking._id}`,
+            bookingId: booking._id,
+          });
+        }
+      } catch (notificationError) {
+        console.error("Failed to notify payout recipient:", notificationError);
       }
 
       return {
         success: true,
-        message: "Payment released to provider wallet",
+        message:
+          ownerModel === "Business"
+            ? "Payment released to business wallet"
+            : "Payment released to provider wallet",
         amount: providerPayout,
         transaction: escrowTransaction,
       };
@@ -792,17 +812,28 @@ class paymentService {
     }
   }
 
-  async withdrawToBank(providerId, amount, withdrawalType = "available") {
+  async withdrawToBank(
+    ownerId,
+    amount,
+    withdrawalType = "available",
+    ownerModel = "Provider",
+  ) {
     try {
-      const provider = await Provider.findById(providerId);
-      if (!provider) {
-        throw new Error("Provider not found");
+      if (!["Provider", "Business"].includes(ownerModel)) {
+        throw new Error("Unsupported wallet owner");
       }
+      const owner = ownerModel === "Business"
+        ? await Business.findById(ownerId)
+        : await Provider.findById(ownerId);
+      if (!owner) throw new Error(`${ownerModel} not found`);
 
-      if (Number(provider.completedJobs || 0) < 1) {
+      if (ownerModel === "Provider" && Number(owner.completedJobs || 0) < 1) {
         throw new Error(
           "You must complete at least one booking before you can withdraw funds.",
         );
+      }
+      if (ownerModel === "Business" && withdrawalType === "bonus") {
+        throw new Error("Business wallets do not have a bonus balance");
       }
 
       const withdrawalAmount = Number(amount);
@@ -816,18 +847,15 @@ class paymentService {
         );
       }
 
-      await this.validateDailyWithdrawalLimit(providerId, withdrawalAmount);
+      await this.validateDailyWithdrawalLimit(ownerId, withdrawalAmount, ownerModel);
 
-      const wallet = await WalletService.getOrCreateWallet(
-        providerId,
-        "Provider",
-      );
+      const wallet = await WalletService.getOrCreateWallet(ownerId, ownerModel);
 
       // Handle bonus balance withdrawal restriction
       if (withdrawalType === "bonus") {
-        if (Number(provider.completedJobs || 0) < 5) {
+        if (Number(owner.completedJobs || 0) < 5) {
           throw new Error(
-            `You must complete at least 5 bookings before you can withdraw from your bonus balance. Currently completed: ${provider.completedJobs || 0}`,
+            `You must complete at least 5 bookings before you can withdraw from your bonus balance. Currently completed: ${owner.completedJobs || 0}`,
           );
         }
 
@@ -845,10 +873,14 @@ class paymentService {
         }
       }
 
-      // Check if provider has recipient code
-      let recipientCode = provider.paystackRecipientCode;
+      // Reuse the saved Paystack recipient for this wallet owner.
+      let recipientCode = ownerModel === "Business"
+        ? owner.payoutAccount?.paystackRecipientCode
+        : owner.paystackRecipientCode;
       if (!recipientCode) {
-        recipientCode = await this.createTransferRecipient(provider);
+        recipientCode = ownerModel === "Business"
+          ? await this.createBusinessTransferRecipient(owner)
+          : await this.createTransferRecipient(owner);
       }
 
       // Initiate Paystack transfer
@@ -899,8 +931,8 @@ class paymentService {
         reference: transferResponse.data.data.reference,
         type: "withdrawal",
         from: {
-          userId: provider._id,
-          userModel: "Provider",
+          userId: owner._id,
+          userModel: ownerModel,
           walletId: wallet._id,
         },
         amount: withdrawalAmount,
@@ -910,10 +942,18 @@ class paymentService {
           after: balanceAfter,
         },
         bankDetails: {
-          accountNumber: provider.accountNumber,
-          accountName: provider.accountName,
-          bankCode: provider.bankCode,
-          bankName: provider.bankName,
+          accountNumber: ownerModel === "Business"
+            ? owner.payoutAccount?.accountNumber
+            : owner.accountNumber,
+          accountName: ownerModel === "Business"
+            ? owner.payoutAccount?.accountName
+            : owner.accountName,
+          bankCode: ownerModel === "Business"
+            ? owner.payoutAccount?.bankCode
+            : owner.bankCode,
+          bankName: ownerModel === "Business"
+            ? owner.payoutAccount?.bankName
+            : owner.bankName,
         },
         gateway: {
           name: "paystack",
@@ -989,6 +1029,43 @@ class paymentService {
       console.error("Create transfer recipient error:", error);
       throw error;
     }
+  }
+
+  async createBusinessTransferRecipient(business) {
+    const account = business.payoutAccount || {};
+    if (!account.accountName || !account.accountNumber || !account.bankCode) {
+      throw new Error(
+        "Business payout bank details are incomplete. Update the business payout account first.",
+      );
+    }
+
+    const response = await axios.post(
+      `${this.paystackBaseURL}/transferrecipient`,
+      {
+        type: "nuban",
+        name: account.accountName || business.BusinessName || business.fullName,
+        account_number: account.accountNumber,
+        bank_code: account.bankCode,
+        currency: "NGN",
+        metadata: { businessId: business._id.toString() },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${this.paystackSecretKey}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    if (!response.data.status) {
+      throw new Error("Failed to create business transfer recipient");
+    }
+
+    const recipientCode = response.data.data.recipient_code;
+    await Business.findByIdAndUpdate(business._id, {
+      $set: { "payoutAccount.paystackRecipientCode": recipientCode },
+    });
+    return recipientCode;
   }
 
   /**

@@ -159,6 +159,7 @@ const businessSchema = new mongoose.Schema(
       bankCode: { type: String },
       accountNumber: { type: String },
       accountName: { type: String },
+      paystackRecipientCode: { type: String, default: null },
       taxId: { type: String },
       verified: { type: Boolean, default: false },
     },
