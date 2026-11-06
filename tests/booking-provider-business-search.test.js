@@ -15,6 +15,7 @@ test("searchProviders matches BusinessName on provider and business accounts", a
   const originalBusinessAggregate = Business.aggregate;
   const originalBookingDistinct = Booking.distinct;
   const originalStaffFind = Staff.find;
+  const originalStaffDistinct = Staff.distinct;
   const originalProviderDistinct = Provider.distinct;
   const now = new Date();
 
@@ -50,6 +51,7 @@ test("searchProviders matches BusinessName on provider and business accounts", a
   };
   Booking.distinct = async () => [];
   Staff.find = async () => [{ business: BUSINESS_ID, provider: STAFF_PROVIDER_ID }];
+  Staff.distinct = async () => [];
   Provider.distinct = async () => [STAFF_PROVIDER_ID];
 
   try {
@@ -95,6 +97,7 @@ test("searchProviders matches BusinessName on provider and business accounts", a
     Business.aggregate = originalBusinessAggregate;
     Booking.distinct = originalBookingDistinct;
     Staff.find = originalStaffFind;
+    Staff.distinct = originalStaffDistinct;
     Provider.distinct = originalProviderDistinct;
   }
 });
@@ -142,6 +145,7 @@ const withCapturedQueries = async (run) => {
     providerAggregate: Provider.aggregate,
     businessAggregate: Business.aggregate,
     bookingDistinct: Booking.distinct,
+    staffDistinct: Staff.distinct,
   };
   const captured = {};
   Provider.aggregate = async ([geoNear]) => {
@@ -153,12 +157,14 @@ const withCapturedQueries = async (run) => {
     return [];
   };
   Booking.distinct = async () => [];
+  Staff.distinct = async () => [];
   try {
     await run(captured);
   } finally {
     Provider.aggregate = originals.providerAggregate;
     Business.aggregate = originals.businessAggregate;
     Booking.distinct = originals.bookingDistinct;
+    Staff.distinct = originals.staffDistinct;
   }
 };
 
@@ -238,4 +244,78 @@ test("searchProviders rejects a one-character search", async () => {
   );
   assert.equal(response.statusCode, 400);
   assert.match(response.body.message, /search must be between 2 and 100/);
+});
+
+test("searchGeneralProviders searches without location or geo queries", async () => {
+  const originals = {
+    providerFind: Provider.find,
+    businessFind: Business.find,
+    staffDistinct: Staff.distinct,
+    bookingDistinct: Booking.distinct,
+  };
+  let providerQuery;
+  let businessQuery;
+
+  Provider.find = (query) => {
+    providerQuery = query;
+    return {
+      select() { return this; },
+      lean() { return this; },
+      limit: async () => [{
+        _id: "general-provider",
+        fullName: "General Provider",
+        accountType: "individual",
+        service: [{ serviceName: "Braids" }],
+        rating: { average: 4.8 },
+        availability: { isAvailable: true },
+        isOnline: true,
+        lastLocationUpdate: new Date(),
+        kycVerified: true,
+      }],
+    };
+  };
+  Business.find = (query) => {
+    businessQuery = query;
+    return {
+      select() { return this; },
+      lean() { return this; },
+      limit: async () => [{
+        _id: BUSINESS_ID,
+        BusinessName: "General Studio",
+        service: [{ serviceName: "Braids" }],
+        rating: { average: 4.5 },
+        availability: { isAvailable: true },
+        isOnline: true,
+        lastSeenAt: new Date(),
+        kycVerified: true,
+      }],
+    };
+  };
+  Staff.distinct = async () => [];
+  Booking.distinct = async () => [];
+
+  try {
+    const response = mockResponse();
+    await bookingController.searchGeneralProviders(
+      { body: { serviceName: "Braids", search: "general" } },
+      response,
+    );
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.count, 2);
+    assert.equal(response.body.location, undefined);
+    assert.equal(response.body.providers[0].online, true);
+    assert.equal(response.body.providers[1].online, true);
+    assert.equal(response.body.providers[0].kycVerified, true);
+    assert.equal(response.body.providers[1].kycVerified, true);
+    assert.ok(providerQuery.$and);
+    assert.ok(businessQuery.$and);
+    assert.equal(providerQuery.$and[0].kycVerified, true);
+    assert.equal(businessQuery.$and[0].kycVerified, true);
+  } finally {
+    Provider.find = originals.providerFind;
+    Business.find = originals.businessFind;
+    Staff.distinct = originals.staffDistinct;
+    Booking.distinct = originals.bookingDistinct;
+  }
 });

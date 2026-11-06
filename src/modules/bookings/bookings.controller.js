@@ -53,6 +53,7 @@ class BookingController {
     this.createBooking = this.createBooking.bind(this);
     this.createServiceBooking = this.createServiceBooking.bind(this);
     this.searchProviders = this.searchProviders.bind(this);
+    this.searchGeneralProviders = this.searchGeneralProviders.bind(this);
     this.findNearbyProviders = this.findNearbyProviders.bind(this);
     this.isTransportLogistics = this.isTransportLogistics.bind(this);
     this.getAllBookings = this.getAllBookings.bind(this);
@@ -1744,6 +1745,322 @@ class BookingController {
       return res.status(500).json({
         success: false,
         message: "Error searching nearby providers",
+        error: error.message,
+      });
+    }
+  }
+
+  async searchGeneralProviders(req, res) {
+    try {
+      const normalizedServiceName = String(
+        req.body?.serviceName ?? req.body?.service?.serviceName ?? "",
+      ).trim();
+      const normalizedJobService = String(
+        req.body?.jobService ??
+          req.body?.["job.service"] ??
+          req.body?.job?.service ??
+          "",
+      ).trim();
+      const normalizedBusinessName = String(
+        req.body?.businessName ?? req.body?.BusinessName ?? "",
+      ).trim();
+      const normalizedSearch = String(req.body?.search ?? "").trim();
+      const fixedPrice =
+        req.body?.fixedPrice ?? req.body?.serviceName?.fixedPrice;
+      const minimumRating = req.body?.rating;
+
+      if (
+        normalizedSearch &&
+        (normalizedSearch.length < SEARCH_MIN_LENGTH ||
+          normalizedSearch.length > SEARCH_MAX_LENGTH)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `search must be between ${SEARCH_MIN_LENGTH} and ${SEARCH_MAX_LENGTH} characters`,
+        });
+      }
+
+      const parsedFixedPrice =
+        fixedPrice === undefined || fixedPrice === ""
+          ? undefined
+          : Number(fixedPrice);
+      const parsedMinimumRating =
+        minimumRating === undefined || minimumRating === ""
+          ? undefined
+          : Number(minimumRating);
+
+      if (
+        parsedFixedPrice !== undefined &&
+        (!Number.isFinite(parsedFixedPrice) || parsedFixedPrice < 0)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "fixedPrice must be a non-negative number",
+        });
+      }
+      if (
+        parsedMinimumRating !== undefined &&
+        (!Number.isFinite(parsedMinimumRating) ||
+          parsedMinimumRating < 0 ||
+          parsedMinimumRating > 5)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "rating must be a number between 0 and 5",
+        });
+      }
+
+      if (
+        !normalizedSearch &&
+        !normalizedServiceName &&
+        !normalizedJobService &&
+        !normalizedBusinessName
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Provide search, serviceName, jobService, businessName, or a combination",
+        });
+      }
+
+      const escapeRegex = (value) =>
+        value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const serviceNameRegex = normalizedServiceName
+        ? new RegExp(`^${escapeRegex(normalizedServiceName)}$`, "i")
+        : null;
+      const businessNameRegex = normalizedBusinessName
+        ? new RegExp(escapeRegex(normalizedBusinessName), "i")
+        : null;
+      const searchRegex = normalizedSearch
+        ? new RegExp(escapeRegex(normalizedSearch), "i")
+        : null;
+
+      const clockedInProviderIds = await Staff.distinct("provider", {
+        status: "ACTIVE",
+        "onDuty.active": true,
+        provider: { $ne: null },
+      });
+
+      const providerServiceFilters = [];
+      if (normalizedJobService) {
+        providerServiceFilters.push({
+          job: { $elemMatch: { service: normalizedJobService } },
+        });
+      }
+      if (serviceNameRegex || parsedFixedPrice !== undefined) {
+        providerServiceFilters.push({
+          service: {
+            $elemMatch: {
+              ...(serviceNameRegex ? { serviceName: serviceNameRegex } : {}),
+              ...(parsedFixedPrice !== undefined
+                ? { fixedPrice: parsedFixedPrice }
+                : {}),
+            },
+          },
+        });
+      }
+
+      const providerQuery = {
+        ...(clockedInProviderIds.length
+          ? { _id: { $nin: clockedInProviderIds } }
+          : {}),
+        isActive: true,
+        isDeleted: { $ne: true },
+        kycVerified: true,
+        ...(parsedMinimumRating !== undefined
+          ? { "rating.average": { $gte: parsedMinimumRating } }
+          : {}),
+        ...(businessNameRegex ? { BusinessName: businessNameRegex } : {}),
+        ...(providerServiceFilters.length === 1
+          ? providerServiceFilters[0]
+          : providerServiceFilters.length > 1
+            ? { $and: providerServiceFilters }
+            : {}),
+      };
+      const providerSearchQuery = searchRegex
+        ? {
+            $and: [
+              providerQuery,
+              {
+                $or: [
+                  { fullName: searchRegex },
+                  { BusinessName: searchRegex },
+                  { "service.serviceName": searchRegex },
+                ],
+              },
+            ],
+          }
+        : providerQuery;
+
+      let rawProviders = await Provider.find(providerSearchQuery)
+        .select(
+          "fullName email profilePicture BusinessName accountType service job rating completedJobs startingPrice currentLocation lastLocationUpdate vehicleProductionYear availability isOnline kycVerified",
+        )
+        .lean()
+        .limit(MAX_PROVIDERS_RETURNED);
+
+      const providerIds = rawProviders.map((provider) => provider._id);
+      const disqualified = providerIds.length
+        ? await Booking.distinct("providerId", {
+            providerId: { $in: providerIds },
+            status: { $nin: ELIGIBLE_ACTIVE_STATUSES },
+          })
+        : [];
+      const disqualifiedSet = new Set(disqualified.map(String));
+      rawProviders = rawProviders.filter(
+        (provider) => !disqualifiedSet.has(String(provider._id)),
+      );
+
+      const businessServiceFilters = [];
+      if (normalizedServiceName || parsedFixedPrice !== undefined) {
+        businessServiceFilters.push({
+          service: {
+            $elemMatch: {
+              ...(serviceNameRegex ? { serviceName: serviceNameRegex } : {}),
+              ...(parsedFixedPrice !== undefined
+                ? { fixedPrice: parsedFixedPrice }
+                : {}),
+            },
+          },
+        });
+      }
+      if (normalizedJobService) {
+        const jobServiceRegex = new RegExp(
+          `^${escapeRegex(normalizedJobService)}$`,
+          "i",
+        );
+        businessServiceFilters.push({
+          $or: [
+            { businessCategory: jobServiceRegex },
+            { service: { $elemMatch: { serviceName: jobServiceRegex } } },
+          ],
+        });
+      }
+
+      const businessQuery = {
+        isActive: true,
+        isDeleted: { $ne: true },
+        kycVerified: true,
+        ...(parsedMinimumRating !== undefined
+          ? { "rating.average": { $gte: parsedMinimumRating } }
+          : {}),
+        ...(businessNameRegex ? { BusinessName: businessNameRegex } : {}),
+        ...(businessServiceFilters.length === 1
+          ? businessServiceFilters[0]
+          : businessServiceFilters.length > 1
+            ? { $and: businessServiceFilters }
+            : {}),
+      };
+      const businessSearchQuery = searchRegex
+        ? {
+            $and: [
+              businessQuery,
+              {
+                $or: [
+                  { BusinessName: searchRegex },
+                  { fullName: searchRegex },
+                  { "service.serviceName": searchRegex },
+                  { businessCategory: searchRegex },
+                ],
+              },
+            ],
+          }
+        : businessQuery;
+
+      const rawBusinesses = await Business.find(businessSearchQuery)
+        .select(
+          "fullName BusinessName email profilePicture service businessCategory rating currentLocation lastLocationUpdate lastSeenAt availability isOnline kycVerified availableDays businessHours timezone",
+        )
+        .lean()
+        .limit(MAX_PROVIDERS_RETURNED);
+
+      const onlineThreshold = new Date(
+        Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
+      );
+
+      const providers = rawProviders.map((provider) => ({
+        id: provider._id,
+        accountType: "provider",
+        providerAccountType: provider.accountType,
+        fullName: provider.fullName,
+        BusinessName: provider.BusinessName,
+        email: provider.email,
+        profilePicture: provider.profilePicture,
+        rating: provider.rating,
+        completedJobs: provider.completedJobs,
+        startingPrice: provider.startingPrice,
+        currentLocation: provider.currentLocation,
+        kycVerified: provider.kycVerified === true,
+        online:
+          provider.availability?.isAvailable === true &&
+          provider.isOnline !== false &&
+          Boolean(
+            provider.lastLocationUpdate &&
+              new Date(provider.lastLocationUpdate) >= onlineThreshold,
+          ),
+        services: serviceNameRegex
+          ? (provider.service || []).filter((item) =>
+              serviceNameRegex.test(item.serviceName || ""),
+            )
+          : provider.service,
+        jobs: normalizedJobService
+          ? (provider.job || []).filter(
+              (item) => item.service === normalizedJobService,
+            )
+          : undefined,
+      }));
+
+      const businesses = rawBusinesses.map((business) => ({
+        id: business._id,
+        accountType: "business",
+        fullName: business.fullName || business.BusinessName,
+        BusinessName: business.BusinessName,
+        email: business.email,
+        profilePicture: business.profilePicture,
+        rating: business.rating,
+        currentLocation: business.currentLocation,
+        lastLocationUpdate: business.lastLocationUpdate,
+        kycVerified: business.kycVerified === true,
+        online:
+          business.availability?.isAvailable === true &&
+          business.isOnline === true &&
+          Boolean(
+            (business.lastSeenAt || business.lastLocationUpdate) &&
+              new Date(
+                business.lastSeenAt || business.lastLocationUpdate,
+              ) >= onlineThreshold,
+          ),
+        services: serviceNameRegex
+          ? (business.service || []).filter((item) =>
+              serviceNameRegex.test(item.serviceName || ""),
+            )
+          : business.service,
+        jobs: undefined,
+      }));
+
+      const accounts = [...providers, ...businesses]
+        .sort(
+          (a, b) =>
+            (b.rating?.average ?? 0) - (a.rating?.average ?? 0),
+        )
+        .slice(0, MAX_PROVIDERS_RETURNED);
+
+      return res.status(200).json({
+        success: true,
+        search: normalizedSearch || undefined,
+        serviceName: normalizedServiceName || undefined,
+        jobService: normalizedJobService || undefined,
+        businessName: normalizedBusinessName || undefined,
+        fixedPrice: parsedFixedPrice,
+        rating: parsedMinimumRating,
+        count: accounts.length,
+        providers: accounts,
+      });
+    } catch (error) {
+      console.error("Search general providers error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Error searching general providers",
         error: error.message,
       });
     }
