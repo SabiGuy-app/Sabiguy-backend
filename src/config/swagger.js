@@ -35,6 +35,42 @@ const options = {
         },
       },
       schemas: {
+        MobileUpdatePolicy: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '672a1b2c3d4e5f6789012345' },
+            active: { type: 'boolean', example: true },
+            platform: { type: 'string', enum: ['ios', 'android', 'both'], example: 'both' },
+            update_type: { type: 'string', enum: ['none', 'soft_store_update', 'force_store_update'], example: 'soft_store_update' },
+            trigger_timing: { type: 'string', enum: ['app_launch', 'after_login', 'on_home_screen'], example: 'app_launch' },
+            minimum_required_version: { type: 'string', example: '1.2.0' },
+            latest_version: { type: 'string', example: '1.4.0' },
+            title: { type: 'string', example: 'New update available' },
+            message: { type: 'string', example: 'A newer version of SabiGuy is available with improvements and fixes.' },
+            ios_store_url: { type: 'string', format: 'uri', example: 'https://apps.apple.com/app/idXXXXXXXXX' },
+            android_store_url: { type: 'string', format: 'uri', example: 'https://play.google.com/store/apps/details?id=com.xxx.sabiguy' },
+            allow_dismiss: { type: 'boolean', example: true },
+            updated_at: { type: 'string', format: 'date-time' },
+            updated_by: { type: 'string', nullable: true },
+          },
+        },
+        MobileUpdatePolicyInput: {
+          type: 'object',
+          required: ['active', 'platform', 'update_type', 'trigger_timing', 'minimum_required_version', 'latest_version', 'allow_dismiss'],
+          properties: {
+            active: { type: 'boolean', example: true },
+            platform: { type: 'string', enum: ['ios', 'android', 'both'], example: 'both' },
+            update_type: { type: 'string', enum: ['none', 'soft_store_update', 'force_store_update'], example: 'soft_store_update' },
+            trigger_timing: { type: 'string', enum: ['app_launch', 'after_login', 'on_home_screen'], example: 'app_launch' },
+            minimum_required_version: { type: 'string', example: '1.2.0' },
+            latest_version: { type: 'string', example: '1.4.0' },
+            title: { type: 'string', example: 'New update available' },
+            message: { type: 'string', example: 'A newer version of SabiGuy is available with improvements and fixes.' },
+            ios_store_url: { type: 'string', format: 'uri', example: 'https://apps.apple.com/app/idXXXXXXXXX' },
+            android_store_url: { type: 'string', format: 'uri', example: 'https://play.google.com/store/apps/details?id=com.xxx.sabiguy' },
+            allow_dismiss: { type: 'boolean', example: true },
+          },
+        },
         Booking: {
           type: 'object',
           properties: {
@@ -195,6 +231,7 @@ const options = {
     path.join(__dirname, '..', 'modules', 'categories', 'category.routes.js'),
     path.join(__dirname, '..', 'modules', 'wallet', 'wallet.routes.js'),
     path.join(__dirname, '..', 'modules', 'products', 'product.route.js'),
+    path.join(__dirname, '..', 'modules', 'mobile', 'updatePolicy.routes.js'),
 
     // path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
     path.join(
