@@ -43,6 +43,29 @@ POST /api/v1/auth/google
 
 Sign up a buyer using Google OAuth.
 
+POST /api/v1/auth/apple-provider
+
+Sign up or log in a provider using Sign in with Apple.
+
+POST /api/v1/auth/apple
+
+Sign up or log in a buyer using Sign in with Apple.
+
+POST /api/v1/auth/apple-login
+
+Log in with Sign in with Apple.
+
+Business accounts can use `POST /api/v1/business/auth/apple-signup` and
+`POST /api/v1/business/auth/apple-login`.
+
+Set `APPLE_CLIENT_IDS=com.sabiguy.mobile` in the backend environment. Add any
+additional native Bundle IDs or web Services IDs as a comma-separated list.
+The backend verifies the token audience and Apple issuer using Apple's public
+keys at `https://appleid.apple.com/auth/keys`; no Apple private key or Team ID
+is needed for identity-token verification. Send the Apple identity token as
+`token`; send `fullName` when Apple first returns it, and send the raw request
+`nonce` when using a nonce-enabled Sign in with Apple flow.
+
 POST /api/v1/auth/google-login
 
 Log in user using Google OAuth.

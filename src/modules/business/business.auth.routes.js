@@ -7,6 +7,8 @@ const {
   login,
   googleSignUp,
   googleLogin,
+  appleSignUp,
+  appleLogin,
   refreshAuthToken,
   me,
   forgotPassword,
@@ -211,6 +213,70 @@ router.post('/google-signup', businessAuthRequestLimiter, googleSignUp);
  *         description: Business account not found
  */
 router.post('/google-login', businessAuthVerifyLimiter, googleLogin);
+
+/**
+ * @swagger
+ * /api/v1/business/auth/apple-signup:
+ *   post:
+ *     summary: Sign up with Sign in with Apple
+ *     tags: [Business-Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Apple identity token
+ *               fullName:
+ *                 type: string
+ *                 description: Name returned by Apple on the user's first authorization
+ *               nonce:
+ *                 type: string
+ *                 description: Raw nonce used when requesting the Apple identity token
+ *     responses:
+ *       201:
+ *         description: Business signed up via Apple
+ *       400:
+ *         description: Missing token, missing verified email, or incompatible account
+ */
+router.post('/apple-signup', businessAuthRequestLimiter, appleSignUp);
+
+/**
+ * @swagger
+ * /api/v1/business/auth/apple-login:
+ *   post:
+ *     summary: Log in with Sign in with Apple
+ *     tags: [Business-Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Apple identity token
+ *               fullName:
+ *                 type: string
+ *                 description: Name returned by Apple on the user's first authorization
+ *               nonce:
+ *                 type: string
+ *                 description: Raw nonce used when requesting the Apple identity token
+ *     responses:
+ *       200:
+ *         description: Business logged in or signed up via Apple
+ *       401:
+ *         description: Invalid Apple token or account mismatch
+ */
+router.post('/apple-login', businessAuthVerifyLimiter, appleLogin);
 
 /**
  * @swagger

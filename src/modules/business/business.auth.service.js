@@ -18,6 +18,7 @@ const {
 const {
   AppError,
   googleHelper,
+  appleHelper,
   passwordHelper,
   emailHelper,
   accountHelper,
@@ -240,10 +241,10 @@ const loginBusiness = async ({ email, password }) => {
     throw new AppError('Please verify your email before logging in', 403);
   }
 
-  // Google-only user trying email/password login
-  if (business.isGoogleUser && !business.password) {
+  // Social sign-in user trying email/password login
+  if ((business.isGoogleUser || business.isAppleUser) && !business.password) {
     throw new AppError(
-      "This account was created with Google. Please log in with Google, or use 'Forgot Password' to set a password.",
+      "This account was created with social sign-in. Please log in with that provider, or use 'Forgot Password' to set a password.",
       400,
     );
   }
@@ -362,6 +363,103 @@ const googleAuthBusiness = async (token, signupPlatform = "unknown") => {
 // Both google-signup and google-login call the same unified handler
 const googleSignUpBusiness = googleAuthBusiness;
 const googleLogInBusiness = googleAuthBusiness;
+
+const appleAuthBusiness = async (
+  token,
+  signupPlatform = 'unknown',
+  nonce,
+  fullName,
+) => {
+  if (!token) {
+    throw new AppError('Token is required', 400);
+  }
+
+  const identity = await appleHelper.verifyToken(token, { nonce });
+  let business = await Business.findOne({ appleId: identity.appleId });
+
+  if (business) {
+    guardAccountStatus(business);
+    const { token: jwtToken, refreshToken } = await issueTokens(business);
+    return {
+      message: 'Login successful',
+      token: jwtToken,
+      refreshToken,
+      user: authService.buildAuthUserPayload(business),
+      newUser: false,
+    };
+  }
+
+  const normalizedEmail = normalizeEmail(identity.email);
+  if (!normalizedEmail || !identity.emailVerified) {
+    throw new AppError(
+      'A verified Apple email is required to create or link an account',
+      400,
+    );
+  }
+
+  business = await findBusinessByEmail(normalizedEmail);
+  if (business) {
+    guardAccountStatus(business);
+    if (business.appleId && business.appleId !== identity.appleId) {
+      throw new AppError(
+        'Apple account mismatch. Please use the linked Apple account.',
+        401,
+      );
+    }
+
+    accountHelper.linkAppleAccount(business, identity.appleId);
+    if (!business.fullName && fullName) business.fullName = fullName;
+    const { token: jwtToken, refreshToken } = await issueTokens(business);
+    return {
+      message: 'Apple account linked and login successful.',
+      token: jwtToken,
+      refreshToken,
+      user: authService.buildAuthUserPayload(business),
+      newUser: false,
+    };
+  }
+
+  const existingProfiles = await findEmailProfiles(normalizedEmail);
+  if (existingProfiles.some(({ role }) => role !== 'buyer')) {
+    throw new AppError(
+      'Email already in use by an incompatible account type',
+      400,
+    );
+  }
+
+  business = new Business({
+    email: normalizedEmail,
+    signupPlatform,
+    password: null,
+    fullName: fullName || '',
+    isAppleUser: true,
+    appleId: identity.appleId,
+    emailVerified: true,
+    role: 'businessOwner',
+    authMethods: ['apple'],
+    accountType: 'business',
+    kycLevel: 1,
+  });
+
+  const { token: jwtToken, refreshToken } = await issueTokens(business);
+  await notifyAdminTeam({
+    event: 'account_created',
+    accountType: 'business',
+    account: business,
+  });
+  await emailHelper.sendBusinessWelcomeEmailSafe(normalizedEmail, {
+    firstName: accountHelper.getFirstName(business.fullName),
+    role: business.role,
+  });
+
+  return {
+    message: 'Signup successful via Apple.',
+    token: jwtToken,
+    refreshToken,
+    user: authService.buildAuthUserPayload(business),
+    newUser: true,
+  };
+};
 
 // ─── Forgot Password ────────────────────────────────────────────────────────
 
@@ -485,8 +583,9 @@ const changeBusinessPassword = async (userId, oldPassword, newPassword) => {
     throw new AppError('Business not found', 404);
   }
 
-  // Google-only users setting their first password
-  const isSettingFirstPassword = business.isGoogleUser && !business.password;
+  // Social sign-in users setting their first password
+  const isSettingFirstPassword =
+    (business.isGoogleUser || business.isAppleUser) && !business.password;
 
   if (isSettingFirstPassword) {
     if (oldPassword) {
@@ -590,6 +689,7 @@ module.exports = {
   loginBusiness,
   googleSignUpBusiness,
   googleLogInBusiness,
+  appleAuthBusiness,
   refreshAuthToken,
   forgotBusinessPassword,
   resendForgotBusinessPasswordOtp,

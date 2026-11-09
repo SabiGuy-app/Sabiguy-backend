@@ -30,6 +30,7 @@ const {
 const {
   AppError,
   googleHelper,
+  appleHelper,
   passwordHelper,
   emailHelper,
   accountHelper,
@@ -62,6 +63,20 @@ const findUserAcrossRoles = async (email, roles = authRoles) => {
     if (user) return { user, role };
   }
 
+  return { user: null, role: null };
+};
+
+const findUserByAppleId = async (appleId, roles = [
+  'provider',
+  'buyer',
+  'businessOwner',
+]) => {
+  for (const role of roles) {
+    const Model = roleModelMap[role];
+    if (!Model) continue;
+    const user = await Model.findOne({ appleId });
+    if (user) return { user, role };
+  }
   return { user: null, role: null };
 };
 
@@ -350,6 +365,353 @@ exports.googleLogIn = async (req, res) => {
       .json({ message: 'Google login failed', error: err.message });
   }
 };
+
+exports.appleSignUpProvider = async (req, res) => {
+  const { token, nonce, fullName } = req.body;
+  if (!token) {
+    return res.status(400).json({ message: 'Token is required' });
+  }
+
+  try {
+    const identity = await appleHelper.verifyToken(token, { nonce });
+    const { user: existingAppleUser, role: existingAppleRole } =
+      await findUserByAppleId(identity.appleId);
+
+    if (existingAppleUser) {
+      if (existingAppleRole !== 'provider') {
+        return res.status(400).json({
+          message: 'Apple account is already linked to an incompatible account type',
+        });
+      }
+      if (existingAppleUser.isDeleted) {
+        return res.status(403).json({ message: 'Account deleted' });
+      }
+      if (existingAppleUser.isActive === false) {
+        return res.status(403).json({ message: 'Account deactivated' });
+      }
+      const jwtToken = generateAccessToken(existingAppleUser);
+      const refreshToken = generateRefreshToken(existingAppleUser);
+      existingAppleUser.refreshToken = refreshToken;
+      existingAppleUser.refreshTokenExpiresAt =
+        getRefreshTokenExpiryDate(refreshToken);
+      await existingAppleUser.save();
+      return res.status(200).json({
+        message: 'Login successful',
+        token: jwtToken,
+        refreshToken,
+        user: buildAuthUserPayload(existingAppleUser),
+        newUser: false,
+      });
+    }
+
+    const normalizedEmail = normalizeEmail(identity.email);
+    if (!normalizedEmail || !identity.emailVerified) {
+      return res.status(400).json({
+        message: 'A verified Apple email is required to create an account',
+      });
+    }
+
+    const existingEmailProfiles = await findEmailProfiles(normalizedEmail);
+    const existingProvider = existingEmailProfiles.find(
+      ({ role }) => role === 'provider',
+    );
+    if (existingProvider) {
+      const user = existingProvider.user;
+      if (user.isDeleted) {
+        return res.status(403).json({ message: 'Account deleted' });
+      }
+      if (user.isActive === false) {
+        return res.status(403).json({ message: 'Account deactivated' });
+      }
+      if (user.appleId && user.appleId !== identity.appleId) {
+        return res.status(401).json({
+          message: 'Apple account mismatch. Please use the linked Apple account.',
+        });
+      }
+      const wasEmailVerified = user.emailVerified;
+      accountHelper.linkAppleAccount(user, identity.appleId);
+      if (!user.fullName && fullName) user.fullName = fullName;
+      await user.save();
+
+      let message = 'Apple account linked and login successful.';
+      if (!wasEmailVerified) {
+        const welcomeSent = await emailHelper.sendWelcomeSafe(user.email, {
+          firstName: accountHelper.getFirstName(user.fullName),
+          role: user.role,
+        });
+        if (!welcomeSent) {
+          message += ' Welcome email will be sent shortly.';
+        }
+      }
+
+      const jwtToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
+      user.refreshToken = refreshToken;
+      user.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+      await user.save();
+      return res.status(200).json({
+        message,
+        token: jwtToken,
+        refreshToken,
+        user: buildAuthUserPayload(user),
+        newUser: false,
+      });
+    }
+
+    if (existingEmailProfiles.some(({ role }) => role !== 'buyer')) {
+      return res.status(400).json({
+        message: 'Email already in use by an incompatible account type',
+      });
+    }
+
+    const newUser = new Provider({
+      email: normalizedEmail,
+      signupPlatform: getClientPlatform(req),
+      fullName: fullName || '',
+      password: null,
+      otp: null,
+      otpExpiresAt: null,
+      emailVerified: true,
+      isAppleUser: true,
+      appleId: identity.appleId,
+      role: 'provider',
+      kycLevel: 1,
+      isOnline: false,
+      availability: {
+        isAvailable: false,
+        lastUpdated: new Date(),
+      },
+    });
+
+    accountHelper.addAuthMethod(newUser, 'apple');
+    await newUser.save();
+    await notifyAdminTeam({
+      event: 'account_created',
+      accountType: 'provider',
+      account: newUser,
+    });
+    await emailHelper.sendWelcomeSafe(newUser.email, {
+      firstName: accountHelper.getFirstName(newUser.fullName),
+      role: newUser.role,
+    });
+
+    const jwtToken = generateAccessToken(newUser);
+    const refreshToken = generateRefreshToken(newUser);
+    newUser.refreshToken = refreshToken;
+    newUser.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+    await newUser.save();
+    return res.status(200).json({
+      message: 'Signup successful via Apple.',
+      token: jwtToken,
+      refreshToken,
+      user: buildAuthUserPayload(newUser),
+      newUser: true,
+    });
+  } catch (err) {
+    console.error('Apple provider signup failed:', err);
+    return res
+      .status(err.status || 500)
+      .json({ message: err.message || 'Apple signup failed' });
+  }
+};
+
+exports.appleSignUpBuyer = async (req, res) => {
+  const { token, nonce, fullName } = req.body;
+  if (!token) {
+    return res.status(400).json({ message: 'Token is required' });
+  }
+
+  try {
+    const identity = await appleHelper.verifyToken(token, { nonce });
+    const { user: existingAppleUser, role: existingAppleRole } =
+      await findUserByAppleId(identity.appleId);
+
+    if (existingAppleUser) {
+      if (existingAppleRole !== 'buyer') {
+        return res.status(400).json({
+          message: 'Apple account is already linked to an incompatible account type',
+        });
+      }
+      if (existingAppleUser.isDeleted) {
+        return res.status(403).json({ message: 'Account deleted' });
+      }
+      if (existingAppleUser.isActive === false) {
+        return res.status(403).json({ message: 'Account deactivated' });
+      }
+      const jwtToken = generateAccessToken(existingAppleUser);
+      const refreshToken = generateRefreshToken(existingAppleUser);
+      existingAppleUser.refreshToken = refreshToken;
+      existingAppleUser.refreshTokenExpiresAt =
+        getRefreshTokenExpiryDate(refreshToken);
+      await existingAppleUser.save();
+      return res.status(200).json({
+        message: 'Login successful',
+        token: jwtToken,
+        refreshToken,
+        user: buildAuthUserPayload(existingAppleUser),
+        newUser: false,
+      });
+    }
+
+    const normalizedEmail = normalizeEmail(identity.email);
+    if (!normalizedEmail || !identity.emailVerified) {
+      return res.status(400).json({
+        message: 'A verified Apple email is required to create an account',
+      });
+    }
+
+    const existingEmailProfiles = await findEmailProfiles(normalizedEmail);
+    const existingBuyer = existingEmailProfiles.find(
+      ({ role }) => role === 'buyer',
+    );
+    if (existingBuyer) {
+      const user = existingBuyer.user;
+      if (user.isDeleted) {
+        return res.status(403).json({ message: 'Account deleted' });
+      }
+      if (user.isActive === false) {
+        return res.status(403).json({ message: 'Account deactivated' });
+      }
+      if (user.appleId && user.appleId !== identity.appleId) {
+        return res.status(401).json({
+          message: 'Apple account mismatch. Please use the linked Apple account.',
+        });
+      }
+      const wasEmailVerified = user.emailVerified;
+      accountHelper.linkAppleAccount(user, identity.appleId);
+      if (!user.fullName && fullName) user.fullName = fullName;
+      await user.save();
+
+      let message = 'Apple account linked and login successful.';
+      if (!wasEmailVerified) {
+        const welcomeSent = await emailHelper.sendWelcomeSafe(user.email, {
+          firstName: accountHelper.getFirstName(user.fullName),
+          role: user.role,
+        });
+        if (!welcomeSent) {
+          message += ' Welcome email will be sent shortly.';
+        }
+      }
+
+      const jwtToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user);
+      user.refreshToken = refreshToken;
+      user.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+      await user.save();
+      return res.status(200).json({
+        message,
+        token: jwtToken,
+        refreshToken,
+        user: buildAuthUserPayload(user),
+        newUser: false,
+      });
+    }
+
+    if (
+      existingEmailProfiles.some(
+        ({ role }) => !['provider', 'businessOwner'].includes(role),
+      )
+    ) {
+      return res.status(400).json({
+        message: 'Email already in use by an incompatible account type',
+      });
+    }
+
+    const newUser = new Buyer({
+      email: normalizedEmail,
+      fullName: fullName || '',
+      password: null,
+      otp: null,
+      otpExpiresAt: null,
+      emailVerified: true,
+      isAppleUser: true,
+      appleId: identity.appleId,
+      role: 'buyer',
+    });
+    accountHelper.addAuthMethod(newUser, 'apple');
+    await newUser.save();
+
+    await emailHelper.sendWelcomeSafe(newUser.email, {
+      firstName: accountHelper.getFirstName(newUser.fullName),
+      role: newUser.role,
+    });
+    const jwtToken = generateAccessToken(newUser);
+    const refreshToken = generateRefreshToken(newUser);
+    newUser.refreshToken = refreshToken;
+    newUser.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+    await newUser.save();
+    return res.status(200).json({
+      message: 'Signup successful via Apple.',
+      token: jwtToken,
+      refreshToken,
+      user: buildAuthUserPayload(newUser),
+      newUser: true,
+    });
+  } catch (err) {
+    console.error('Apple buyer signup failed:', err);
+    return res
+      .status(err.status || 500)
+      .json({ message: err.message || 'Apple signup failed' });
+  }
+};
+
+exports.appleLogIn = async (req, res) => {
+  const { token, nonce } = req.body;
+  if (!token) {
+    return res.status(400).json({ message: 'Token is required' });
+  }
+
+  try {
+    const identity = await appleHelper.verifyToken(token, { nonce });
+    let result = await findUserByAppleId(identity.appleId);
+    let user = result.user;
+
+    if (!user && identity.emailVerified && identity.email) {
+      result = await findUserAcrossRoles(normalizeEmail(identity.email), [
+        'provider',
+        'buyer',
+        'businessOwner',
+      ]);
+      user = result.user;
+      if (user) {
+        if (user.appleId && user.appleId !== identity.appleId) {
+          return res.status(401).json({
+            message: 'Apple account mismatch. Please use the linked Apple account.',
+          });
+        }
+        accountHelper.linkAppleAccount(user, identity.appleId);
+      }
+    }
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+    if (user.isDeleted) {
+      return res.status(403).json({ message: 'Account deleted' });
+    }
+    if (user.isActive === false) {
+      return res.status(403).json({ message: 'Account deactivated' });
+    }
+
+    const jwtToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    user.refreshToken = refreshToken;
+    user.refreshTokenExpiresAt = getRefreshTokenExpiryDate(refreshToken);
+    await user.save();
+    return res.status(200).json({
+      message: 'Login successful',
+      token: jwtToken,
+      refreshToken,
+      user: buildAuthUserPayload(user),
+    });
+  } catch (err) {
+    console.error('Apple login failed:', err);
+    return res
+      .status(err.status || 500)
+      .json({ message: err.message || 'Apple login failed' });
+  }
+};
+
 exports.registerBuyer = async (req, res) => {
   const { email, password, phoneNumber, city, fullName } = req.body;
   const normalizedEmail = normalizeEmail(email);
@@ -738,11 +1100,11 @@ exports.login = async (req, res) => {
         .json({ message: 'Please verify your email before logging in' });
     }
 
-    if (user.isGoogleUser && !user.password) {
+    if ((user.isGoogleUser || user.isAppleUser) && !user.password) {
       return res.status(400).json({
         message:
-          "This account was created with Google. Please log in with Google, or use 'Forgot Password' to set a password.",
-        authMethod: 'google',
+          "This account was created with social sign-in. Please log in with that provider, or use 'Forgot Password' to set a password.",
+        authMethod: user.isAppleUser ? 'apple' : 'google',
       });
     }
 
@@ -1028,8 +1390,9 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    // Google-only users setting their first password
-    const isSettingFirstPassword = user.isGoogleUser && !user.password;
+    // Social sign-in users setting their first password
+    const isSettingFirstPassword =
+      (user.isGoogleUser || user.isAppleUser) && !user.password;
 
     if (isSettingFirstPassword) {
       // No old password required — they never had one
@@ -1640,6 +2003,8 @@ exports.switchToBuyer = async (req, res) => {
         emailVerified: true,
         isGoogleUser: Boolean(source.isGoogleUser),
         googleId: source.googleId || undefined,
+        isAppleUser: Boolean(source.isAppleUser),
+        appleId: source.appleId || undefined,
         authMethods: Array.isArray(source.authMethods)
           ? [...source.authMethods]
           : [],
