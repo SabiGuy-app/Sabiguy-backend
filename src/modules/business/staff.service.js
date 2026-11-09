@@ -4,6 +4,11 @@ const Staff = require('./staff.model');
 const Booking = require('../bookings/Bookings.model');
 const businessRepository = require('./business.repository');
 const Provider = require('../../../models/ServiceProvider');
+const {
+  STAFF_STALE_LOCATION_MINUTES,
+  isProviderOnlineAndAvailable,
+  getPublicStaffStatus,
+} = require('./staff-presence');
 const { findEmailProfiles } = require('../../services/identity.service');
 const geolocationService = require('../../services/geolocation.service');
 const {
@@ -13,6 +18,7 @@ const {
   ForbiddenError,
 } = require('./business.service');
 const { sendStaffInvitationEmail } = require('../../config/emailVerification');
+const notificationService = require('../../services/notification.service');
 
 const STAFF_INVITE_EXPIRY_DAYS = Number(
   process.env.STAFF_INVITE_EXPIRY_DAYS || 7,
@@ -176,6 +182,7 @@ const INELIGIBLE = {
   ALREADY_ASSIGNED: 'already_assigned',
   DOES_NOT_DO_SERVICE: 'does_not_do_service',
   OFF_DUTY: 'off_duty',
+  NOT_ONLINE_OR_AVAILABLE: 'not_online_or_available',
 };
 
 const normalizeServiceName = (name) =>
@@ -184,7 +191,12 @@ const normalizeServiceName = (name) =>
 // Precedence: already assigned > doesn't do the service > off duty.
 const evaluateStaffEligibility = (
   staff,
-  { serviceName, alreadyAssigned = false, requireOnDuty = true } = {},
+  {
+    serviceName,
+    alreadyAssigned = false,
+    requireOnDuty = true,
+    providerOnlineAndAvailable = true,
+  } = {},
 ) => {
   if (alreadyAssigned) {
     return { eligible: false, reason: INELIGIBLE.ALREADY_ASSIGNED };
@@ -201,6 +213,9 @@ const evaluateStaffEligibility = (
 
   if (requireOnDuty && !(staff.onDuty && staff.onDuty.active)) {
     return { eligible: false, reason: INELIGIBLE.OFF_DUTY };
+  }
+  if (!providerOnlineAndAvailable) {
+    return { eligible: false, reason: INELIGIBLE.NOT_ONLINE_OR_AVAILABLE };
   }
 
   return { eligible: true, reason: null };
@@ -249,7 +264,7 @@ const getStaffCandidates = async (businessId, bookingId) => {
   }
 
   const booking = await Booking.findById(bookingId).select(
-    'businessId serviceType serviceDetails location assignedStaff',
+    'businessId businessStatus serviceType serviceDetails location assignedStaff',
   );
   if (!booking) {
     throw new NotFoundError('Booking not found');
@@ -262,7 +277,7 @@ const getStaffCandidates = async (businessId, bookingId) => {
     status: 'ACTIVE',
   }).populate(
     'provider',
-    'fullName profilePicture rating.average currentLocation',
+    'fullName profilePicture rating.average currentLocation lastLocationUpdate isActive isDeleted availability',
   );
 
   const assignedStaffIds = new Set(
@@ -273,9 +288,13 @@ const getStaffCandidates = async (businessId, bookingId) => {
     .filter((staff) => staff.provider)
     .map((staff) => {
       const alreadyAssigned = assignedStaffIds.has(String(staff._id));
+      const providerOnlineAndAvailable = isProviderOnlineAndAvailable(
+        staff.provider,
+      );
       const { eligible, reason } = evaluateStaffEligibility(staff, {
         serviceName,
         alreadyAssigned,
+        providerOnlineAndAvailable,
       });
       const { distanceKm, etaMinutes } = computeDistanceAndEta(
         booking.location?.coordinates?.coordinates,
@@ -288,8 +307,12 @@ const getStaffCandidates = async (businessId, bookingId) => {
         name: staff.provider.fullName,
         avatar: staff.provider.profilePicture,
         role: staff.role,
+        status: getPublicStaffStatus(staff.status, staff.provider),
+        membershipStatus: staff.status,
         rating: staff.provider.rating?.average ?? null,
         onDuty: Boolean(staff.onDuty && staff.onDuty.active),
+        clocked_in: Boolean(staff.onDuty && staff.onDuty.active),
+        onlineAndAvailable: providerOnlineAndAvailable,
         distanceKm,
         etaMinutes,
         eligible,
@@ -305,6 +328,7 @@ const getStaffCandidates = async (businessId, bookingId) => {
 
   return {
     bookingId: booking._id,
+    businessStatus: booking.businessStatus,
     serviceName,
     assignedStaffIds: [...assignedStaffIds],
     candidates,
@@ -412,9 +436,19 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
   if (!staff) {
     throw new NotFoundError('Staff not found in your business');
   }
-  const provider = await Provider.findById(staff.provider).select('kycVerified isDeleted isActive');
-  if (!provider || !Provider.isVerifiedAccount(provider)) {
+  if (!staff.onDuty?.active) {
+    throw new ConflictError('Staff must be clocked in before assignment');
+  }
+  const provider = await Provider.findById(staff.provider).select(
+    'kycVerified isDeleted isActive availability currentLocation lastLocationUpdate',
+  );
+  if (!provider || provider.kycVerified !== true) {
     throw new ForbiddenError('Only a verified provider can be linked');
+  }
+  if (!isProviderOnlineAndAvailable(provider)) {
+    throw new ConflictError(
+      'Staff must be clocked in, online, and available before assignment',
+    );
   }
 
   const serviceName = bookingServiceName(booking);
@@ -425,6 +459,7 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
   const { eligible, reason } = evaluateStaffEligibility(staff, {
     serviceName,
     alreadyAssigned: assignedStaffIds.has(String(staff._id)),
+    providerOnlineAndAvailable: isProviderOnlineAndAvailable(provider),
   });
   if (!eligible) {
     if (reason === INELIGIBLE.ALREADY_ASSIGNED) {
@@ -438,6 +473,11 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
     if (reason === INELIGIBLE.OFF_DUTY) {
       throw new ConflictError('This staff member is off duty');
     }
+    if (reason === INELIGIBLE.NOT_ONLINE_OR_AVAILABLE) {
+      throw new ConflictError(
+        'Staff must be online and available before assignment',
+      );
+    }
   }
 
   booking.assignedStaff.push({
@@ -447,9 +487,10 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
   });
   if (
     booking.businessStatus === 'needs_staff' ||
+    booking.businessStatus === 'assigned' ||
     booking.businessStatus == null
   ) {
-    booking.businessStatus = 'assigned';
+    booking.businessStatus = 'staff_assigned';
   }
   await booking.save();
 
@@ -459,11 +500,25 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
     await staff.save();
   }
 
-  await notificationService.notifyUser(booking.userId, { type: 'booking_status_updated', title: 'Staff Assigned to Your Booking', message: (staff.fullName || 'A staff member') + ' has been assigned to your ' + (serviceName || 'service') + ' booking.', bookingId: booking._id, staffId: staff._id }).catch(() => {});
+  await notifySafely(async () => {
+    const notification = await notificationService.notifyUser(booking.userId, {
+      type: 'booking_status_updated',
+      title: 'Staff Assigned to Your Booking',
+      message: `${staff.fullName || 'A staff member'} has been assigned to your ${serviceName || 'service'} booking.`,
+      bookingId: booking._id,
+      staffId: staff._id,
+    });
+    if (!notification) {
+      console.warn(
+        `Buyer notification for staff assignment was suppressed by preferences (booking ${booking._id}, buyer ${booking.userId})`,
+      );
+    }
+  }, 'Buyer staff assignment');
   if (staff.provider) await notificationService.notifyProvider(staff.provider._id ?? staff.provider, { type: 'booking_status_updated', title: 'New Booking Assignment', message: 'You have been assigned to a ' + (serviceName || 'service') + ' booking.', bookingId: booking._id, staffId: staff._id }).catch(() => {});
   await notificationService.notifyBusiness(businessId, { type: 'booking_status_updated', title: 'Staff Assigned to Booking', message: (staff.fullName || 'A staff member') + ' has been assigned to booking ' + booking._id + '.', bookingId: booking._id, staffId: staff._id }).catch(() => {});
   return {
     bookingId: booking._id,
+    businessStatus: booking.businessStatus,
     serviceName,
     assignedStaff: booking.assignedStaff.map((a) => ({
       staffId: a.staff,
@@ -485,10 +540,6 @@ const MIN_ON_DUTY_STAFF = Number(process.env.BUSINESS_MIN_ON_DUTY_STAFF || 1);
 
 // Staff only count as on duty while their own app is alive: their provider
 // location heartbeat must be at least this fresh (matches nearby search).
-const STAFF_STALE_LOCATION_MINUTES = Number(
-  process.env.STAFF_STALE_LOCATION_MINUTES || 10,
-);
-
 // Clocked-in (onDuty.active) ACTIVE staff whose provider account has a fresh
 // location heartbeat, per business, as a Map of businessId string -> count.
 // Businesses with nobody online on duty are absent.
@@ -512,6 +563,11 @@ const countOnDutyStaffByBusiness = async (businessIds = []) => {
   );
   const onlineProviderIds = await Provider.distinct('_id', {
     _id: { $in: onDutyStaff.map((s) => s.provider) },
+    isActive: true,
+    isDeleted: { $ne: true },
+    'availability.isAvailable': true,
+    'currentLocation.coordinates.0': { $exists: true },
+    'currentLocation.coordinates.1': { $exists: true },
     lastLocationUpdate: { $gte: staleThreshold },
   });
   const online = new Set(onlineProviderIds.map(String));
@@ -583,6 +639,7 @@ const toClockState = (staff) => ({
   staffId: staff._id,
   businessId: staff.business,
   onDuty: Boolean(staff.onDuty?.active),
+  clocked_in: Boolean(staff.onDuty?.active),
   since: staff.onDuty?.since || null,
   lastClockInAt: staff.onDuty?.lastClockInAt || null,
   lastClockOutAt: staff.onDuty?.lastClockOutAt || null,
@@ -618,6 +675,7 @@ const assertNotOnDutyElsewhere = async (staff) => {
 
 // Flips the duty state. Callers save.
 const applyDutyChange = (staff, onDuty, now = new Date()) => {
+  staff.clocked_in = Boolean(onDuty);
   if (onDuty) {
     staff.set({
       'onDuty.active': true,
@@ -761,7 +819,17 @@ const respondToClockRequest = async (
   const requested = staff.clockRequest.action;
   const now = new Date();
   if (action === 'approve') {
-    if (requested === 'clock_in') await assertNotOnDutyElsewhere(staff);
+    if (requested === 'clock_in') {
+      await assertNotOnDutyElsewhere(staff);
+      const provider = await Provider.findById(staff.provider).select(
+        'isActive isDeleted availability currentLocation lastLocationUpdate',
+      );
+      if (!isProviderOnlineAndAvailable(provider, now)) {
+        throw new ConflictError(
+          'Staff must be online and available before clock-in can be approved',
+        );
+      }
+    }
     applyDutyChange(staff, requested === 'clock_in', now);
   }
   staff.set({
@@ -851,7 +919,7 @@ const businessClockOutStaff = async (businessId, staffId, { reason } = {}) => {
 
 // The "Staff on duty" board: every active staff member with a working status.
 // Busy states are derived from the staff's not-yet-completed assigned bookings
-// (in_progress -> in_service, assigned -> booked); everyone else falls back
+// (in_progress -> in_service, staff_assigned -> booked); everyone else falls back
 // to their stored workStatus (available / offline).
 const getStaffOnDuty = async (businessId) => {
   if (!mongoose.isValidObjectId(businessId)) {
@@ -861,11 +929,11 @@ const getStaffOnDuty = async (businessId) => {
   const [staffList, activeBookings] = await Promise.all([
     Staff.find({ business: businessId, status: 'ACTIVE' }).populate(
       'provider',
-      'fullName profilePicture',
+      'fullName profilePicture isActive isDeleted availability currentLocation lastLocationUpdate',
     ),
     Booking.find({
       businessId,
-      businessStatus: { $in: ['assigned', 'in_progress'] },
+      businessStatus: { $in: ['assigned', 'staff_assigned', 'in_progress'] },
       'assignedStaff.0': { $exists: true },
     })
       .select('serviceType serviceDetails businessStatus userId assignedStaff')
@@ -873,7 +941,7 @@ const getStaffOnDuty = async (businessId) => {
       .populate('userId', 'fullName'),
   ]);
 
-  // Most-relevant active booking per staff: in_progress beats assigned.
+  // Most-relevant active booking per staff: in_progress beats staff_assigned.
   const jobByStaff = new Map();
   for (const booking of activeBookings) {
     for (const a of booking.assignedStaff) {
@@ -909,8 +977,11 @@ const getStaffOnDuty = async (businessId) => {
         name: s.provider.fullName,
         avatar: s.provider.profilePicture,
         role: s.role,
+        status: getPublicStaffStatus(s.status, s.provider),
+        membershipStatus: s.status,
         services: s.services,
         workStatus,
+        clocked_in: Boolean(s.onDuty?.active),
         currentJob: job
           ? {
               bookingId: job.bookingId,
@@ -953,19 +1024,40 @@ const getAllStaff = async (businessId, options = {}) => {
   const { status } = options;
   const filter = { business: businessId };
   if (status !== undefined) {
-    if (!Staff.STAFF_STATUSES.includes(status)) {
-      throw new ValidationError(
-        `status must be one of: ${Staff.STAFF_STATUSES.join(', ')}`,
+    if (status === 'ACTIVE' || status === 'OFFLINE') {
+      const staleThreshold = new Date(
+        Date.now() - STAFF_STALE_LOCATION_MINUTES * 60 * 1000,
       );
+      const onlineProviderIds = await Provider.distinct('_id', {
+        isActive: true,
+        isDeleted: { $ne: true },
+        'availability.isAvailable': true,
+        'currentLocation.coordinates.0': { $exists: true },
+        'currentLocation.coordinates.1': { $exists: true },
+        lastLocationUpdate: { $gte: staleThreshold },
+      });
+      filter.status = 'ACTIVE';
+      filter.provider =
+        status === 'ACTIVE'
+          ? { $in: onlineProviderIds }
+          : { $nin: onlineProviderIds };
+    } else if (!Staff.STAFF_STATUSES.includes(status)) {
+      throw new ValidationError(
+        `status must be ACTIVE, OFFLINE, or one of: ${Staff.STAFF_STATUSES.filter((s) => s !== 'ACTIVE').join(', ')}`,
+      );
+    } else {
+      filter.status = status;
     }
-    filter.status = status;
   }
 
   const { pageNum, size } = parsePagination(options);
 
   const [docs, total] = await Promise.all([
     Staff.find(filter)
-      .populate('provider', 'fullName profilePicture')
+      .populate(
+        'provider',
+        'fullName profilePicture isActive isDeleted availability currentLocation lastLocationUpdate',
+      )
       .sort({ createdAt: -1 })
       .skip((pageNum - 1) * size)
       .limit(size),
@@ -987,8 +1079,10 @@ const getAllStaff = async (businessId, options = {}) => {
       email: s.email,
       role: s.role,
       services: s.services,
-      status: s.status,
+      status: getPublicStaffStatus(s.status, s.provider),
+      membershipStatus: s.status,
       workStatus: s.workStatus,
+      clocked_in: Boolean(s.onDuty?.active),
       canDoHomeService: s.canDoHomeService,
     })),
   };
@@ -1017,7 +1111,7 @@ const getStaffDetail = async (businessId, identifier) => {
 
   const staff = await Staff.findOne({ business: businessId, $or: or }).populate(
     'provider',
-    'fullName profilePicture rating kycVerified createdAt',
+    'fullName profilePicture rating kycVerified createdAt isActive isDeleted availability currentLocation lastLocationUpdate',
   );
   if (!staff) {
     throw new NotFoundError('Staff not found in your business');
@@ -1026,7 +1120,7 @@ const getStaffDetail = async (businessId, identifier) => {
   const [activeBookings, todayBookings, jobsLast7Days] = await Promise.all([
     Booking.find({
       businessId,
-      businessStatus: { $in: ['assigned', 'in_progress'] },
+      businessStatus: { $in: ['assigned', 'staff_assigned', 'in_progress'] },
       'assignedStaff.staff': staff._id,
     })
       .select('serviceType serviceDetails businessStatus userId')
@@ -1061,8 +1155,10 @@ const getStaffDetail = async (businessId, identifier) => {
     avatar: staff.provider?.profilePicture || null,
     email: staff.email,
     role: staff.role,
-    status: staff.status,
+    status: getPublicStaffStatus(staff.status, staff.provider),
+    membershipStatus: staff.status,
     workStatus,
+    clocked_in: Boolean(staff.onDuty?.active),
     services: staff.services,
     canDoHomeService: staff.canDoHomeService,
     joinedAt: staff.provider?.createdAt || staff.createdAt,
@@ -1188,6 +1284,7 @@ const respondToStaffInvite = async (payload, provider) => {
     );
     return {
       status: 'DECLINED',
+      membershipStatus: 'DECLINED',
       staffId: staff._id,
       businessId: business._id,
     };
@@ -1224,6 +1321,9 @@ const respondToStaffInvite = async (payload, provider) => {
     { _id: provider.id },
     { $set: { invitedBy: business._id } },
   );
+  const providerProfile = await Provider.findById(provider.id).select(
+    'isActive isDeleted availability currentLocation lastLocationUpdate',
+  );
   await notifySafely(
     () =>
       notificationService.notifyProvider(provider.id, {
@@ -1247,7 +1347,8 @@ const respondToStaffInvite = async (payload, provider) => {
   );
 
   return {
-    status: 'ACTIVE',
+    status: getPublicStaffStatus('ACTIVE', providerProfile),
+    membershipStatus: 'ACTIVE',
     staffId: staff._id,
     staffCode: staff.staffCode,
     role: staff.role,

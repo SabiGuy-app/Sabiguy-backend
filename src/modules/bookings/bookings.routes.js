@@ -933,6 +933,193 @@ router.post(
   BookingController.searchProviders,
 );
 
+/**
+ * @swagger
+ * /api/v1/bookings/search/general:
+ *   post:
+ *     summary: Search general provider and business accounts
+ *     description: |
+ *       Search for provider and business accounts without a location or proximity filtering.
+ *       Only KYC-verified provider and business accounts are returned.
+ *       No location fields are required.
+ *
+ *       Send at least one of `search`, `serviceName`, `jobService` or `businessName`.
+ *       Filters are combined with AND.
+ *
+ *       - `search` is a partial, case-insensitive free-text search across names, service names
+ *         and business categories.
+ *       - `serviceName` is an exact, case-insensitive service name filter.
+ *       - `jobService` matches provider jobs and business categories or service names.
+ *       - `businessName` is a partial, case-insensitive business-name filter.
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               search:
+ *                 type: string
+ *                 minLength: 2
+ *                 maxLength: 100
+ *                 example: tunde
+ *                 description: Partial, case-insensitive free-text search
+ *               serviceName:
+ *                 type: string
+ *                 example: Hair Styling
+ *                 description: Exact, case-insensitive service name
+ *               jobService:
+ *                 type: string
+ *                 example: Beauty & Personal Care
+ *                 description: Provider job service or business category/service name
+ *               businessName:
+ *                 type: string
+ *                 example: Beauty Studio
+ *                 description: Partial, case-insensitive business-name match
+ *               fixedPrice:
+ *                 type: number
+ *                 minimum: 0
+ *                 example: 5000
+ *                 description: Exact fixed-price value for the matching service entry
+ *               rating:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 5
+ *                 example: 4
+ *                 description: Minimum account average rating
+ *           examples:
+ *             freeText:
+ *               summary: Free-text search
+ *               value:
+ *                 search: tunde
+ *             filtered:
+ *               summary: Search with service and rating filters
+ *               value:
+ *                 search: braids
+ *                 serviceName: Hair Styling
+ *                 jobService: Beauty & Personal Care
+ *                 fixedPrice: 5000
+ *                 rating: 4
+ *             businessOnly:
+ *               summary: Search by business name
+ *               value:
+ *                 businessName: Beauty Studio
+ *     responses:
+ *       200:
+ *         description: General provider and business accounts returned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 search:
+ *                   type: string
+ *                   description: Trimmed search term, when sent
+ *                 serviceName:
+ *                   type: string
+ *                 jobService:
+ *                   type: string
+ *                 businessName:
+ *                   type: string
+ *                 fixedPrice:
+ *                   type: number
+ *                 rating:
+ *                   type: number
+ *                 count:
+ *                   type: integer
+ *                   example: 2
+ *                 providers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       accountType:
+ *                         type: string
+ *                         enum: [provider, business]
+ *                       providerAccountType:
+ *                         type: string
+ *                         description: Provider accounts only
+ *                       fullName:
+ *                         type: string
+ *                       BusinessName:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       profilePicture:
+ *                         type: string
+ *                         nullable: true
+ *                       rating:
+ *                         type: object
+ *                         properties:
+ *                           average:
+ *                             type: number
+ *                           count:
+ *                             type: integer
+ *                       online:
+ *                         type: boolean
+ *                         description: Whether the provider or business is currently available and recently active
+ *                       kycVerified:
+ *                         type: boolean
+ *                         example: true
+ *                         description: KYC verification status
+ *                       completedJobs:
+ *                         type: integer
+ *                         description: Provider accounts only
+ *                       startingPrice:
+ *                         type: number
+ *                         description: Provider accounts only
+ *                       currentLocation:
+ *                         type: object
+ *                         nullable: true
+ *                         properties:
+ *                           type:
+ *                             type: string
+ *                             example: Point
+ *                           coordinates:
+ *                             type: array
+ *                             items:
+ *                               type: number
+ *                           address:
+ *                             type: string
+ *                       lastLocationUpdate:
+ *                         type: string
+ *                         format: date-time
+ *                       services:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                       jobs:
+ *                         type: array
+ *                         nullable: true
+ *                         description: Provider accounts only
+ *                         items:
+ *                           type: object
+ *       400:
+ *         description: Invalid fixedPrice or rating, invalid search length, or no search filter provided
+ *       401:
+ *         description: Missing or invalid token
+ *       403:
+ *         description: Buyer access only
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  "/search/general",
+  // authMiddleware,
+  // onlyRole("buyer"),
+  BookingController.searchGeneralProviders,
+);
+
+
+
 router.get("/:id", authMiddleware, BookingController.getBookingById);
 
 /**

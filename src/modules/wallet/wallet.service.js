@@ -3,6 +3,7 @@ const Wallet = require("./Wallet.model");
 const Transaction = require("../transactions/transaction.model");
 const Booking = require("../bookings/Bookings.model.js");
 const Buyer = require("../../../models/ServiceUser");
+const Provider = require("../../../models/ServiceProvider");
 const discountService = require("../../services/discount.service");
 const {
   getPaidBookingStatus,
@@ -476,24 +477,25 @@ class WalletService {
   ) {
     try {
       const normalizedBreakdown = this.normalizePaymentBreakdown(breakdown);
-      const providerWallet = await this.getOrCreateWallet(
-        providerId,
-        "Provider",
-      );
+      const booking = await Booking.findById(bookingId).select("businessId");
+      if (!booking) throw new Error("Booking not found");
+      const ownerId = booking.businessId || providerId;
+      const ownerModel = booking.businessId ? "Business" : "Provider";
+      const recipientWallet = await this.getOrCreateWallet(ownerId, ownerModel);
 
-      const providerBalanceBefore = {
-        available: providerWallet.balance.available,
-        pending: providerWallet.balance.pending,
-        total: providerWallet.balance.total,
+      const recipientBalanceBefore = {
+        available: recipientWallet.balance.available,
+        pending: recipientWallet.balance.pending,
+        total: recipientWallet.balance.total,
       };
 
-      // Add the provider net amount directly from pricing service output.
-      await providerWallet.addPending(normalizedBreakdown.providerReceives);
+      // Hold the net payout in the wallet of the booking's actual recipient.
+      await recipientWallet.addPending(normalizedBreakdown.providerReceives);
 
-      const providerBalanceAfter = {
-        available: providerWallet.balance.available,
-        pending: providerWallet.balance.pending,
-        total: providerWallet.balance.total,
+      const recipientBalanceAfter = {
+        available: recipientWallet.balance.available,
+        pending: recipientWallet.balance.pending,
+        total: recipientWallet.balance.total,
       };
 
       if (normalizedBreakdown.serviceFee > 0) {
@@ -510,9 +512,11 @@ class WalletService {
           $set: {
             breakdown: normalizedBreakdown,
             amount: normalizedBreakdown.totalAmount,
-            "to.walletId": providerWallet._id,
-            "balances.providerBefore": providerBalanceBefore,
-            "balances.providerAfter": providerBalanceAfter,
+            "to.userId": ownerId,
+            "to.userModel": ownerModel,
+            "to.walletId": recipientWallet._id,
+            "balances.recipientBefore": recipientBalanceBefore,
+            "balances.recipientAfter": recipientBalanceAfter,
           },
         },
         { new: true },
@@ -531,14 +535,19 @@ class WalletService {
           const taxAmount = normalizedBreakdown.tax;
           const promoApplied = Boolean(normalizedBreakdown.discountApplied);
 
-          await notificationService.notifyProvider(providerId, {
+          const recipientNotification = {
             type: "payment_received",
             title: "Payment Secured in Escrow",
             message: `NGN${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: NGN${subtotal.toLocaleString()}. Service charge (15%): NGN${originalProviderPlatformFee.toLocaleString()}. Complete the service to receive payment.`,
             bookingId,
             amount: normalizedBreakdown.providerReceives,
-            pendingBalance: providerBalanceAfter.pending,
-          });
+            pendingBalance: recipientBalanceAfter.pending,
+          };
+          if (ownerModel === "Business") {
+            await notificationService.notifyBusiness(ownerId, recipientNotification);
+          } else {
+            await notificationService.notifyProvider(ownerId, recipientNotification);
+          }
 
           await notificationService.notifyUser(buyerId, {
             type: "payment_received",
@@ -559,8 +568,10 @@ class WalletService {
 
       return {
         success: true,
-        providerWallet,
-        providerBalanceAfter,
+        wallet: recipientWallet,
+        ownerId,
+        ownerModel,
+        balanceAfter: recipientBalanceAfter,
         amount: normalizedBreakdown.providerReceives,
       };
     } catch (error) {
@@ -569,11 +580,121 @@ class WalletService {
     }
   }
 
+  async migrateLegacyBusinessEscrow(bookingId, businessId, amount, businessWallet) {
+    const paymentTransaction = await Transaction.findOne({
+      bookingId,
+      type: "payment",
+      status: "completed",
+      "to.userId": businessId,
+      "to.userModel": "Business",
+    }).select("to breakdown");
+
+    const legacyWalletId = paymentTransaction?.to?.walletId;
+    const recordedAmount = Number(
+      paymentTransaction?.breakdown?.providerReceives,
+    );
+    if (
+      !legacyWalletId ||
+      !Number.isFinite(recordedAmount) ||
+      Math.abs(recordedAmount - amount) > 0.01
+    ) {
+      throw new Error("Business escrow is not present in the business wallet");
+    }
+
+    const legacyWallet = await Wallet.findOne({
+      _id: legacyWalletId,
+      ownerId: businessId,
+      ownerModel: "Provider",
+    }).select("_id");
+    if (!legacyWallet || (await Provider.exists({ _id: businessId }))) {
+      throw new Error("Legacy business escrow wallet could not be verified safely");
+    }
+
+    const debitedLegacyWallet = await Wallet.findOneAndUpdate(
+      {
+        _id: legacyWallet._id,
+        ownerId: businessId,
+        ownerModel: "Provider",
+        "balance.pending": { $gte: amount },
+      },
+      {
+        $inc: {
+          "balance.pending": -amount,
+          "balance.total": -amount,
+        },
+        $set: { lastTransactionAt: new Date() },
+      },
+      { new: true },
+    );
+    if (!debitedLegacyWallet) {
+      throw new Error("Legacy business escrow balance is insufficient");
+    }
+
+    let businessCredited = false;
+    try {
+      const creditedBusinessWallet = await Wallet.updateOne(
+        {
+          _id: businessWallet._id,
+          ownerId: businessId,
+          ownerModel: "Business",
+        },
+        {
+          $inc: {
+            "balance.pending": amount,
+            "balance.total": amount,
+          },
+          $set: { lastTransactionAt: new Date() },
+        },
+      );
+      if (creditedBusinessWallet.modifiedCount !== 1) {
+        throw new Error("Could not transfer escrow to the business wallet");
+      }
+      businessCredited = true;
+      const updatedPayment = await Transaction.updateOne(
+        { _id: paymentTransaction._id },
+        {
+          $set: {
+            "to.walletId": businessWallet._id,
+            "metadata.legacyBusinessEscrowMigratedAt": new Date(),
+          },
+        },
+      );
+      if (updatedPayment.modifiedCount !== 1) {
+        throw new Error("Could not record the business escrow transfer");
+      }
+    } catch (error) {
+      if (businessCredited) {
+        await Wallet.updateOne(
+          { _id: businessWallet._id },
+          {
+            $inc: {
+              "balance.pending": -amount,
+              "balance.total": -amount,
+            },
+            $set: { lastTransactionAt: new Date() },
+          },
+        );
+      }
+      await Wallet.updateOne(
+        { _id: legacyWallet._id },
+        {
+          $inc: {
+            "balance.pending": amount,
+            "balance.total": amount,
+          },
+          $set: { lastTransactionAt: new Date() },
+        },
+      );
+      throw error;
+    }
+  }
+
   async releaseEscrow(
-    providerId,
+    recipientId,
     amount,
     bookingId,
     notificationService = null,
+    ownerModel = "Provider",
   ) {
     try {
       // Fetch booking to get subtotal for bonus calculation
@@ -591,7 +712,19 @@ class WalletService {
         booking.pricingBreakdown?.agreedPrice ||
         0;
 
-      const wallet = await this.getOrCreateWallet(providerId, "Provider");
+      let wallet = await this.getOrCreateWallet(recipientId, ownerModel);
+      if (ownerModel === "Business" && wallet.balance.pending < amount) {
+        await this.migrateLegacyBusinessEscrow(
+          bookingId,
+          recipientId,
+          amount,
+          wallet,
+        );
+        wallet = await Wallet.findById(wallet._id);
+      }
+      if (wallet.balance.pending < amount) {
+        throw new Error("Insufficient escrow funds in recipient wallet");
+      }
 
       const balanceBefore = {
         available: wallet.balance.available,
@@ -604,7 +737,8 @@ class WalletService {
       await wallet.movePendingToAvailable(amount);
 
       // Calculate and credit 5% bonus based on booking subtotal
-      const bonusAmount = Math.round(bookingSubtotal * 0.05);
+      const bonusAmount =
+        ownerModel === "Provider" ? Math.round(bookingSubtotal * 0.05) : 0;
       await wallet.creditBonus(bonusAmount);
 
       const balanceAfter = {
@@ -619,8 +753,8 @@ class WalletService {
         reference: this.generateReference("REL"),
         type: "escrow_release",
         to: {
-          userId: providerId,
-          userModel: "Provider",
+          userId: recipientId,
+          userModel: ownerModel,
           walletId: wallet._id,
         },
         amount,
@@ -628,59 +762,23 @@ class WalletService {
         bookingId,
         metadata: {
           bookingSubtotal,
-          providerReceives: amount,
-          bonusPercent: 5,
-          bonusCalculatedFrom: "booking_subtotal",
+          payoutAmount: amount,
+          ownerModel,
+          ...(bonusAmount > 0
+            ? { bonusPercent: 5, bonusCalculatedFrom: "booking_subtotal" }
+            : {}),
         },
         balances: {
           before: balanceBefore,
           after: balanceAfter,
         },
         status: "completed",
-        description: `Payment released for completed booking #${bookingId}. Amount: NGN${amount}. Bonus 5% of NGN${bookingSubtotal} (NGN${bonusAmount}) credited to bonus balance.`,
+        description:
+          ownerModel === "Business"
+            ? `Payment released to business wallet for completed booking #${bookingId}. Amount: NGN${amount}.`
+            : `Payment released for completed booking #${bookingId}. Amount: NGN${amount}. Bonus 5% of NGN${bookingSubtotal} (NGN${bonusAmount}) credited to bonus balance.`,
         completedAt: new Date(),
       });
-
-      // Send notification to provider
-      if (notificationService) {
-        try {
-          const buyerId = userId?._id ?? userId;
-          const subtotal = normalizedBreakdown.agreedPrice;
-          const userPlatformFee = normalizedBreakdown.serviceFee;
-          const providerPlatformFee = normalizedBreakdown.providerCommission;
-          const originalProviderPlatformFee =
-            normalizedBreakdown.originalProviderCommission ??
-            providerPlatformFee;
-          const discountAmount = normalizedBreakdown.discountAmount;
-          const taxAmount = normalizedBreakdown.tax;
-          const promoApplied = Boolean(normalizedBreakdown.discountApplied);
-
-          await notificationService.notifyProvider(providerId, {
-            type: "payment_received",
-            title: "Payment Secured in Escrow",
-            message: `NGN${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: NGN${subtotal.toLocaleString()}. Service charge (15%): NGN${originalProviderPlatformFee.toLocaleString()}. Bonus 5% (NGN${bonusAmount.toLocaleString()}) added to bonus balance. Complete the service to receive payment.`,
-            bookingId,
-            amount: normalizedBreakdown.providerReceives,
-            pendingBalance: providerBalanceAfter.pending,
-            bonusAmount: bonusAmount,
-          });
-
-          await notificationService.notifyUser(buyerId, {
-            type: "payment_received",
-            title: "Payment Successful",
-            message: promoApplied
-              ? `Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Promo discount: NGN${discountAmount.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${taxAmount.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`
-              : `Your payment is secured. Subtotal: NGN${subtotal.toLocaleString()}. Platform fee: NGN${userPlatformFee.toLocaleString()}. Tax: NGN${taxAmount.toLocaleString()}. Total amount: NGN${normalizedBreakdown.totalAmount.toLocaleString()}.`,
-            bookingId,
-            amount: normalizedBreakdown.totalAmount,
-          });
-        } catch (notifyError) {
-          console.error(
-            "Failed to send escrow notification to provider:",
-            notifyError.message,
-          );
-        }
-      }
 
       return { wallet, transaction, alreadyProcessed: false };
     } catch (error) {

@@ -251,8 +251,8 @@ router.get(
  * @swagger
  * /api/v1/payment/release-escrow:
  *   post:
- *     summary: Release payment to provider
- *     description: Transfers money from escrow to provider's bank account (after service completion)
+ *     summary: Release booking escrow to its payout wallet
+ *     description: After the buyer accepts completion, releases funds to the provider wallet for regular bookings or the business wallet for business bookings.
  *     tags: [Payment]
  *     security:
  *       - bearerAuth: []
@@ -304,7 +304,8 @@ router.post(
  * @swagger
  * /api/v1/payment/withdraw-fund:
  *   post:
- *     summary: Withdraw available wallet balance to bank account
+ *     summary: Withdraw provider or business wallet balance to bank account
+ *     description: Providers withdraw their provider wallet balance; business owners withdraw their business wallet balance to the configured business payout account.
  *     tags: [Payment]
  *     security:
  *       - bearerAuth: []

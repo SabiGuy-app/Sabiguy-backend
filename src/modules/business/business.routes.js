@@ -448,6 +448,53 @@ router.put(
 
 /**
  * @swagger
+ * /api/v1/businesses/bank-info:
+ *   put:
+ *     summary: Update business bank information
+ *     description: Stores the authenticated business owner's payout bank account details.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               accountName:
+ *                 type: string
+ *                 example: "ABC Logistics"
+ *               accountNumber:
+ *                 type: string
+ *                 example: "0123456789"
+ *               bankName:
+ *                 type: string
+ *                 example: "Access Bank"
+ *               bankCode:
+ *                 type: string
+ *                 example: "044"
+ *               taxId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Bank info updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       404:
+ *         description: Business not found
+ *       500:
+ *         description: Server error
+ */
+router.put(
+  "/bank-info",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  updateBusinessPayoutAccount,
+);
+
+/**
+ * @swagger
  * /api/v1/businesses/payout-account:
  *   put:
  *     summary: Update business payout account
@@ -1081,7 +1128,7 @@ router.get("/:businessId", authMiddleware, getBusinessById);
  *         description: Filter by business-facing status
  *         schema:
  *           type: string
- *           enum: [needs_staff, assigned, in_progress, completed, cancelled]
+ *           enum: [needs_staff, assigned, staff_assigned, in_progress, completed, cancelled]
  *       - in: query
  *         name: page
  *         schema:

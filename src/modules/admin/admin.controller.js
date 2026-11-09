@@ -1250,6 +1250,7 @@ class AdminController {
       const query = {
         isActive: true,
         isDeleted: { $ne: true },
+        "availability.isAvailable": true,
         currentLocation: {
           $exists: true,
           $ne: null,

@@ -147,7 +147,7 @@ router.get(
  * /api/v1/business/{businessId}/bookings/{bookingId}/assign-staff:
  *   put:
  *     summary: Assign a staff member to a booking
- *     description: Additively assigns one eligible staff member (active, on-duty, offers the booked service, not already assigned) to a booking.
+ *     description: Additively assigns one eligible staff member (active, clocked in, online, available, offers the booked service, not already assigned) to a booking.
  *     tags: [Business Staff]
  *     security:
  *       - bearerAuth: []
@@ -337,7 +337,7 @@ router.get(
  * /api/v1/business/{businessId}/staff:
  *   get:
  *     summary: List all staff
- *     description: Returns the business's staff across all account statuses with basic fields, an optional status filter and page/limit pagination.
+ *     description: Returns the business's staff with presence status (ACTIVE when the provider is active, available and has a fresh location; OFFLINE otherwise) and membershipStatus, with optional status filtering and pagination.
  *     tags: [Business Staff]
  *     security:
  *       - bearerAuth: []
@@ -352,7 +352,7 @@ router.get(
  *         required: false
  *         schema:
  *           type: string
- *           enum: [INVITED, ACTIVE, DECLINED, EXPIRED, REMOVED]
+ *           enum: [INVITED, ACTIVE, OFFLINE, DECLINED, EXPIRED, REMOVED]
  *       - in: query
  *         name: page
  *         required: false
@@ -477,6 +477,9 @@ router.get(
  *                   type: object
  *                   properties:
  *                     status:
+ *                       type: string
+ *                       enum: [ACTIVE, OFFLINE, DECLINED]
+ *                     membershipStatus:
  *                       type: string
  *                       enum: [ACTIVE, DECLINED]
  *                     staffId:

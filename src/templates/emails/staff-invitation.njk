@@ -40,18 +40,15 @@
               </p>
 
               <p style="margin:0 0 24px; font-size:15px; line-height:1.7; color:#374151;">
-                <strong>{{ businessName }}</strong> has invited you to join their team as a <strong>{{ role }}</strong>{% if services and services.length %}, handling services like {{ services | join(", ") }}{% endif %}. Accept or decline by clicking the link below.
+                <strong>{{ businessName }}</strong> has invited you to join their team as a <strong>{{ role }}</strong>{% if services and services.length %}, handling services like {{ services | join(", ") }}{% endif %}.
               </p>
 
-              <!-- CTA BUTTON -->
-              <div style="text-align:center; margin:32px 0;">
-                <a href="{{ inviteLink }}" style="display:inline-block; background:#1a6b35; color:#ffffff; padding:14px 36px; border-radius:8px; text-decoration:none; font-weight:700; font-size:15px;">
-                  Accept or Decline Invitation
-                </a>
-              </div>
+              <p style="margin:0 0 24px; font-size:15px; line-height:1.7; color:#374151;">
+                Log in to your SabiGuy dashboard to review the invitation and choose whether to accept or decline.
+              </p>
 
               <p style="margin:0 0 24px; font-size:13px; line-height:1.7; color:#6b7280;">
-                This invitation link expires in {{ expiryDays }} day{{ "s" if expiryDays != 1 else "" }}. If you don't have a SabiGuy account yet, you'll be asked to create one before accepting. If you weren't expecting this, you can safely ignore this email.
+                This invitation expires in {{ expiryDays }} day{{ "s" if expiryDays != 1 else "" }}. If you weren't expecting it, you can safely ignore this email.
               </p>
 
             </td>

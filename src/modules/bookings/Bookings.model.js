@@ -49,6 +49,7 @@ const bookingSchema = new mongoose.Schema(
       enum: [
         'needs_staff',
         'assigned',
+        'staff_assigned',
         'in_progress',
         'completed',
         'cancelled',

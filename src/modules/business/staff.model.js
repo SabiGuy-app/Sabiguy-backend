@@ -46,6 +46,8 @@ const staffSchema = new mongoose.Schema(
       default: false,
     },
     status: {
+      // Stored membership lifecycle. API `status` is derived from provider
+      // presence; this value is exposed separately as `membershipStatus`.
       type: String,
       enum: STAFF_STATUSES,
       default: "INVITED",
@@ -58,6 +60,11 @@ const staffSchema = new mongoose.Schema(
       type: String,
       enum: WORK_STATUSES,
       default: "offline",
+    },
+    // Business-approved clock-in state. Kept in sync with onDuty.active.
+    clocked_in: {
+      type: Boolean,
+      default: false,
     },
     invitedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -99,6 +106,10 @@ const staffSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+staffSchema.pre('save', function syncClockedInFlag() {
+  this.clocked_in = Boolean(this.onDuty?.active);
+});
 
 // One live (invited or active) record per email per business at a time.
 staffSchema.index(

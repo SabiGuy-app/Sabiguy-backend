@@ -6,10 +6,15 @@ const NotificationService = require("../../services/notification.service.js");
 class WalletController {
   async getBalance(req, res) {
     try {
-      const providerId = req.user.providerId || req.user.id;
-      const ownerModel = req.user.role === "provider" ? "Provider" : "Buyer";
+      const ownerId = req.user.providerId || req.user.id;
+      const ownerModel =
+        req.user.role === "provider"
+          ? "Provider"
+          : req.user.role === "businessOwner"
+            ? "Business"
+            : "Buyer";
       console.log(ownerModel);
-      const balance = await WalletService.getBalance(providerId, ownerModel);
+      const balance = await WalletService.getBalance(ownerId, ownerModel);
 
       return res.status(200).json({
         success: true,
@@ -260,6 +265,8 @@ class WalletController {
       let userModel;
       if (req.user.role === "provider") {
         userModel = "Provider"; // Match what's in your transactions
+      } else if (req.user.role === "businessOwner") {
+        userModel = "Business";
       } else if (req.user.role === "buyer") {
         userModel = "Buyer";
       } else {
