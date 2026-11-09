@@ -54,7 +54,9 @@ const serviceUserSchema = new mongoose.Schema({
   },
   isGoogleUser: { type: Boolean, default: false },
   googleId: String,
-  authMethods: [{ type: String, enum: ['email', 'google'] }],
+  isAppleUser: { type: Boolean, default: false },
+  appleId: String,
+  authMethods: [{ type: String, enum: ['email', 'google', 'apple'] }],
   profilePicture: { type: String, default: null },
   rating: {
     average: { type: Number, default: 0 },

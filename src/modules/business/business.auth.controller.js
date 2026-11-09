@@ -87,6 +87,45 @@ const googleLogin = async (req, res) => {
   }
 };
 
+const appleSignUp = async (req, res) => {
+  try {
+    const { token, nonce, fullName } = req.body;
+    const result = await businessAuthService.appleAuthBusiness(
+      token,
+      getClientPlatform(req),
+      nonce,
+      fullName,
+    );
+    return res
+      .status(result.newUser ? 201 : 200)
+      .json({ success: true, ...result });
+  } catch (err) {
+    console.error('business Apple signup error:', err.message);
+    const status = err.status || 500;
+    return res
+      .status(status)
+      .json({ message: err.message || 'Internal server error' });
+  }
+};
+
+const appleLogin = async (req, res) => {
+  try {
+    const { token, nonce } = req.body;
+    const result = await businessAuthService.appleAuthBusiness(
+      token,
+      getClientPlatform(req),
+      nonce,
+    );
+    return res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    console.error('business Apple login error:', err.message);
+    const status = err.status || 500;
+    return res
+      .status(status)
+      .json({ message: err.message || 'Internal server error' });
+  }
+};
+
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -211,6 +250,8 @@ module.exports = {
   login,
   googleSignUp,
   googleLogin,
+  appleSignUp,
+  appleLogin,
   refreshAuthToken,
   me,
   forgotPassword,

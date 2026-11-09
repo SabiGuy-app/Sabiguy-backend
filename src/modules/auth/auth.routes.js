@@ -11,6 +11,9 @@ const {
   googleSignUp,
   googleSignUpBuyer,
   googleLogIn,
+  appleSignUpProvider,
+  appleSignUpBuyer,
+  appleLogIn,
   resendOTP,
   changePassword,
   confirmPassword,
@@ -245,6 +248,99 @@ router.post("/google", googleSignUpBuyer);
  *         description: Invalid Google credentials
  */
 router.post("/google-login", googleLogIn);
+
+/**
+ * @swagger
+ * /api/v1/auth/apple-provider:
+ *   post:
+ *     summary: Register or log in a provider with Sign in with Apple
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Apple identity token
+ *               fullName:
+ *                 type: string
+ *                 description: Name returned by Apple on the user's first authorization
+ *               nonce:
+ *                 type: string
+ *                 description: Raw nonce used when requesting the Apple identity token
+ *     responses:
+ *       200:
+ *         description: Provider signed up or logged in via Apple
+ *       400:
+ *         description: Invalid token, missing verified email, or incompatible account
+ */
+router.post("/apple-provider", appleSignUpProvider);
+
+/**
+ * @swagger
+ * /api/v1/auth/apple:
+ *   post:
+ *     summary: Register or log in a buyer with Sign in with Apple
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Apple identity token
+ *               fullName:
+ *                 type: string
+ *                 description: Name returned by Apple on the user's first authorization
+ *               nonce:
+ *                 type: string
+ *                 description: Raw nonce used when requesting the Apple identity token
+ *     responses:
+ *       200:
+ *         description: Buyer signed up or logged in via Apple
+ *       400:
+ *         description: Invalid token, missing verified email, or incompatible account
+ */
+router.post("/apple", appleSignUpBuyer);
+
+/**
+ * @swagger
+ * /api/v1/auth/apple-login:
+ *   post:
+ *     summary: Log in a user with Sign in with Apple
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Apple identity token
+ *               nonce:
+ *                 type: string
+ *                 description: Raw nonce used when requesting the Apple identity token
+ *     responses:
+ *       200:
+ *         description: Logged in via Apple successfully
+ *       401:
+ *         description: Invalid Apple credentials
+ */
+router.post("/apple-login", appleLogIn);
 
 /**
  * @swagger
