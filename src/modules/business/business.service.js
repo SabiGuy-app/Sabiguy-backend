@@ -395,7 +395,9 @@ const addBusinessVerification = async (businessId, payload) => {
 
     businessPhotos.forEach((photoUrl, index) => {
       if (!isValidUrl(photoUrl)) {
-        throw new ValidationError(`businessPhotos[${index}] must be a valid URL`);
+        throw new ValidationError(
+          `businessPhotos[${index}] must be a valid URL`,
+        );
       }
     });
   }
@@ -762,7 +764,15 @@ const updateBusinessOperatingDefaults = async (businessId, payload = {}) => {
 
 // 10. Update the business payout (company bank) account.
 const updateBusinessPayoutAccount = async (businessId, payload = {}) => {
-  const { bankName, bankCode, accountNumber, accountName, taxId } = payload;
+  const {
+    bankName,
+    bankCode,
+    accountNumber,
+    accountName,
+    taxId,
+    paystackRecipientCode,
+    verified,
+  } = payload;
 
   const updates = {};
   applyStringField('payoutAccount.bankName', 'bankName', bankName, updates);
@@ -786,6 +796,13 @@ const updateBusinessPayoutAccount = async (businessId, payload = {}) => {
     updates['payoutAccount.accountNumber'] = accountNumber.trim();
   }
 
+  if (verified !== undefined) {
+    if (typeof verified !== 'boolean') {
+      throw new ValidationError('verified must be a boolean');
+    }
+    updates['payoutAccount.verified'] = verified;
+  }
+
   if (Object.keys(updates).length === 0) {
     throw new ValidationError('No valid fields provided for update');
   }
@@ -802,6 +819,7 @@ const updateBusinessPayoutAccount = async (businessId, payload = {}) => {
     bankCode: updated.payoutAccount?.bankCode,
     accountNumber: updated.payoutAccount?.accountNumber,
     accountName: updated.payoutAccount?.accountName,
+    paystackRecipientCode: updated.payoutAccount?.paystackRecipientCode,
     taxId: updated.payoutAccount?.taxId,
     verified: updated.payoutAccount?.verified ?? false,
   };
@@ -1222,21 +1240,32 @@ const acceptBooking = async (businessId, bookingIdInput, ...rest) => {
   let bookingId = bookingIdInput;
   let reason;
   if (bookingIdInput && typeof bookingIdInput === 'object') {
-    bookingId = bookingIdInput.bookingId || bookingIdInput.id || bookingIdInput._id || bookingIdInput.booking;
+    bookingId =
+      bookingIdInput.bookingId ||
+      bookingIdInput.id ||
+      bookingIdInput._id ||
+      bookingIdInput.booking;
     reason = bookingIdInput.reason;
   }
   if (rest && rest.length && reason === undefined) reason = rest[0];
-  if (!mongoose.isValidObjectId(businessId)) throw new ValidationError('Invalid business ID');
-  if (!mongoose.isValidObjectId(bookingId)) throw new ValidationError('Invalid booking ID');
+  if (!mongoose.isValidObjectId(businessId))
+    throw new ValidationError('Invalid business ID');
+  if (!mongoose.isValidObjectId(bookingId))
+    throw new ValidationError('Invalid booking ID');
   await requireActiveBusiness(businessId);
   const booking = await Booking.findOne({ _id: bookingId, businessId });
   if (!booking) throw new NotFoundError('Booking not found');
-  if (!['awaiting_provider_acceptance','pending_providers'].includes(booking.status)) throw new ConflictError('Booking is no longer available');
+  if (
+    !['awaiting_provider_acceptance', 'pending_providers'].includes(
+      booking.status,
+    )
+  )
+    throw new ConflictError('Booking is no longer available');
   const acceptedAt = new Date();
   booking.status = 'provider_selected';
   booking.acceptedAt = acceptedAt;
   booking.selectedAt = acceptedAt;
-  booking.paymentDeadlineAt = new Date(acceptedAt.getTime() + 5*60*1000);
+  booking.paymentDeadlineAt = new Date(acceptedAt.getTime() + 5 * 60 * 1000);
   booking.providerResponse = 'accepted';
   await booking.save();
   await notificationService.notifyUser(booking.userId, {
@@ -1253,26 +1282,47 @@ const declineBooking = async (businessId, bookingIdInput, ...rest) => {
   let bookingId = bookingIdInput;
   let reason;
   if (bookingIdInput && typeof bookingIdInput === 'object') {
-    bookingId = bookingIdInput.bookingId || bookingIdInput.id || bookingIdInput._id || bookingIdInput.booking;
+    bookingId =
+      bookingIdInput.bookingId ||
+      bookingIdInput.id ||
+      bookingIdInput._id ||
+      bookingIdInput.booking;
     reason = bookingIdInput.reason;
   }
   if (rest && rest.length && reason === undefined) reason = rest[0];
-  if (rest && rest.length && typeof rest[0] === 'object' && rest[0] !== null) reason = rest[0].reason || reason;
-  if (!mongoose.isValidObjectId(businessId)) throw new ValidationError('Invalid business ID');
-  if (!mongoose.isValidObjectId(bookingId)) throw new ValidationError('Invalid booking ID');
+  if (rest && rest.length && typeof rest[0] === 'object' && rest[0] !== null)
+    reason = rest[0].reason || reason;
+  if (!mongoose.isValidObjectId(businessId))
+    throw new ValidationError('Invalid business ID');
+  if (!mongoose.isValidObjectId(bookingId))
+    throw new ValidationError('Invalid booking ID');
   await requireActiveBusiness(businessId);
-  const booking = await Booking.findOne({ _id: bookingId, businessId, status: { $in: ['awaiting_provider_acceptance','pending_providers'] } });
-  if (!booking) throw new NotFoundError('Booking not found or cannot be declined');
-  if (booking.providerId && String(booking.providerId) === String(businessId)) booking.providerId = undefined;
+  const booking = await Booking.findOne({
+    _id: bookingId,
+    businessId,
+    status: { $in: ['awaiting_provider_acceptance', 'pending_providers'] },
+  });
+  if (!booking)
+    throw new NotFoundError('Booking not found or cannot be declined');
+  if (booking.providerId && String(booking.providerId) === String(businessId))
+    booking.providerId = undefined;
   booking.providerResponse = 'declined';
   await booking.save();
   await notificationService.notifyUser(booking.userId, {
     type: 'booking_declined',
     title: 'Business Declined Booking',
-    message: reason && String(reason).trim() ? 'A business declined your booking: ' + String(reason).trim() : 'A business declined your booking. We will continue looking for an available provider.',
+    message:
+      reason && String(reason).trim()
+        ? 'A business declined your booking: ' + String(reason).trim()
+        : 'A business declined your booking. We will continue looking for an available provider.',
     bookingId: booking._id,
   });
   return booking;
 };
 
-Object.assign(module.exports, { acceptBooking, declineBooking, acceptBusinessBooking: acceptBooking, declineBusinessBooking: declineBooking });
+Object.assign(module.exports, {
+  acceptBooking,
+  declineBooking,
+  acceptBusinessBooking: acceptBooking,
+  declineBusinessBooking: declineBooking,
+});
