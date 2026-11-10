@@ -462,23 +462,88 @@ router.put(
  *           schema:
  *             type: object
  *             properties:
- *               accountName:
- *                 type: string
- *                 example: "ABC Logistics"
- *               accountNumber:
- *                 type: string
- *                 example: "0123456789"
  *               bankName:
  *                 type: string
- *                 example: "Access Bank"
+ *                 example: "OPay Digital Services Limited (OPay)"
  *               bankCode:
  *                 type: string
- *                 example: "044"
+ *                 example: "999992"
+ *               accountNumber:
+ *                 type: string
+ *                 example: "7041629193"
+ *               accountName:
+ *                 type: string
+ *                 example: "JOSHUA  ODUSANYA"
  *               taxId:
  *                 type: string
+ *                 nullable: true
+ *                 example: "TIN-12345678"
+ *               paystackRecipientCode:
+ *                 type: string
+ *                 nullable: true
+ *                 example: null
+ *               verified:
+ *                 type: boolean
+ *                 example: false
+ *           example:
+ *             bankName: "OPay Digital Services Limited (OPay)"
+ *             bankCode: "999992"
+ *             accountNumber: "7041629193"
+ *             accountName: "JOSHUA  ODUSANYA"
+ *             taxId: "TIN-12345678"
+ *             paystackRecipientCode: null
+ *             verified: false
  *     responses:
  *       200:
  *         description: Bank info updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Payout account updated successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bankName:
+ *                       type: string
+ *                       example: "OPay Digital Services Limited (OPay)"
+ *                     bankCode:
+ *                       type: string
+ *                       example: "999992"
+ *                     accountNumber:
+ *                       type: string
+ *                       example: "7041629193"
+ *                     accountName:
+ *                       type: string
+ *                       example: "JOSHUA  ODUSANYA"
+ *                     taxId:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "TIN-12345678"
+ *                     paystackRecipientCode:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     verified:
+ *                       type: boolean
+ *                       example: false
+ *             example:
+ *               success: true
+ *               message: Payout account updated successfully
+ *               data:
+ *                 bankName: "OPay Digital Services Limited (OPay)"
+ *                 bankCode: "999992"
+ *                 accountNumber: "7041629193"
+ *                 accountName: "JOSHUA  ODUSANYA"
+ *                 taxId: "TIN-12345678"
+ *                 paystackRecipientCode: null
+ *                 verified: false
  *       400:
  *         description: Invalid or empty fields
  *       404:
@@ -511,17 +576,86 @@ router.put(
  *             properties:
  *               bankName:
  *                 type: string
+ *                 example: "OPay Digital Services Limited (OPay)"
  *               bankCode:
  *                 type: string
+ *                 example: "999992"
  *               accountNumber:
  *                 type: string
+ *                 example: "7041629193"
  *               accountName:
  *                 type: string
+ *                 example: "JOSHUA  ODUSANYA"
  *               taxId:
  *                 type: string
+ *                 nullable: true
+ *                 example: "TIN-12345678"
+ *               paystackRecipientCode:
+ *                 type: string
+ *                 nullable: true
+ *                 example: null
+ *               verified:
+ *                 type: boolean
+ *                 example: false
+ *           example:
+ *             bankName: "OPay Digital Services Limited (OPay)"
+ *             bankCode: "999992"
+ *             accountNumber: "7041629193"
+ *             accountName: "JOSHUA  ODUSANYA"
+ *             taxId: "TIN-12345678"
+ *             paystackRecipientCode: null
+ *             verified: false
  *     responses:
  *       200:
  *         description: Payout account updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Payout account updated successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bankName:
+ *                       type: string
+ *                       example: "OPay Digital Services Limited (OPay)"
+ *                     bankCode:
+ *                       type: string
+ *                       example: "999992"
+ *                     accountNumber:
+ *                       type: string
+ *                       example: "7041629193"
+ *                     accountName:
+ *                       type: string
+ *                       example: "JOSHUA  ODUSANYA"
+ *                     taxId:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "TIN-12345678"
+ *                     paystackRecipientCode:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     verified:
+ *                       type: boolean
+ *                       example: false
+ *             example:
+ *               success: true
+ *               message: Payout account updated successfully
+ *               data:
+ *                 bankName: "OPay Digital Services Limited (OPay)"
+ *                 bankCode: "999992"
+ *                 accountNumber: "7041629193"
+ *                 accountName: "JOSHUA  ODUSANYA"
+ *                 taxId: "TIN-12345678"
+ *                 paystackRecipientCode: null
+ *                 verified: false
  *       400:
  *         description: Invalid or empty fields
  *       404:
