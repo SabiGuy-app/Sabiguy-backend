@@ -1,6 +1,8 @@
 const { OAuth2Client } = require('google-auth-library');
 const axios = require('axios');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const {
   sendWelcomeEmail,
   sendBusinessWelcomeMail,
@@ -14,6 +16,11 @@ const allowedGoogleClientIds = [
 
 // Pass a primary client id if available, otherwise create a client without one
 const client = new OAuth2Client(allowedGoogleClientIds[0] || undefined);
+const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
+const APPLE_ISSUER = 'https://appleid.apple.com';
+const APPLE_JWKS_CACHE_MS = 60 * 60 * 1000;
+let appleJwksCache = null;
+let appleJwksCacheExpiresAt = 0;
 
 const BCRYPT_SALT_ROUNDS = 10;
 
@@ -88,6 +95,102 @@ const verifyGoogleToken = async (token) => {
     if (accessTokenError instanceof AppError) throw accessTokenError;
     throw new AppError("Invalid or expired Google token", 401);
   }
+};
+
+const getAppleJwks = async (forceRefresh = false) => {
+  if (!forceRefresh && appleJwksCache && Date.now() < appleJwksCacheExpiresAt) {
+    return appleJwksCache;
+  }
+
+  try {
+    const response = await axios.get(APPLE_JWKS_URL, { timeout: 10000 });
+    if (!Array.isArray(response.data?.keys)) {
+      throw new Error('Apple returned an invalid signing key set');
+    }
+
+    appleJwksCache = response.data.keys;
+    appleJwksCacheExpiresAt = Date.now() + APPLE_JWKS_CACHE_MS;
+    return appleJwksCache;
+  } catch (error) {
+    appleJwksCache = null;
+    appleJwksCacheExpiresAt = 0;
+    console.error('Failed to retrieve Apple signing keys:', error.message);
+    throw new AppError('Apple token verification is temporarily unavailable', 503);
+  }
+};
+
+const verifyAppleToken = async (token, { nonce } = {}) => {
+  if (!token || typeof token !== 'string') {
+    throw new AppError('Token is required', 400);
+  }
+
+  const allowedAppleClientIds = String(process.env.APPLE_CLIENT_IDS || '')
+    .split(',')
+    .map((clientId) => clientId.trim())
+    .filter(Boolean);
+  if (allowedAppleClientIds.length === 0) {
+    throw new AppError('Apple authentication is not configured', 500);
+  }
+
+  const decoded = jwt.decode(token, { complete: true });
+  if (
+    !decoded ||
+    decoded.header?.alg !== 'RS256' ||
+    typeof decoded.header?.kid !== 'string'
+  ) {
+    throw new AppError('Invalid Apple identity token', 401);
+  }
+
+  let appleKey = (await getAppleJwks()).find(
+    ({ kid }) => kid === decoded.header.kid,
+  );
+  if (!appleKey) {
+    appleKey = (await getAppleJwks(true)).find(
+      ({ kid }) => kid === decoded.header.kid,
+    );
+  }
+  if (!appleKey) {
+    throw new AppError('Invalid Apple identity token', 401);
+  }
+
+  let claims;
+  try {
+    const publicKey = crypto.createPublicKey({
+      key: appleKey,
+      format: 'jwk',
+    });
+    claims = jwt.verify(token, publicKey, {
+      algorithms: ['RS256'],
+      issuer: APPLE_ISSUER,
+      audience: allowedAppleClientIds,
+    });
+  } catch (_error) {
+    throw new AppError('Invalid or expired Apple identity token', 401);
+  }
+
+  if (typeof claims.sub !== 'string' || !claims.sub) {
+    throw new AppError('Apple identity token is missing its subject', 401);
+  }
+  if (!Number.isFinite(claims.exp)) {
+    throw new AppError('Apple identity token is missing its expiration', 401);
+  }
+
+  if (nonce !== undefined) {
+    if (typeof nonce !== 'string' || !nonce || typeof claims.nonce !== 'string') {
+      throw new AppError('Invalid Apple nonce', 401);
+    }
+    const hashedNonce = crypto.createHash('sha256').update(nonce).digest('hex');
+    if (claims.nonce !== nonce && claims.nonce !== hashedNonce) {
+      throw new AppError('Invalid Apple nonce', 401);
+    }
+  }
+
+  return {
+    appleId: claims.sub,
+    email: claims.email,
+    emailVerified:
+      claims.email_verified === true || claims.email_verified === 'true',
+  };
 };
 
 const generateOtp = () =>
@@ -172,6 +275,18 @@ const linkGoogleAccount = (user, googleId) => {
   addAuthMethod(user, "google");
 };
 
+const linkAppleAccount = (user, appleId) => {
+  user.isAppleUser = true;
+  user.appleId = appleId;
+  user.emailVerified = true;
+  user.otp = null;
+  user.otpExpiresAt = null;
+  if ('emailVerificationExpires' in user) {
+    user.emailVerificationExpires = null;
+  }
+  addAuthMethod(user, 'apple');
+};
+
 const passwordChangedEmailSafe = async (
   passwordChangedEmailFn,
   email,
@@ -197,6 +312,10 @@ const googleHelper = {
   verifyToken: verifyGoogleToken,
 };
 
+const appleHelper = {
+  verifyToken: verifyAppleToken,
+};
+
 const passwordHelper = {
   hash: hashPassword,
   compare: comparePassword,
@@ -214,6 +333,7 @@ const accountHelper = {
   getFirstName,
   addAuthMethod,
   linkGoogleAccount,
+  linkAppleAccount,
   generateOtp,
   formatChangedAt,
 };
@@ -221,6 +341,7 @@ const accountHelper = {
 module.exports = {
   AppError,
   googleHelper,
+  appleHelper,
   passwordHelper,
   emailHelper,
   accountHelper,
