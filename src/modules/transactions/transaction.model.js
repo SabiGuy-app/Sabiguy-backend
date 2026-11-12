@@ -83,6 +83,11 @@ const transactionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
     },
+    productOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductOrder",
+      index: true,
+    },
 
     // Payment gateway details (if external)
     gateway: {

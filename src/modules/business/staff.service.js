@@ -514,8 +514,8 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
       );
     }
   }, 'Buyer staff assignment');
-  if (staff.provider) await notificationService.notifyProvider(staff.provider._id ?? staff.provider, { type: 'booking_status_updated', title: 'New Booking Assignment', message: 'You have been assigned to a ' + (serviceName || 'service') + ' booking.', bookingId: booking._id, staffId: staff._id }).catch(() => {});
-  await notificationService.notifyBusiness(businessId, { type: 'booking_status_updated', title: 'Staff Assigned to Booking', message: (staff.fullName || 'A staff member') + ' has been assigned to booking ' + booking._id + '.', bookingId: booking._id, staffId: staff._id }).catch(() => {});
+  if (staff.provider) await notificationService.notifyProvider(staff.provider._id ?? staff.provider, { type: 'booking_assigned', title: 'New Booking Assignment', message: 'You have been assigned to a ' + (serviceName || 'service') + ' booking.', bookingId: booking._id, staffId: staff._id }).catch(() => {});
+  await notificationService.notifyBusiness(businessId, { type: 'booking_assigned', title: 'Staff Assigned to Booking', message: (staff.fullName || 'A staff member') + ' has been assigned to booking ' + booking._id + '.', bookingId: booking._id, staffId: staff._id }).catch(() => {});
   return {
     bookingId: booking._id,
     businessStatus: booking.businessStatus,

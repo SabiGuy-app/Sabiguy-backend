@@ -77,7 +77,8 @@ class NotificationService {
     const legacyDefaults = {
       bookings: [
         ["new_booking_request", "provider_accepted", "booking_selected", "booking_cancelled", "booking_status_updated", "booking_taken", "counter_offer", "booking_completed_awaiting_acceptance"],
-        ["new_booking_request", "provider_accepted", "booking_selected", "booking_cancelled", "booking_status_updated", "booking_taken", "counter_offer", "booking_cancellation_requested", "booking_cancellation_rejected", "booking_cancellation_approved", "booking_disputed", "booking_completed_awaiting_acceptance", "booking_auto_completed", "booking_expired"],
+        ["new_booking_request", "provider_accepted", "booking_selected", "booking_cancelled", "booking_status_updated", "booking_assigned", "booking_taken", "counter_offer", "booking_completed_awaiting_acceptance"],
+        ["new_booking_request", "provider_accepted", "booking_selected", "booking_cancelled", "booking_status_updated", "booking_assigned", "booking_taken", "counter_offer", "booking_cancellation_requested", "booking_cancellation_rejected", "booking_cancellation_approved", "booking_disputed", "booking_completed_awaiting_acceptance", "booking_auto_completed", "booking_expired"],
       ],
       jobCompleted: [["job_started", "booking_completed", "job_completed_confirmed"]],
       chatMessages: [["new_message", "message_received"]],
@@ -97,6 +98,7 @@ class NotificationService {
       booking_selected: "bookings",
       booking_cancelled: "bookings",
       booking_status_updated: "bookings",
+      booking_assigned: "bookings",
       booking_taken: "bookings",
       booking_completed_awaiting_acceptance: "bookings",
       booking_cancellation_requested: "bookings",
@@ -122,6 +124,10 @@ class NotificationService {
       driver_invitation_received: "bookings",
       driver_invitation_accepted: "bookings",
       driver_invitation_rejected: "bookings",
+      product_order_received: "bookings",
+      product_order_paid: "bookings",
+      product_order_updated: "bookings",
+      product_order_delivered: "walletPayments",
     };
     return map[type] || "bookings";
   }
