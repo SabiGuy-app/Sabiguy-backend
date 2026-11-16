@@ -1065,7 +1065,7 @@ router.post(
  *                             type: integer
  *                       online:
  *                         type: boolean
- *                         description: Whether the provider or business is currently available and recently active
+ *                         description: Matches the admin online lists: providers must be available with a fresh location; businesses must have a fresh location
  *                       kycVerified:
  *                         type: boolean
  *                         example: true

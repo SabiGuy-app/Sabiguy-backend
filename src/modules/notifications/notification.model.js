@@ -38,6 +38,7 @@ const notificationSchema = new mongoose.Schema({
       'job_completed_confirmed',
       'new_message',
       'booking_status_updated',
+      'booking_assigned',
       'booking_disputed',
       'booking_auto_completed',
       'booking_completed_awaiting_acceptance',
@@ -48,7 +49,11 @@ const notificationSchema = new mongoose.Schema({
       'staff_clock_out_requested',
       'staff_clock_request_approved',
       'staff_clock_request_rejected',
-      'staff_clocked_out_by_business'
+      'staff_clocked_out_by_business',
+      'product_order_received',
+      'product_order_paid',
+      'product_order_updated',
+      'product_order_delivered',
     ]
   },
   title: {

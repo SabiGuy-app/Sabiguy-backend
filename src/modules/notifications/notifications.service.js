@@ -142,11 +142,19 @@ exports.updateNotificationPreferences = async (
     if (!notificationPreferences[key]) return;
     const incoming = notificationPreferences[key];
     const base = current[key];
+    const push = typeof incoming.push === "boolean" ? incoming.push : base.push;
+    const email =
+      typeof incoming.email === "boolean" ? incoming.email : base.email;
 
     merged[key] = {
-      push: typeof incoming.push === "boolean" ? incoming.push : base.push,
-      email: typeof incoming.email === "boolean" ? incoming.email : base.email,
-      types: Array.isArray(incoming.types) ? incoming.types : base.types,
+      push,
+      email,
+      types:
+        key === "bookings" && (push || email)
+          ? []
+          : Array.isArray(incoming.types)
+            ? incoming.types
+            : base.types,
     };
   });
 

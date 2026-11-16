@@ -12,7 +12,7 @@ const ADMIN_ROLES = ['super_admin', 'verification_admin'];
 
 const createProduct = async (req, res) => {
   try {
-    const { name, price, description, currency, productImage } = req.body || {};
+    const { name, price, quantity, description, currency, productImage } = req.body || {};
     if (typeof name !== 'string' || !name.trim()) {
       return res
         .status(400)
@@ -27,6 +27,13 @@ const createProduct = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Price must be a non-negative number',
+      });
+    }
+    const stockQuantity = Number(quantity);
+    if (quantity === undefined || !Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Quantity must be a non-negative integer',
       });
     }
 
@@ -51,6 +58,7 @@ const createProduct = async (req, res) => {
       productImage:
         typeof productImage === 'string' ? productImage.trim() : undefined,
       price: numericPrice,
+      quantity: stockQuantity,
       currency: currency || 'NGN',
       status: 'pending',
     });
@@ -250,6 +258,16 @@ const updateProduct = async (req, res) => {
         });
       }
       updates.price = price;
+    }
+    if (Object.hasOwn(body, 'quantity')) {
+      const quantity = Number(body.quantity);
+      if (body.quantity === '' || !Number.isInteger(quantity) || quantity < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Quantity must be a non-negative integer',
+        });
+      }
+      updates.quantity = quantity;
     }
     if (Object.hasOwn(body, 'description')) {
       if (typeof body.description !== 'string') {
