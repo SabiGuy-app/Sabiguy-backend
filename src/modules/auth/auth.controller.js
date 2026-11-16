@@ -345,7 +345,7 @@ exports.googleLogIn = async (req, res) => {
     const { email, googleId } = await googleHelper.verifyToken(token);
     const normalizedEmail = normalizeEmail(email);
 
-    const { user } = await findUserAcrossRoles(normalizedEmail, [
+    let { user } = await findUserAcrossRoles(normalizedEmail, [
       'provider',
       'buyer',
       'businessOwner',

@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const STAFF_STATUSES = ["INVITED", "ACTIVE", "DECLINED", "EXPIRED", "REMOVED"];
+const STAFF_STATUSES = ["INVITED", "ACTIVE", "DECLINED", "EXPIRED", "SUSPENDED", "REMOVED"];
 const WORK_STATUSES = ["offline", "available", "booked", "in_service"];
 const CLOCK_ACTIONS = ["clock_in", "clock_out"];
 const CLOCK_REQUEST_STATUSES = ["pending", "approved", "rejected", "cancelled"];

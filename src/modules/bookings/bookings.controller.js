@@ -1977,6 +1977,12 @@ class BookingController {
       const onlineThreshold = new Date(
         Date.now() - STALE_LOCATION_MINUTES * 60 * 1000,
       );
+      const hasFreshLocation = (account) =>
+        Boolean(
+          account.currentLocation?.coordinates?.length &&
+            account.lastLocationUpdate &&
+            new Date(account.lastLocationUpdate) >= onlineThreshold,
+        );
 
       const providers = rawProviders.map((provider) => ({
         id: provider._id,
@@ -1993,11 +1999,7 @@ class BookingController {
         kycVerified: provider.kycVerified === true,
         online:
           provider.availability?.isAvailable === true &&
-          provider.isOnline !== false &&
-          Boolean(
-            provider.lastLocationUpdate &&
-              new Date(provider.lastLocationUpdate) >= onlineThreshold,
-          ),
+          hasFreshLocation(provider),
         services: serviceNameRegex
           ? (provider.service || []).filter((item) =>
               serviceNameRegex.test(item.serviceName || ""),
@@ -2021,15 +2023,7 @@ class BookingController {
         currentLocation: business.currentLocation,
         lastLocationUpdate: business.lastLocationUpdate,
         kycVerified: business.kycVerified === true,
-        online:
-          business.availability?.isAvailable === true &&
-          business.isOnline === true &&
-          Boolean(
-            (business.lastSeenAt || business.lastLocationUpdate) &&
-              new Date(
-                business.lastSeenAt || business.lastLocationUpdate,
-              ) >= onlineThreshold,
-          ),
+        online: hasFreshLocation(business),
         services: serviceNameRegex
           ? (business.service || []).filter((item) =>
               serviceNameRegex.test(item.serviceName || ""),
