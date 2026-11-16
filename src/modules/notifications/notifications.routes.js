@@ -289,6 +289,7 @@ router.get(
  * /api/v1/notifications/preferences:
  *   patch:
  *     summary: Update notification preferences
+ *     description: Enabling push or email for bookings enables all booking notification types.
  *     tags: [Notifications]
  *     security:
  *       - bearerAuth: []
@@ -305,9 +306,7 @@ router.get(
  *                   bookings:
  *                     push: true
  *                     email: true
- *                     types:
- *                       - new_booking_request
- *                       - provider_accepted
+ *                     types: []
  *                   promotions:
  *                     push: false
  *                     email: false

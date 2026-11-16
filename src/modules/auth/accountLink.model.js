@@ -15,6 +15,13 @@ const accountLinkSchema = new mongoose.Schema(
         },
       },
     ],
+    lastActiveRole: {
+      type: String,
+      enum: ["buyer", "provider", "businessOwner"],
+    },
+    lastActiveProfileId: {
+      type: mongoose.Schema.Types.ObjectId,
+    },
   },
   { timestamps: true },
 );

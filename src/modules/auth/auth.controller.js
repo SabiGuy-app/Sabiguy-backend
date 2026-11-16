@@ -66,6 +66,38 @@ const findUserAcrossRoles = async (email, roles = authRoles) => {
   return { user: null, role: null };
 };
 
+const resolveLastActiveProfile = async (user, role) => {
+  if (!switchableRoles.includes(role)) return { user, role };
+  const link = await AccountLink.findOne({
+    profiles: { $elemMatch: { role, profileId: user._id } },
+  });
+  if (!link?.lastActiveRole || !link.lastActiveProfileId) return { user, role };
+
+  const activeEntry = link.profiles.find(
+    (entry) => entry.role === link.lastActiveRole &&
+      String(entry.profileId) === String(link.lastActiveProfileId),
+  );
+  const ActiveModel = roleModelMap[link.lastActiveRole];
+  if (!activeEntry || !ActiveModel) return { user, role };
+
+  const activeUser = await ActiveModel.findById(activeEntry.profileId);
+  if (!activeUser || activeUser.isDeleted || activeUser.isActive === false) {
+    return { user, role };
+  }
+  return { user: activeUser, role: link.lastActiveRole };
+};
+
+const persistLastActiveProfile = async (user, role) => {
+  if (!switchableRoles.includes(role)) return;
+  const link = await AccountLink.findOne({
+    profiles: { $elemMatch: { role, profileId: user._id } },
+  });
+  if (!link) return;
+  link.lastActiveRole = role;
+  link.lastActiveProfileId = user._id;
+  await link.save();
+};
+
 const findUserByAppleId = async (appleId, roles = [
   'provider',
   'buyer',
@@ -346,6 +378,10 @@ exports.googleLogIn = async (req, res) => {
       user.emailVerified = true;
     }
 
+    let loginRole = user.role;
+    ({ user, role: loginRole } = await resolveLastActiveProfile(user, loginRole));
+    await persistLastActiveProfile(user, loginRole);
+
     const jwtToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
     user.refreshToken = refreshToken;
@@ -356,6 +392,7 @@ exports.googleLogIn = async (req, res) => {
       message: 'Login successful',
       token: jwtToken,
       refreshToken,
+      role: loginRole,
       user: buildAuthUserPayload(user),
     });
   } catch (err) {
@@ -1064,22 +1101,40 @@ exports.login = async (req, res) => {
       }
       user = await findUserByRole(requestedRole);
       role = requestedRole;
+      if (!user) {
+        return res.status(400).json({ message: 'Invalid credentials' });
+      }
+      if ((user.isGoogleUser || user.isAppleUser) && !user.password) {
+        return res.status(400).json({
+          message: "This account was created with social sign-in. Please log in with that provider, or use 'Forgot Password' to set a password.",
+          authMethod: user.isAppleUser ? 'apple' : 'google',
+        });
+      }
+      if (!(await passwordHelper.compare(password, user.password))) {
+        return res.status(400).json({ message: 'Invalid credentials' });
+      }
     } else {
-      user = await findUserByRole('buyer');
-      role = 'buyer';
+      const candidates = await Promise.all(
+        ['buyer', 'provider', 'admin', 'businessOwner'].map(async (candidateRole) => ({
+          role: candidateRole,
+          user: await findUserByRole(candidateRole),
+        })),
+      );
+      const matchingCandidates = [];
+      for (const candidate of candidates) {
+        if (!candidate.user || (candidate.user.isGoogleUser || candidate.user.isAppleUser) && !candidate.user.password) continue;
+        if (await passwordHelper.compare(password, candidate.user.password)) {
+          matchingCandidates.push(candidate);
+        }
+      }
+      if (matchingCandidates.length === 0) {
+        return res.status(400).json({ message: 'Invalid credentials' });
+      }
+      ({ user, role } = matchingCandidates[0]);
+    }
 
-      if (!user) {
-        user = await findUserByRole('provider');
-        role = 'provider';
-      }
-      if (!user) {
-        user = await findUserByRole('admin');
-        role = 'admin';
-      }
-      if (!user) {
-        user = await findUserByRole('businessOwner');
-        role = 'businessOwner';
-      }
+    if (!requestedRole) {
+      ({ user, role } = await resolveLastActiveProfile(user, role));
     }
 
     if (!user) {
@@ -1100,18 +1155,7 @@ exports.login = async (req, res) => {
         .json({ message: 'Please verify your email before logging in' });
     }
 
-    if ((user.isGoogleUser || user.isAppleUser) && !user.password) {
-      return res.status(400).json({
-        message:
-          "This account was created with social sign-in. Please log in with that provider, or use 'Forgot Password' to set a password.",
-        authMethod: user.isAppleUser ? 'apple' : 'google',
-      });
-    }
-
-    const isMatch = await passwordHelper.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
+    await persistLastActiveProfile(user, role);
 
     const token = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
@@ -1829,7 +1873,7 @@ exports.switchProfile = async (req, res) => {
       });
     }
 
-    const sourceLink = await AccountLink.findOne({
+    let sourceLink = await AccountLink.findOne({
       profiles: { $elemMatch: { role: currentRole, profileId: currentId } },
     });
     const isAlreadyLinked = Boolean(
@@ -1896,10 +1940,22 @@ exports.switchProfile = async (req, res) => {
       const targetEntry = { role: targetRole, profileId: target._id };
       if (sourceLink) {
         sourceLink.profiles.push(targetEntry);
+        sourceLink.lastActiveRole = targetRole;
+        sourceLink.lastActiveProfileId = target._id;
         await sourceLink.save();
       } else {
-        await AccountLink.create({ profiles: [sourceEntry, targetEntry] });
+        sourceLink = await AccountLink.create({
+          profiles: [sourceEntry, targetEntry],
+          lastActiveRole: targetRole,
+          lastActiveProfileId: target._id,
+        });
       }
+    }
+
+    if (sourceLink) {
+      sourceLink.lastActiveRole = targetRole;
+      sourceLink.lastActiveProfileId = target._id;
+      await sourceLink.save();
     }
 
     const refreshToken = generateRefreshToken(target);
@@ -2024,12 +2080,20 @@ exports.switchToBuyer = async (req, res) => {
               { role: sourceRole, profileId: source._id },
               targetEntry,
             ],
+            lastActiveRole: 'buyer',
+            lastActiveProfileId: buyer._id,
           });
         }
       } catch (linkError) {
         await Buyer.deleteOne({ _id: buyer._id });
         throw linkError;
       }
+    }
+
+    if (sourceLink) {
+      sourceLink.lastActiveRole = 'buyer';
+      sourceLink.lastActiveProfileId = buyer._id;
+      await sourceLink.save();
     }
 
     const refreshToken = generateRefreshToken(buyer);
