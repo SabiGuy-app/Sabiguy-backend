@@ -135,7 +135,7 @@ jobs:
             METERED_APP_DOMAIN=${{ secrets.METERED_APP_DOMAIN }}
             METERED_API_KEY=${{ secrets.METERED_API_KEY }}
             ADMIN_URL=${{ secrets.ADMIN_URL }}
-
+            APPLE_CLIENT_IDS=${{ secrets.APPLE_CLIENT_IDS }}
             ENVEOF
 
       - name: Deploy to EC2
@@ -207,6 +207,7 @@ jobs:
             GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}
             ADMIN_INVITE_URL=${{ secrets.ADMIN_INVITE_URL }}
             ADMIN_BOOTSTRAP_EMAILS=${{ secrets.ADMIN_BOOTSTRAP_EMAILS }}
+            APPLE_CLIENT_IDS=${{ secrets.APPLE_CLIENT_IDS }}
             ENVEOF
 
       - name: Deploy to EC2
