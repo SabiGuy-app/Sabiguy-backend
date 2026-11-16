@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router({ mergeParams: true });
-const { inviteStaff, getStaffCandidates, assignStaffToBooking, updateStaffRole, getStaffOnDuty, getAllStaff, getStaffDetail, respondToStaffInvite, clockIn, clockOut, getPendingClockRequests, respondToClockRequest, businessClockOutStaff, removeStaff } = require("./staff.controller");
+const { inviteStaff, getStaffCandidates, assignStaffToBooking, updateStaffRole, getStaffOnDuty, getAllStaff, getStaffDetail, respondToStaffInvite, clockIn, clockOut, getPendingClockRequests, respondToClockRequest, businessClockOutStaff, removeStaff, suspendStaff, liftStaffSuspension } = require("./staff.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
 const onlyRole = require("../../../middleware/roleMiddleware");
 
@@ -706,6 +706,13 @@ router.post(
  *       500:
  *         description: Server error
  */
+router.post(
+  '/:businessId/staff/:staffId/clock-out',
+  authMiddleware,
+  onlyRole('businessOwner'),
+  businessClockOutStaff,
+);
+
 /**
  * @swagger
  * /api/v1/business/{businessId}/staff/{staffId}:
@@ -745,6 +752,84 @@ router.delete(
   authMiddleware,
   onlyRole('businessOwner'),
   removeStaff,
+);
+
+/**
+ * @swagger
+ * /api/v1/business/{businessId}/staff/{staffId}/suspend:
+ *   post:
+ *     summary: Suspend an active staff member
+ *     description: Suspends the staff membership, clocks the staff member out, and sets their work status to offline.
+ *     tags: [Business Staff]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Staff suspended successfully
+ *       400:
+ *         description: Invalid business or staff ID
+ *       403:
+ *         description: Business owner access only, or not your business
+ *       404:
+ *         description: Staff not found in your business
+ *       409:
+ *         description: Staff is not active or is already suspended
+ */
+router.post(
+  '/:businessId/staff/:staffId/suspend',
+  authMiddleware,
+  onlyRole('businessOwner'),
+  suspendStaff,
+);
+
+/**
+ * @swagger
+ * /api/v1/business/{businessId}/staff/{staffId}/lift-suspension:
+ *   post:
+ *     summary: Lift a staff member's suspension
+ *     description: Restores the staff membership to ACTIVE. The staff member remains clocked out and offline until they clock in again.
+ *     tags: [Business Staff]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: businessId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: staffId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Staff suspension lifted successfully
+ *       400:
+ *         description: Invalid business or staff ID
+ *       403:
+ *         description: Business owner access only, or not your business
+ *       404:
+ *         description: Staff not found in your business
+ *       409:
+ *         description: Staff member is not suspended
+ */
+router.post(
+  '/:businessId/staff/:staffId/lift-suspension',
+  authMiddleware,
+  onlyRole('businessOwner'),
+  liftStaffSuspension,
 );
 
 module.exports = router;

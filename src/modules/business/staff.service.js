@@ -893,12 +893,16 @@ const businessClockOutStaff = async (businessId, staffId, { reason } = {}) => {
   }
   await staff.save();
 
+  const business = await businessRepository.findBusinessById(staff.business);
+  const businessName =
+    business?.BusinessName || business?.fullName || 'the business';
+
   await notifySafely(
     () =>
       notificationService.notifyProvider(staff.provider, {
         type: 'staff_clocked_out_by_business',
         title: 'Clocked out',
-        message: `You were clocked out by the business${reason?.trim() ? `: ${reason.trim()}` : ''}`,
+        message: `You were clocked out by ${businessName}${reason?.trim() ? `: ${reason.trim()}` : ''}`,
         businessId: staff.business,
       }),
     'Business clock-out',
@@ -1378,6 +1382,74 @@ const removeStaff = async (businessId, staffId) => {
   return { staffId: staff._id, removed: true };
 };
 
+const suspendStaff = async (businessId, staffId) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+  if (!mongoose.isValidObjectId(staffId)) {
+    throw new ValidationError('Invalid staff ID');
+  }
+
+  const staff = await Staff.findOne({ _id: staffId, business: businessId });
+  if (!staff) {
+    throw new NotFoundError('Staff not found in your business');
+  }
+  if (staff.status === 'SUSPENDED') {
+    throw new ConflictError('Staff member is already suspended');
+  }
+  if (staff.status !== 'ACTIVE') {
+    throw new ConflictError('Only active staff can be suspended');
+  }
+
+  staff.status = 'SUSPENDED';
+  staff.onDuty.active = false;
+  staff.onDuty.lastClockOutAt = new Date();
+  staff.workStatus = 'offline';
+  if (staff.clockRequest?.status === 'pending') {
+    staff.clockRequest.status = 'cancelled';
+    staff.clockRequest.respondedAt = new Date();
+    staff.clockRequest.respondedBy = businessId;
+  }
+  await staff.save();
+
+  return {
+    staffId: staff._id,
+    status: staff.status,
+    clocked_in: staff.clocked_in,
+    workStatus: staff.workStatus,
+  };
+};
+
+const liftStaffSuspension = async (businessId, staffId) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+  if (!mongoose.isValidObjectId(staffId)) {
+    throw new ValidationError('Invalid staff ID');
+  }
+
+  const staff = await Staff.findOne({ _id: staffId, business: businessId });
+  if (!staff) {
+    throw new NotFoundError('Staff not found in your business');
+  }
+  if (staff.status !== 'SUSPENDED') {
+    throw new ConflictError('Staff member is not suspended');
+  }
+
+  staff.status = 'ACTIVE';
+  // Lifting a suspension restores membership only; staff must clock in again.
+  staff.onDuty.active = false;
+  staff.workStatus = 'offline';
+  await staff.save();
+
+  return {
+    staffId: staff._id,
+    status: staff.status,
+    clocked_in: staff.clocked_in,
+    workStatus: staff.workStatus,
+  };
+};
+
 module.exports = {
   inviteStaff,
   normalizeEmail,
@@ -1399,6 +1471,8 @@ module.exports = {
   getStaffDetail,
   respondToStaffInvite,
   removeStaff,
+  suspendStaff,
+  liftStaffSuspension,
 };
 
 const acceptBooking = async (...args) => { const { acceptBooking: fn } = require('./business.service'); return fn(...args); };

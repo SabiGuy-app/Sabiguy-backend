@@ -319,6 +319,40 @@ const removeStaff = async (req, res) => {
   }
 };
 
+const suspendStaff = async (req, res) => {
+  try {
+    assertSelfBusiness(req);
+    const data = await staffService.suspendStaff(
+      req.params.businessId,
+      req.params.staffId,
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Staff suspended successfully',
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to suspend staff');
+  }
+};
+
+const liftStaffSuspension = async (req, res) => {
+  try {
+    assertSelfBusiness(req);
+    const data = await staffService.liftStaffSuspension(
+      req.params.businessId,
+      req.params.staffId,
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Staff suspension lifted successfully',
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to lift staff suspension');
+  }
+};
+
 const acceptBooking = async (req, res) => {
   try {
     const businessId = req.params.businessId || req.user.id;
@@ -372,4 +406,6 @@ module.exports = {
   acceptBooking,
   declineBooking,
   removeStaff,
+  suspendStaff,
+  liftStaffSuspension,
 };
