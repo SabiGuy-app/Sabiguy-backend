@@ -25,6 +25,8 @@ const {
   setBusinessAvailability,
   updateBusinessLocation,
   getBookingsForBusiness,
+  startBusinessBooking,
+  completeBusinessBooking,
   acceptBooking,
   declineBooking,
 } = require("./business.controller");
@@ -1286,6 +1288,93 @@ router.get("/:businessId", authMiddleware, getBusinessById);
  *         description: Business not found
  */
 router.get("/:businessId/bookings", authMiddleware, getBookingsForBusiness);
+
+/**
+ * @swagger
+ * /api/v1/businesses/bookings/{bookingId}/start:
+ *   patch:
+ *     summary: Start a business booking as the business owner
+ *     description: Starts a paid business booking when no qualified staff member is currently available. The authenticated business owner must own the booking.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Business service started successfully
+ *       400:
+ *         description: Invalid business or booking ID
+ *       403:
+ *         description: Business owner access only
+ *       404:
+ *         description: Booking not found for this business
+ *       409:
+ *         description: Payment is incomplete or qualified staff are available
+ */
+router.patch(
+  "/bookings/:bookingId/start",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  startBusinessBooking,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/bookings/{bookingId}/complete:
+ *   patch:
+ *     summary: Complete a business booking as the business owner
+ *     description: Marks a business booking complete after the owner started it or its assigned staff are no longer available. The customer is then asked to confirm completion.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               pictures:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               videos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               jobCompletedNotes:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Business service marked complete
+ *       400:
+ *         description: Invalid business or booking ID or invalid completion evidence
+ *       403:
+ *         description: Business owner access only
+ *       404:
+ *         description: Booking not found or not in progress
+ *       409:
+ *         description: Assigned staff are still available to complete the service
+ */
+router.patch(
+  "/bookings/:bookingId/complete",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  completeBusinessBooking,
+);
 
 /**
  * @swagger

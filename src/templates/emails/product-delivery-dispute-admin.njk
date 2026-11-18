@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Product delivery dispute</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f5f5f5; font-family: Arial, Helvetica, sans-serif; color: #333; }
+    .container { width: 100%; max-width: 640px; margin: 32px auto; background: #fff; border-radius: 8px; overflow: hidden; }
+    .header { background: #222; color: #fff; padding: 26px 22px; }
+    .header h1 { margin: 0; font-size: 22px; }
+    .content { padding: 26px; font-size: 15px; line-height: 1.55; }
+    .alert { background: #fff7ed; border-left: 4px solid #f97316; padding: 15px; border-radius: 5px; margin: 18px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; }
+    td { padding: 9px 0; border-bottom: 1px solid #eee; vertical-align: top; }
+    td:first-child { width: 38%; color: #666; padding-right: 12px; }
+    .footer { background: #f7f7f7; text-align: center; padding: 16px; color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>Product delivery dispute submitted</h1></div>
+    <div class="content">
+      <p>A buyer has disputed delivery for a product order. Seller funds remain in escrow pending review.</p>
+      <div class="alert"><strong>Buyer’s reason</strong><br />{{ reason }}</div>
+      <table>
+        <tr><td>Order</td><td>{{ orderNumber }} ({{ orderId }})</td></tr>
+        <tr><td>Buyer</td><td>{{ buyerName }} · {{ buyerEmail }}{% if buyerPhone %} · {{ buyerPhone }}{% endif %}</td></tr>
+        <tr><td>Seller</td><td>{{ sellerName }} · {{ sellerEmail }} ({{ sellerType }})</td></tr>
+        <tr><td>Items</td><td>{% for item in items %}{{ item.name }} × {{ item.quantity }} — ₦{{ item.unitPrice | formatNumber }} each; line total ₦{{ item.lineTotal | formatNumber }}{% if not loop.last %}<br />{% endif %}{% endfor %}</td></tr>
+        <tr><td>Item subtotal</td><td>₦{{ subtotal | formatNumber }}</td></tr>
+        <tr><td>Delivery fee</td><td>₦{{ deliveryFee | formatNumber }}</td></tr>
+        <tr><td>Total paid</td><td>₦{{ totalAmount | formatNumber }}</td></tr>
+        <tr><td>Delivery address</td><td>{{ deliveryAddress.address or 'Not provided' }}</td></tr>
+        <tr><td>Recipient</td><td>{{ deliveryAddress.recipientName or 'Not provided' }}{% if deliveryAddress.phone %} · {{ deliveryAddress.phone }}{% endif %}</td></tr>
+        <tr><td>Instructions</td><td>{{ deliveryAddress.instructions or 'None' }}</td></tr>
+        <tr><td>Tracking number</td><td>{{ trackingNumber or 'Not provided' }}</td></tr>
+        <tr><td>Seller marked delivered</td><td>{{ deliveredAt }}</td></tr>
+        <tr><td>Dispute submitted</td><td>{{ disputeRaisedAt }}</td></tr>
+      </table>
+      <p>Please review the order and contact the buyer and seller to resolve the issue.</p>
+      {% if adminDashboardUrl %}<p><a href="{{ adminDashboardUrl }}">Open the SabiGuy admin dashboard</a></p>{% endif %}
+    </div>
+    <div class="footer">SabiGuy product order dispute notification · © {{ year }} SabiGuy</div>
+  </div>
+</body>
+</html>

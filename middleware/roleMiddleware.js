@@ -8,7 +8,7 @@ const onlyRole = (role) => {
       const path = req.path.toLowerCase();
       let permittedRole;
       if (path.includes("/kyc/")) permittedRole = "verification_admin";
-      else if (path.includes("payment") || path.includes("transaction") || path.includes("payout") || path.includes("balance") || path.includes("platform-fee")) permittedRole = "finance_admin";
+      else if (path.includes("payment") || path.includes("transaction") || path.includes("payout") || path.includes("balance") || path.includes("platform-fee") || path.includes("wallet")) permittedRole = "finance_admin";
       else if (path.includes("complaint") || path.includes("dispute") || path.includes("cancellation")) permittedRole = "support_admin";
       else if (path.includes("booking") || path.includes("provider") || path.includes("online-") || path.includes("dispatch") || path.includes("ride")) permittedRole = "operations_admin";
       const permissions = {

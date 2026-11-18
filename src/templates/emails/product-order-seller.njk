@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New product order</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f5f5f5; font-family: Arial, Helvetica, sans-serif; color: #333; }
+    .container { width: 100%; max-width: 600px; margin: 32px auto; background: #fff; border-radius: 8px; overflow: hidden; }
+    .header { background: #a9f334; padding: 30px 20px; text-align: center; }
+    .header h1 { margin: 0; font-size: 23px; }
+    .content { padding: 30px; font-size: 15px; line-height: 1.6; }
+    .highlight { background: #f7f7f7; border-left: 4px solid #a9f334; padding: 16px; border-radius: 5px; margin: 20px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    td { padding: 9px 0; border-bottom: 1px solid #eee; vertical-align: top; }
+    td:first-child { width: 38%; color: #666; padding-right: 12px; }
+    .button { display: inline-block; background: #222; color: #fff !important; text-decoration: none; padding: 12px 18px; border-radius: 5px; margin-top: 8px; }
+    .footer { background: #f7f7f7; text-align: center; padding: 18px; color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>You have a new product order</h1></div>
+    <div class="content">
+      <p>Hi {{ sellerName }},</p>
+      <p>{{ buyerName }} has paid for an order from your store. Please sign in to your SabiGuy dashboard to process it.</p>
+      <div class="highlight">
+        <strong>Order summary · {{ orderNumber }}</strong>
+        <table>
+          {% for item in items %}
+          <tr><td>Product</td><td>{{ item.name }} × {{ item.quantity }}</td></tr>
+          <tr><td>Unit price</td><td>₦{{ item.unitPrice | formatNumber }}</td></tr>
+          <tr><td>Item total</td><td>₦{{ item.lineTotal | formatNumber }}</td></tr>
+          {% endfor %}
+          <tr><td>Buyer</td><td>{{ buyerName }}{% if buyerPhoneNumber %} · {{ buyerPhoneNumber }}{% endif %}</td></tr>
+          <tr><td>Buyer location</td><td>{{ buyerLocation }}</td></tr>
+          <tr><td>Fulfillment</td><td>{{ fulfillmentType | capitalize }}</td></tr>
+          {% if fulfillmentType == 'delivery' %}
+          <tr><td>Delivery address</td><td>{{ deliveryAddress.address or 'Address provided in your dashboard' }}</td></tr>
+          <tr><td>Recipient</td><td>{{ deliveryAddress.recipientName or buyerName }}{% if deliveryAddress.phone %} · {{ deliveryAddress.phone }}{% endif %}</td></tr>
+          <tr><td>Delivery instructions</td><td>{{ deliveryAddress.instructions or 'None' }}</td></tr>
+          <tr><td>Delivery fee paid</td><td>₦{{ deliveryFee | formatNumber }}</td></tr>
+          <tr><td>Delivery arrangement</td><td> Please arrange delivery with your personal rider. The delivery fee paid by the buyer is included in your order payout after delivery is confirmed.</td></tr>
+          {% else %}
+          <tr><td>Pickup note</td><td>{{ pickupNote or 'No pickup note provided' }}</td></tr>
+          {% endif %}
+          <tr><td>Product subtotal</td><td>₦{{ subtotal | formatNumber }}</td></tr>
+          <tr><td>Platform commission</td><td>₦{{ productCommission | formatNumber }} (10%)</td></tr>
+          <tr><td>Items + delivery fee</td><td>₦{{ orderAmountExcludingBuyerPlatformFee | formatNumber }}</td></tr>
+          <tr><td>Your payout after delivery confirmation</td><td>₦{{ sellerPayout | formatNumber }}</td></tr>
+          <tr><td>Paid at</td><td>{{ purchaseTime }}</td></tr>
+        </table>
+      </div>
+      <p>Once the buyer confirms delivery, your payout will be released to your SabiGuy wallet. For pickup orders, the buyer confirms collection.</p>
+      <a class="button" href="{{ dashboardUrl }}">Log in to your SabiGuy dashboard</a>
+      <p>Best regards,<br />The SabiGuy Team</p>
+    </div>
+    <div class="footer">You received this email because a buyer placed an order through SabiGuy.<br /><br />© {{ year }} SabiGuy</div>
+  </div>
+</body>
+</html>

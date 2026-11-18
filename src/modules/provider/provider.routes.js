@@ -510,6 +510,8 @@ router.put("/bank-info", authMiddleware, ProviderController.BankInfo);
  *         description: Profile picture updated successfully
  *       400:
  *         description: Image URL missing
+ *       403:
+ *         description: Account must be verified before updating the profile picture
  *       404:
  *         description: Provider not found
  *       500:

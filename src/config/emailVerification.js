@@ -8,6 +8,7 @@ const templateEnv = nunjucks.configure(templatesPath, {
   autoescape: true,
   noCache: process.env.NODE_ENV !== 'production',
 });
+templateEnv.addFilter('formatNumber', (value) => Number(value || 0).toLocaleString('en-NG'));
 
 const apiInstance = new brevo.TransactionalEmailsApi();
 apiInstance.setApiKey(
@@ -402,6 +403,32 @@ const sendProductReviewEmail = async (email, data = {}) => {
   return { success: true, messageId: result.body.messageId };
 };
 
+const sendProductOrderSellerEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  sendSmtpEmail.subject = `New product order ${data.orderNumber || ''}`.trim();
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate('product-order-seller.njk', {
+    ...data,
+    year: new Date().getFullYear(),
+  });
+  sendSmtpEmail.sender = sender;
+  const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+  return { success: true, messageId: result.body.messageId };
+};
+
+const sendProductDeliveryDisputeEmail = async (email, data = {}) => {
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  sendSmtpEmail.subject = `Product delivery dispute: ${data.orderNumber || 'Order'}`;
+  sendSmtpEmail.to = [{ email }];
+  sendSmtpEmail.htmlContent = renderEmailTemplate('product-delivery-dispute-admin.njk', {
+    ...data,
+    year: new Date().getFullYear(),
+  });
+  sendSmtpEmail.sender = sender;
+  const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+  return { success: true, messageId: result.body.messageId };
+};
+
 const sendStaffInvitationEmail = async (email, data = {}) => {
   const sendSmtpEmail = new brevo.SendSmtpEmail();
 
@@ -474,6 +501,8 @@ module.exports = {
   sendAdminEventEmail,
   sendProductSubmittedEmail,
   sendProductReviewEmail,
+  sendProductOrderSellerEmail,
+  sendProductDeliveryDisputeEmail,
   sendStaffInvitationEmail,
   sendBusinessWelcomeMail,
 };

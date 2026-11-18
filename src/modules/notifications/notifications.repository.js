@@ -1,8 +1,13 @@
 const Notification = require("./notification.model");
 const Buyer = require("../../../models/ServiceUser");
 const Provider = require("../../../models/ServiceProvider");
+const Business = require("../business/business.model");
 
-const modelForRole = (role) => (role === "provider" ? Provider : Buyer);
+const modelForRole = (role) => {
+  if (role === "provider" || role === "Provider") return Provider;
+  if (role === "businessOwner" || role === "Business") return Business;
+  return Buyer;
+};
 
 exports.findNotifications = (query, { limit, skip }) =>
   Notification.find(query)

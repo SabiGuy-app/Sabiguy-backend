@@ -17,6 +17,7 @@ test("getRecipientRoom matches the socket rooms joined in src/index.js", () => {
 test("notifyBusiness emits in real time to the businessOwner room", async () => {
   const originals = {
     io: notificationService.io,
+    getPreferences: notificationService.getPreferences,
     createNotification: notificationService.createNotification,
     sendPushNotification: notificationService.sendPushNotification,
   };
@@ -27,6 +28,8 @@ test("notifyBusiness emits in real time to the businessOwner room", async () => 
       return { emit: (event, payload) => emitted.push({ room, event, payload }) };
     },
   };
+  notificationService.getPreferences = async () =>
+    notificationService.getDefaultPreferences();
   notificationService.createNotification = async () => notification;
   notificationService.sendPushNotification = async () => {};
 

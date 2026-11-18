@@ -127,8 +127,8 @@ class NotificationService {
       product_order_received: "bookings",
       product_order_paid: "bookings",
       product_order_updated: "bookings",
-      product_order_delivered: "walletPayments",
-    };
+      product_order_delivered: "bookings"
+        };
     return map[type] || "bookings";
   }
 
@@ -140,16 +140,21 @@ class NotificationService {
       const base = defaults[key];
       const incoming = preferences?.[key] || {};
       const incomingTypes = Array.isArray(incoming.types) ? incoming.types : [];
-      const types = this.isLegacyDefaultTypes(key, incomingTypes)
-        ? []
-        : Array.isArray(incoming.types)
-          ? incomingTypes
-          : base.types;
+      const push = typeof incoming.push === "boolean" ? incoming.push : base.push;
+      const email =
+        typeof incoming.email === "boolean" ? incoming.email : base.email;
+      const types =
+        key === "bookings" && (push || email)
+          ? []
+          : this.isLegacyDefaultTypes(key, incomingTypes)
+            ? []
+            : Array.isArray(incoming.types)
+              ? incomingTypes
+              : base.types;
 
       merged[key] = {
-        push: typeof incoming.push === "boolean" ? incoming.push : base.push,
-        email:
-          typeof incoming.email === "boolean" ? incoming.email : base.email,
+        push,
+        email,
         types,
       };
     }
@@ -163,6 +168,14 @@ class NotificationService {
         "notificationPreferences",
       );
       return this.mergeNotificationPreferences(user?.notificationPreferences);
+    }
+    if (recipientModel === "Business") {
+      const business = await Business.findById(recipientId).select(
+        "notificationPreferences",
+      );
+      return this.mergeNotificationPreferences(
+        business?.notificationPreferences,
+      );
     }
     const provider = await Provider.findById(recipientId).select(
       "notificationPreferences",
@@ -296,33 +309,43 @@ class NotificationService {
     }
   }
 
-  // Business accounts don't have a `notificationPreferences` block on their
-  // model (unlike Buyer/Provider), so this intentionally skips the
-  // preference-gating that notifyUser/notifyProvider do and always creates
-  // the in-app record, sending a push if an fcmToken is present.
   async notifyBusiness(businessId, data) {
     try {
-      const notification = await this.createNotification(
-        businessId,
-        "Business",
-        data,
-      );
+      const preferences = await this.getPreferences(businessId, "Business");
+      const decision = this.shouldNotify(preferences, data.type);
+      if (!decision.allowInApp && !decision.allowPush) {
+        console.warn(
+          `[NotificationService] Skipping notifyBusiness for Business:${businessId} due to notification preferences`,
+          {
+            type: data.type,
+            category: this.getTypeCategory(data.type),
+            preferences,
+          },
+        );
+        return null;
+      }
+
+      const notification = decision.allowInApp
+        ? await this.createNotification(businessId, "Business", data)
+        : null;
 
       const room = this.getRecipientRoom("Business", businessId);
       if (this.io && notification) {
         this.io.to(room).emit("new_notification", notification);
       }
 
-      await this.sendPushNotification(businessId, "Business", data).catch(
-        (error) => {
-          this.logNotificationError(
-            "notifyBusiness:push",
-            businessId,
-            "Business",
-            error,
-          );
-        },
-      );
+      if (decision.allowPush) {
+        await this.sendPushNotification(businessId, "Business", data).catch(
+          (error) => {
+            this.logNotificationError(
+              "notifyBusiness:push",
+              businessId,
+              "Business",
+              error,
+            );
+          },
+        );
+      }
 
       return notification;
     } catch (error) {
