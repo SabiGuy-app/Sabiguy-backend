@@ -11,6 +11,8 @@ const {
   notifyKycCompleted,
 } = require('../../services/adminNotification.service');
 const Booking = require('../bookings/Bookings.model');
+const Staff = require('./staff.model');
+const { isProviderOnlineAndAvailable } = require('./staff-presence');
 const INVITE_TOKEN_EXPIRY_DAYS = Number(
   process.env.DRIVER_INVITE_EXPIRY_DAYS || 7,
 );
@@ -1186,6 +1188,191 @@ const getBookingsForBusiness = async (
   return { bookings: bookingsWithPricing, total };
 };
 
+const serviceNameForBusinessBooking = (booking) =>
+  String(
+    booking?.serviceDetails?.serviceName ||
+      booking?.subCategory ||
+      booking?.serviceType ||
+      'service',
+  ).trim();
+
+// A business owner may fulfill the booking when no service-qualified staff
+// member is currently on duty and online. For an already-assigned booking,
+// availability is checked only for its assigned staff; otherwise, it is
+// checked across the business's available staff roster.
+const hasAvailableStaffForBusinessBooking = async (booking) => {
+  const assignedStaffIds = (booking.assignedStaff || [])
+    .map((assignment) => assignment.staff?._id || assignment.staff)
+    .filter(Boolean);
+  const serviceName = serviceNameForBusinessBooking(booking).toLowerCase();
+  const query = {
+    business: booking.businessId,
+    status: 'ACTIVE',
+    'onDuty.active': true,
+    ...(assignedStaffIds.length
+      ? { _id: { $in: assignedStaffIds } }
+      : { workStatus: 'available' }),
+  };
+  const staff = await Staff.find(query).populate(
+    'provider',
+    'isActive isDeleted availability currentLocation lastLocationUpdate',
+  );
+
+  return staff.some((member) => {
+    const providesService =
+      !serviceName ||
+      (member.services || []).some(
+        (service) => String(service).trim().toLowerCase() === serviceName,
+      );
+    return providesService && isProviderOnlineAndAvailable(member.provider);
+  });
+};
+
+const startBusinessBooking = async (businessId, bookingId) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+  if (!mongoose.isValidObjectId(bookingId)) {
+    throw new ValidationError('Invalid booking ID');
+  }
+
+  const business = await requireActiveBusiness(businessId);
+  const booking = await Booking.findOne({ _id: bookingId, businessId })
+    .populate('userId', 'fullName');
+  if (!booking) throw new NotFoundError('Booking not found for this business');
+  if (!['paid_escrow', 'paid_escrow_scheduled'].includes(booking.status)) {
+    throw new ConflictError('Payment must be completed before starting the service');
+  }
+  if (await hasAvailableStaffForBusinessBooking(booking)) {
+    throw new ConflictError(
+      'A qualified staff member is currently available. Assign them to this booking, or start it when no staff are available.',
+    );
+  }
+
+  const serviceName = serviceNameForBusinessBooking(booking);
+  const businessName = business.BusinessName || business.fullName || 'The business';
+  const customerName = booking.userId?.fullName || 'the customer';
+  booking.status = 'in_progress';
+  booking.businessStatus = 'in_progress';
+  booking.businessOwnerStarted = true;
+  booking.startedAt = new Date();
+  await booking.save();
+
+  const notification = {
+    type: 'job_started',
+    title: 'Your Service Has Started',
+    message: `${businessName} has started your ${serviceName} service.`,
+    bookingId: booking._id,
+    businessId,
+  };
+  try {
+    await notificationService.notifyUser(booking.userId?._id || booking.userId, notification);
+  } catch (error) {
+    console.error('Notify customer that business started booking error:', error);
+  }
+  try {
+    await notificationService.notifyBusiness(businessId, {
+      type: 'booking_status_updated',
+      title: 'Business Started a Booking',
+      message: `${businessName} started the ${serviceName} service for customer ${customerName}. Booking ID: ${booking._id}.`,
+      bookingId: booking._id,
+      businessId,
+    });
+  } catch (error) {
+    console.error('Notify business that it started booking error:', error);
+  }
+
+  return booking;
+};
+
+const completeBusinessBooking = async (
+  businessId,
+  bookingId,
+  { pictures, videos, jobCompletedNotes } = {},
+) => {
+  if (!mongoose.isValidObjectId(businessId)) {
+    throw new ValidationError('Invalid business ID');
+  }
+  if (!mongoose.isValidObjectId(bookingId)) {
+    throw new ValidationError('Invalid booking ID');
+  }
+  if (
+    (pictures !== undefined &&
+      (!Array.isArray(pictures) || pictures.some((url) => typeof url !== 'string'))) ||
+    (videos !== undefined &&
+      (!Array.isArray(videos) || videos.some((url) => typeof url !== 'string'))) ||
+    (jobCompletedNotes !== undefined &&
+      (!Array.isArray(jobCompletedNotes) ||
+        jobCompletedNotes.some((note) => typeof note !== 'string')))
+  ) {
+    throw new ValidationError(
+      'pictures, videos, and jobCompletedNotes must be arrays of strings',
+    );
+  }
+
+  const business = await requireActiveBusiness(businessId);
+  const booking = await Booking.findOne({
+    _id: bookingId,
+    businessId,
+    status: { $in: ['in_progress', 'arrived_at_dropoff'] },
+  }).populate('userId', 'fullName');
+  if (!booking) {
+    throw new NotFoundError('Booking not found or not in progress');
+  }
+  if (
+    !booking.businessOwnerStarted &&
+    (await hasAvailableStaffForBusinessBooking(booking))
+  ) {
+    throw new ConflictError(
+      'Assigned staff are currently available to complete this service.',
+    );
+  }
+
+  const serviceName = serviceNameForBusinessBooking(booking);
+  const businessName = business.BusinessName || business.fullName || 'The business';
+  const customerName = booking.userId?.fullName || 'the customer';
+  booking.status = 'completed';
+  booking.businessStatus = 'completed';
+  booking.completedAt = new Date();
+  if (pictures !== undefined || videos !== undefined) {
+    booking.jobCompletedImages.push({
+      pictures: pictures || [],
+      videos: videos || [],
+    });
+  }
+  if (jobCompletedNotes !== undefined) {
+    booking.jobCompletedNotes.push(...jobCompletedNotes);
+  }
+  await booking.save();
+
+  try {
+    await notificationService.notifyUser(booking.userId?._id || booking.userId, {
+      type: 'booking_completed',
+      title: 'Service Completed',
+      message:
+        'Your service has been completed. You have 12 hours to confirm or dispute it. After that, it will be auto-approved and the payment released. Thanks for being with us!',
+      bookingId: booking._id,
+      businessId,
+      businessName,
+    });
+  } catch (error) {
+    console.error('Notify customer that business completed booking error:', error);
+  }
+  try {
+    await notificationService.notifyBusiness(businessId, {
+      type: 'booking_status_updated',
+      title: 'Business Completed a Booking',
+      message: `${businessName} completed the ${serviceName} service for customer ${customerName}. Booking ID: ${booking._id}. It is awaiting customer confirmation.`,
+      bookingId: booking._id,
+      businessId,
+    });
+  } catch (error) {
+    console.error('Notify business that it completed booking error:', error);
+  }
+
+  return booking;
+};
+
 module.exports = {
   getBusinessesWithPagination,
   getBusinessById,
@@ -1211,6 +1398,8 @@ module.exports = {
   updateBusinessLocation,
   isWithinBusinessHours,
   getBookingsForBusiness,
+  startBusinessBooking,
+  completeBusinessBooking,
 
   ValidationError,
   NotFoundError,

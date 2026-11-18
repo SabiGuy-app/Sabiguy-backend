@@ -187,6 +187,47 @@ const options = {
             error: { type: 'string' },
           },
         },
+        AdminWalletFundingBatch: {
+          type: 'object',
+          required: ['reference', 'status', 'totalAmount', 'currency', 'entries'],
+          properties: {
+            reference: { type: 'string', example: 'AWF_1770000000000_A1B2C3D4E5F6A7B8' },
+            status: {
+              type: 'string',
+              enum: ['initializing', 'pending_payment', 'paid_pending_credit', 'completed', 'failed'],
+            },
+            totalAmount: { type: 'number', example: 7500 },
+            currency: { type: 'string', enum: ['NGN'], example: 'NGN' },
+            reason: { type: 'string' },
+            entries: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['email', 'amount'],
+                properties: {
+                  email: { type: 'string', format: 'email' },
+                  amount: { type: 'number', example: 5000 },
+                },
+              },
+            },
+            authorizationUrl: { type: 'string', format: 'uri', nullable: true },
+            paymentPayerEmail: { type: 'string', format: 'email', nullable: true },
+            paymentChannel: { type: 'string', nullable: true },
+            paidAt: { type: 'string', format: 'date-time', nullable: true },
+            completedAt: { type: 'string', format: 'date-time', nullable: true },
+            error: { type: 'string', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        AdminWalletFundingBatchResponse: {
+          type: 'object',
+          required: ['success', 'data'],
+          properties: {
+            success: { type: 'boolean', example: true },
+            message: { type: 'string' },
+            data: { $ref: '#/components/schemas/AdminWalletFundingBatch' },
+          },
+        },
       },
     },
     security: [
@@ -233,7 +274,7 @@ const options = {
     path.join(__dirname, '..', 'modules', 'products', 'product.route.js'),
     path.join(__dirname, '..', 'modules', 'mobile', 'updatePolicy.routes.js'),
 
-    path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
+    // path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
     path.join(
       __dirname,
       '..',

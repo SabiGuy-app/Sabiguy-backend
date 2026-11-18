@@ -418,6 +418,14 @@ class ProviderController {
         return res.status(404).json({ message: "Provider not found" });
       }
 
+      if (!provider.kycVerified) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "You will only be able to update your profile picture once your account is verified",
+        });
+      }
+
       // Update the provider's profile picture
       provider.profilePicture = imageUrl;
       await provider.save();
@@ -1857,9 +1865,7 @@ class ProviderController {
       await notificationService.notifyUser(updatedBooking.userId, {
         type: "provider_accepted",
         title: "Provider Accepted Your Booking",
-        message: booking.pickupLocation
-          ? "A provider is on their way to your pickup location"
-          : "A provider accepted your service booking",
+        message: "A provider accepted your service booking",
         bookingId: updatedBooking._id,
         providerId,
         providerETA: providerETAMinutes,

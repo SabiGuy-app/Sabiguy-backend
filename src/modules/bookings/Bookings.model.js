@@ -56,6 +56,12 @@ const bookingSchema = new mongoose.Schema(
       ],
       default: null,
     },
+    // Tracks direct fulfillment by the business owner when no qualified staff
+    // member is available, so they can complete the same booking later.
+    businessOwnerStarted: {
+      type: Boolean,
+      default: false,
+    },
 
     // Service info
     serviceType: {

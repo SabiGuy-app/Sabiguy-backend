@@ -4,6 +4,7 @@ const rateLimit = require("express-rate-limit");
 const authMiddleware = require("../../../middleware/authMiddleware");
 const AdminController = require("./admin.controller");
 const onlyRole = require("../../../middleware/roleMiddleware");
+const AdminWalletFundingController = require("../wallet/adminWalletFunding.controller");
 
 const adminCreateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1116,6 +1117,209 @@ router.patch(
   onlyRole("admin"),
   adminVerifyKycLimiter,
   AdminController.disputeBusinessKyc,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/wallet/funding-batches:
+ *   post:
+ *     summary: Create a Paystack checkout to fund one or more buyer wallets
+ *     description: Creates one checkout for the sum of all per-buyer amounts. All buyers are validated before checkout and all wallets are credited together after verified payment.
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [entries, reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: Customer support wallet adjustment
+ *               entries:
+ *                 type: array
+ *                 minItems: 1
+ *                 maxItems: 50
+ *                 description: Duplicate buyer emails are not allowed; amounts are in whole NGN.
+ *                 items:
+ *                   type: object
+ *                   required: [email, amount]
+ *                   properties:
+ *                     email:
+ *                       type: string
+ *                       format: email
+ *                     amount:
+ *                       type: integer
+ *                       description: Amount in whole naira
+ *                       example: 5000
+ *     responses:
+ *       201:
+ *         description: Checkout created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AdminWalletFundingBatchResponse'
+ *       401:
+ *         description: Authentication required
+ *       400:
+ *         description: Invalid email, amount, duplicate recipient, or missing reason
+ *       403:
+ *         description: Finance admin access required
+ *       404:
+ *         description: A buyer does not exist or is inactive
+ *       429:
+ *         description: Too many requests
+ *       502:
+ *         description: Paystack checkout initialization failed
+ *       503:
+ *         description: Paystack is not configured
+ */
+router.post(
+  "/wallet/funding-batches",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminWalletFundingController.createBatch,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/wallet/funding-batches/paystack-callback:
+ *   get:
+ *     summary: Process the Paystack return for a wallet funding batch
+ *     description: Paystack redirects the payer here after checkout. The backend verifies the payment and redirects to FRONTEND_URL with walletFundingReference and walletFundingStatus query parameters. This route does not require a bearer token.
+ *     tags: [Admins]
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: reference
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Paystack transaction reference
+ *     responses:
+ *       200:
+ *         description: Payment verified when FRONTEND_URL is not configured
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 reference:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *       202:
+ *         description: Payment is not yet confirmed when FRONTEND_URL is not configured
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 reference:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *       303:
+ *         description: Redirect to FRONTEND_URL with the batch reference and status
+ *         headers:
+ *           Location:
+ *             schema:
+ *               type: string
+ *               format: uri
+ *       400:
+ *         description: Paystack reference is missing
+ *       404:
+ *         description: Funding batch was not found
+ */
+router.get(
+  "/wallet/funding-batches/paystack-callback",
+  AdminWalletFundingController.paystackCallback,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/wallet/funding-batches/{reference}:
+ *   get:
+ *     summary: Get the status of an admin wallet funding batch
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reference
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Current payment and credit status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AdminWalletFundingBatchResponse'
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Finance admin access required
+ *       404:
+ *         description: Funding batch was not found
+ */
+router.get(
+  "/wallet/funding-batches/:reference",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminWalletFundingController.getBatchStatus,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/wallet/funding-batches/{reference}/verify:
+ *   post:
+ *     summary: Verify Paystack payment and credit the buyer wallets
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reference
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Payment verified and all buyer wallets credited
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AdminWalletFundingBatchResponse'
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Finance admin access required
+ *       404:
+ *         description: Funding batch was not found
+ *       409:
+ *         description: Payment has not succeeded or batch cannot be verified
+ *       429:
+ *         description: Too many verification requests
+ *       502:
+ *         description: Paystack could not verify the payment
+ */
+router.post(
+  "/wallet/funding-batches/:reference/verify",
+  adminPaymentVerifyLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  AdminWalletFundingController.verifyBatch,
 );
 
 module.exports = router;

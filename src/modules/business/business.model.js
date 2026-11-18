@@ -126,6 +126,33 @@ const businessSchema = new mongoose.Schema(
       type: String,
       select: false,
     },
+    notificationPreferences: {
+      bookings: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: { type: [String], default: [] },
+      },
+      jobCompleted: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: { type: [String], default: [] },
+      },
+      chatMessages: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: false },
+        types: { type: [String], default: [] },
+      },
+      walletPayments: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: { type: [String], default: [] },
+      },
+      promotions: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: false },
+        types: { type: [String], default: [] },
+      },
+    },
     kycCompleted: { type: Boolean, default: false },
     kycVerified: { type: Boolean, default: false },
     kycVerifiedAt: { type: Date, default: null },

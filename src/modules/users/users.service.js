@@ -249,15 +249,6 @@ const getUserById = async (id) => {
     providerObj.staffId = staffMemberships.length ? staffMemberships[0]._id : null;
     providerObj.staffCode = staffMemberships.length ? staffMemberships[0].staffCode : null;
     providerObj.staffMemberships = staffMemberships;
-    if (provider.invitedBy && provider.email) {
-      const staffInvite = await Staff.findOne({
-        business: provider.invitedBy,
-        email: provider.email,
-      })
-        .select('status')
-        .lean();
-      if (staffInvite) providerObj.status = staffInvite.status;
-    }
     return providerObj;
   }
   if (business) {

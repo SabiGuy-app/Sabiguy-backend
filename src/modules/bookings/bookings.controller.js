@@ -2,6 +2,7 @@ const Booking = require("./Bookings.model.js");
 const Provider = require("../../../models/ServiceProvider");
 const Business = require("../business/business.model");
 const Staff = require("../business/staff.model");
+const Product = require("../products/product.model");
 const businessService = require("../business/business.service");
 const staffService = require("../business/staff.service");
 const Buyer = require("../../../models/ServiceUser");
@@ -1835,6 +1836,25 @@ class BookingController {
         ? new RegExp(escapeRegex(normalizedSearch), "i")
         : null;
 
+      const productMatches = searchRegex
+        ? await Product.find({
+            status: "approved",
+            $or: [{ name: searchRegex }, { description: searchRegex }],
+          })
+            .select("owner ownerModel ownerType name description productImage price quantity currency")
+            .populate("owner", "fullName BusinessName profilePicture")
+            .sort({ createdAt: -1 })
+            .limit(100)
+            .lean()
+        : [];
+      const getProductOwnerId = (owner) => owner?._id || owner;
+      const productProviderIds = productMatches
+        .filter((product) => product.ownerType === "provider")
+        .map((product) => getProductOwnerId(product.owner));
+      const productBusinessIds = productMatches
+        .filter((product) => product.ownerType === "business")
+        .map((product) => getProductOwnerId(product.owner));
+
       const clockedInProviderIds = await Staff.distinct("provider", {
         status: "ACTIVE",
         "onDuty.active": true,
@@ -1886,6 +1906,9 @@ class BookingController {
                   { fullName: searchRegex },
                   { BusinessName: searchRegex },
                   { "service.serviceName": searchRegex },
+                  ...(productProviderIds.length
+                    ? [{ _id: { $in: productProviderIds } }]
+                    : []),
                 ],
               },
             ],
@@ -1910,6 +1933,41 @@ class BookingController {
       rawProviders = rawProviders.filter(
         (provider) => !disqualifiedSet.has(String(provider._id)),
       );
+      const sellerProductFilters = [];
+      if (productProviderIds.length) {
+        sellerProductFilters.push({
+          ownerType: "provider",
+          owner: { $in: productProviderIds },
+        });
+      }
+      if (productBusinessIds.length) {
+        sellerProductFilters.push({
+          ownerType: "business",
+          owner: { $in: productBusinessIds },
+        });
+      }
+      const sellerProducts = sellerProductFilters.length
+        ? await Product.find({
+            status: "approved",
+            $or: sellerProductFilters,
+          })
+            .select("owner ownerType name description productImage price quantity currency")
+            .lean()
+        : [];
+      const productsByOwner = new Map();
+      for (const product of sellerProducts) {
+        const ownerKey = `${product.ownerType}:${String(getProductOwnerId(product.owner))}`;
+        if (!productsByOwner.has(ownerKey)) productsByOwner.set(ownerKey, []);
+        productsByOwner.get(ownerKey).push({
+          _id: product._id,
+          name: product.name,
+          description: product.description,
+          productImage: product.productImage,
+          price: product.price,
+          quantity: product.quantity,
+          currency: product.currency,
+        });
+      }
 
       const businessServiceFilters = [];
       if (normalizedServiceName || parsedFixedPrice !== undefined) {
@@ -1961,6 +2019,9 @@ class BookingController {
                   { fullName: searchRegex },
                   { "service.serviceName": searchRegex },
                   { businessCategory: searchRegex },
+                  ...(productBusinessIds.length
+                    ? [{ _id: { $in: productBusinessIds } }]
+                    : []),
                 ],
               },
             ],
@@ -1997,6 +2058,7 @@ class BookingController {
         startingPrice: provider.startingPrice,
         currentLocation: provider.currentLocation,
         kycVerified: provider.kycVerified === true,
+        products: productsByOwner.get(`provider:${String(provider._id)}`) || [],
         online:
           provider.availability?.isAvailable === true &&
           hasFreshLocation(provider),
@@ -2023,6 +2085,7 @@ class BookingController {
         currentLocation: business.currentLocation,
         lastLocationUpdate: business.lastLocationUpdate,
         kycVerified: business.kycVerified === true,
+        products: productsByOwner.get(`business:${String(business._id)}`) || [],
         online: hasFreshLocation(business),
         services: serviceNameRegex
           ? (business.service || []).filter((item) =>
@@ -2049,6 +2112,8 @@ class BookingController {
         rating: parsedMinimumRating,
         count: accounts.length,
         providers: accounts,
+        productCount: productMatches.length,
+        products: productMatches,
       });
     } catch (error) {
       console.error("Search general providers error:", error);
@@ -2353,7 +2418,7 @@ class BookingController {
           { $limit: 30 },
         ]);
 
-        // ── Drop businesses that are closed or short-staffed ─────────────────
+        // ── Keep only open businesses; staff is informational, not eligibility ──
         const now = new Date();
         rawBusinesses = rawBusinesses.filter((business) =>
           businessService.isWithinBusinessHours(business, now),
@@ -2365,11 +2430,7 @@ class BookingController {
           .map((business) => ({
             ...business,
             onDutyStaffCount: onDutyCounts.get(String(business._id)) || 0,
-          }))
-          .filter(
-            (business) =>
-              business.onDutyStaffCount >= staffService.MIN_ON_DUTY_STAFF,
-          );
+          }));
       }
 
       // ── Filter out providers with disqualifying active bookings ────────────────

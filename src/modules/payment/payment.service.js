@@ -8,6 +8,9 @@ const notificationService = require("../../services/notification.service.js");
 const Transaction = require("../transactions/transaction.model.js");
 const WalletService = require("../wallet/wallet.service.js");
 const {
+  AdminWalletFundingService,
+} = require("../wallet/adminWalletFunding.service");
+const {
   notifyBookingExpiry,
 } = require("../bookings/booking-expiry.notification");
 const {
@@ -1122,6 +1125,10 @@ class paymentService {
    * Handle successful charge (payment received)
    */
   async handleChargeSuccess(data) {
+    const handledAdminWalletFunding =
+      await AdminWalletFundingService.processPaystackCharge(data);
+    if (handledAdminWalletFunding) return;
+
     try {
       const reference = data.reference;
       const bookingId = data.metadata?.bookingId;
