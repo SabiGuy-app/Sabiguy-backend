@@ -1448,7 +1448,7 @@ class BookingController {
         requestedStaffCode: isBusinessBooking
           ? normalizedStaffCode || null
           : null,
-        businessStatus: isBusinessBooking ? "needs_staff" : null,
+        businessStatus: isBusinessBooking ? "booking_created" : null,
         serviceType: normalizedCategory,
         subCategory: serviceName,
         title: serviceName,

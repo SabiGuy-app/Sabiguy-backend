@@ -373,7 +373,7 @@ class ProviderController {
     }
   }
 
-  async addProfilePicture(req, res) {
+  async addFacialCapture(req, res) {
     try {
       const { imageUrl } = req.body;
 
@@ -387,8 +387,8 @@ class ProviderController {
       }
 
       const wasKycCompleted = Boolean(provider.kycCompleted);
-      // Update the provider's profile picture
-      provider.profilePicture = imageUrl;
+      // Update the provider's facial capture
+      provider.facialCapture = imageUrl;
       provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
 
       await provider.save();
@@ -396,11 +396,11 @@ class ProviderController {
 
       res.status(200).json({
         success: true,
-        message: "Profile picture updated successfully",
-        profilePicture: provider.profilePicture,
+        message: "Facial capture updated successfully",
+        facialCapture: provider.facialCapture,
       });
     } catch (err) {
-      console.error("Profile picture error:", err);
+      console.error("Facial capture error:", err);
       res.status(500).json({ success: false, message: err.message });
     }
   }
@@ -1508,7 +1508,7 @@ class ProviderController {
       );
       const { businessStatus } = req.query;
       const allowedBusinessStatuses = [
-        "needs_staff",
+        "booking_requested",
         "assigned",
         "staff_assigned",
         "in_progress",

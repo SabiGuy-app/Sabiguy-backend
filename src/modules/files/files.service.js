@@ -21,6 +21,7 @@ exports.ValidationError = ValidationError;
 
 const allowedCategories = [
   "profile_pictures",
+  "facial_captures",
   "work_visuals",
   "automobiles",
   "identity_docs",

@@ -47,7 +47,7 @@ const bookingSchema = new mongoose.Schema(
     businessStatus: {
       type: String,
       enum: [
-        'needs_staff',
+        'booking_created',
         'assigned',
         'staff_assigned',
         'in_progress',

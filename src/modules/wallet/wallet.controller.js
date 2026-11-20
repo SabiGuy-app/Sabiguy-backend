@@ -192,11 +192,11 @@ class WalletController {
         });
       }
 
-      // ✅ Check if provider is assigned
-      if (!booking.providerId) {
+      // ✅ Check if provider or business is assigned
+      if (!booking.providerId && !booking.businessId) {
         return res.status(400).json({
           success: false,
-          message: "No provider assigned to this booking yet",
+          message: "No provider or business assigned to this booking yet",
         });
       }
 

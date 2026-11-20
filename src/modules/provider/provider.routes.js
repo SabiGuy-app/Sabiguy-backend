@@ -526,10 +526,10 @@ router.put(
 
 /**
  * @swagger
- * /api/v1/provider/profile-pic:
+ * /api/v1/provider/facial-capture:
  *   post:
- *     summary: Add provider profile picture
- *     description: Adds a new profile picture URL for the provider.
+ *     summary: Add provider facial capture
+ *     description: Adds a new facial capture URL for the provider.
  *     tags: [Provider]
  *     security:
  *       - bearerAuth: []
@@ -545,7 +545,7 @@ router.put(
  *                 example: "https://cdn.com/profile/queen.jpg"
  *     responses:
  *       200:
- *         description: Profile picture added successfully
+ *         description: Facial capture added successfully
  *       400:
  *         description: Image URL missing
  *       404:
@@ -554,10 +554,10 @@ router.put(
  *         description: Server error
  */
 router.post(
-  "/profile-pic",
+  "/facial-capture",
   providerUpdateLimiter,
   authMiddleware,
-  ProviderController.addProfilePicture,
+  ProviderController.addFacialCapture,
 );
 
 /**
@@ -964,7 +964,7 @@ router.get("/bookings", authMiddleware, ProviderController.getBookings);
  *         name: businessStatus
  *         schema:
  *           type: string
- *           enum: [needs_staff, assigned, staff_assigned, in_progress, completed, cancelled]
+ *           enum: [booking_requested, assigned, staff_assigned, in_progress, completed, cancelled]
  *         description: Filter by the business booking lifecycle status
  *       - in: query
  *         name: page

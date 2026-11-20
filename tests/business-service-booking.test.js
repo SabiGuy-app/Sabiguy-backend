@@ -91,7 +91,7 @@ test("business service booking stores staffCode as a preference and leaves assig
     assert.equal(createdBooking.businessId, BUSINESS_ID);
     assert.equal(createdBooking.providerId, null);
     assert.equal(createdBooking.requestedStaffCode, STAFF_CODE);
-    assert.equal(createdBooking.businessStatus, "needs_staff");
+    assert.equal(createdBooking.businessStatus, "booking_created");
     assert.equal(createdBooking.assignedStaff, undefined);
     assert.equal(notifiedBusiness, BUSINESS_ID);
     assert.equal(notificationData.staffCode, STAFF_CODE);

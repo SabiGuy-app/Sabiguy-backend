@@ -253,6 +253,7 @@ const options = {
     ),
     path.join(__dirname, '..', 'modules', 'payment', 'payment.routes.js'),
     path.join(__dirname, '..', 'modules', 'provider', 'provider.routes.js'),
+    path.join(__dirname, '..', 'modules', 'kyc', 'kyc.routes.js'),
     path.join(
       __dirname,
       '..',
@@ -274,7 +275,7 @@ const options = {
     path.join(__dirname, '..', 'modules', 'products', 'product.route.js'),
     path.join(__dirname, '..', 'modules', 'mobile', 'updatePolicy.routes.js'),
 
-    // path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
+    path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
     path.join(
       __dirname,
       '..',
