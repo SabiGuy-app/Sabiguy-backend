@@ -595,6 +595,39 @@ const getBookingsForBusiness = async (req, res) => {
   }
 };
 
+const startBusinessBooking = async (req, res) => {
+  try {
+    const data = await businessService.startBusinessBooking(
+      req.user.id,
+      req.params.bookingId,
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Business service started successfully',
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to start business service');
+  }
+};
+
+const completeBusinessBooking = async (req, res) => {
+  try {
+    const data = await businessService.completeBusinessBooking(
+      req.user.id,
+      req.params.bookingId,
+      req.body || {},
+    );
+    return res.status(200).json({
+      success: true,
+      message: 'Business service marked as complete. Awaiting customer confirmation.',
+      data,
+    });
+  } catch (error) {
+    return handleServiceError(res, error, 'Failed to complete business service');
+  }
+};
+
 const acceptBooking = async (req, res) => {
   try {
     const businessId = req.params.businessId || req.user.id;
@@ -668,6 +701,8 @@ module.exports = {
   setBusinessAvailability,
   updateBusinessLocation,
   getBookingsForBusiness,
+  startBusinessBooking,
+  completeBusinessBooking,
   acceptBooking,
   declineBooking,
   acceptBusinessBooking,

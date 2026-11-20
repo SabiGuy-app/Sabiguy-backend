@@ -9,6 +9,30 @@ const geolocationService = require('../../services/geolocation.service');
 const { sendNinSubmittedEmail } = require('../../config/emailVerification');
 const { getPagination } = require('../../shared/utils/pagination');
 
+class BuyerProfileValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'BuyerProfileValidationError';
+    this.statusCode = 400;
+  }
+}
+
+const applyOptionalString = (payload, sourceField, targetField, updates) => {
+  if (payload[sourceField] === undefined) return;
+  if (payload[sourceField] === null) {
+    updates[targetField] = null;
+    return;
+  }
+  if (typeof payload[sourceField] !== 'string') {
+    throw new BuyerProfileValidationError(`${sourceField} must be a string`);
+  }
+  const value = payload[sourceField].trim();
+  if (!value) {
+    throw new BuyerProfileValidationError(`${sourceField} must be a non-empty string`);
+  }
+  updates[targetField] = value;
+};
+
 const getAllBuyers = async (req) => {
   const { page, limit, skip } = getPagination(req);
 
@@ -249,15 +273,6 @@ const getUserById = async (id) => {
     providerObj.staffId = staffMemberships.length ? staffMemberships[0]._id : null;
     providerObj.staffCode = staffMemberships.length ? staffMemberships[0].staffCode : null;
     providerObj.staffMemberships = staffMemberships;
-    if (provider.invitedBy && provider.email) {
-      const staffInvite = await Staff.findOne({
-        business: provider.invitedBy,
-        email: provider.email,
-      })
-        .select('status')
-        .lean();
-      if (staffInvite) providerObj.status = staffInvite.status;
-    }
     return providerObj;
   }
   if (business) {
@@ -356,6 +371,70 @@ const updateUserLocation = async (buyerId, { latitude, longitude, address }) => 
   };
 };
 
+const updateBuyerProfile = async (buyerId, payload = {}) => {
+  const updates = {};
+
+  applyOptionalString(payload, 'fullName', 'fullName', updates);
+  applyOptionalString(payload, 'phoneNumber', 'phoneNumber', updates);
+  applyOptionalString(payload, 'profilePicture', 'profilePicture', updates);
+  applyOptionalString(payload, 'dateOfBirth', 'dateOfBirth', updates);
+  applyOptionalString(payload, 'gender', 'gender', updates);
+  applyOptionalString(payload, 'city', 'city', updates);
+  applyOptionalString(payload, 'ninImage', 'ninImage', updates);
+  applyOptionalString(payload, 'facialCapture', 'facialCapture', updates);
+
+  if (payload.nin !== undefined) {
+    if (payload.nin === null) {
+      updates.nin = null;
+    } else {
+    if (typeof payload.nin !== 'string' || !/^\d{11}$/.test(payload.nin.trim())) {
+      throw new BuyerProfileValidationError('nin must be exactly 11 digits');
+    }
+    updates.nin = payload.nin.trim();
+    }
+  }
+
+  if (payload.ninVerified !== undefined) {
+    if (typeof payload.ninVerified !== 'boolean') {
+      throw new BuyerProfileValidationError('ninVerified must be a boolean');
+    }
+    updates.ninVerified = payload.ninVerified;
+  }
+
+  if (payload.ninVerifiedAt !== undefined) {
+    if (payload.ninVerifiedAt === null) {
+      updates.ninVerifiedAt = null;
+    } else {
+    if (typeof payload.ninVerifiedAt !== 'string' || Number.isNaN(Date.parse(payload.ninVerifiedAt))) {
+      throw new BuyerProfileValidationError('ninVerifiedAt must be a valid date-time');
+    }
+    updates.ninVerifiedAt = new Date(payload.ninVerifiedAt);
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new BuyerProfileValidationError('No valid fields provided for update');
+  }
+
+  const buyer = await Buyer.findByIdAndUpdate(
+    buyerId,
+    { $set: updates },
+    { new: true, runValidators: true },
+  ).select('+nin -password -refreshToken -refreshTokenExpiresAt -otp -otpExpiresAt');
+
+  if (!buyer) {
+    const error = new Error('Buyer not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return {
+    success: true,
+    message: 'Buyer profile updated successfully',
+    data: buyer,
+  };
+};
+
 module.exports = {
   getPagination,
   getAllBuyers,
@@ -365,4 +444,6 @@ module.exports = {
   getUserById,
   uploadUserNin,
   updateUserLocation,
+  updateBuyerProfile,
+  BuyerProfileValidationError,
 };

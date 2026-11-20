@@ -6,9 +6,11 @@ const {
   getUserByEmail,
   getUserById,
   uploadUserNin,
+  updateBuyerProfile,
   updateUserLocation,
 } = require("./users.controller");
 const authMiddleware = require("../../../middleware/authMiddleware");
+const onlyRole = require("../../../middleware/roleMiddleware");
 
 const router = express.Router();
 
@@ -285,6 +287,58 @@ router.post("/nin", authMiddleware, uploadUserNin);
 
 /**
  * @swagger
+ * /api/v1/users/profile:
+ *   put:
+ *     summary: Update the authenticated buyer profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               profilePicture:
+ *                 type: string
+ *               dateOfBirth:
+ *                 type: string
+ *                 example: "1995-05-20"
+ *               gender:
+ *                 type: string
+ *               city:
+ *                 type: string
+ *               nin:
+ *                 type: string
+ *                 example: "12345678901"
+ *               ninImage:
+ *                 type: string
+ *               ninVerified:
+ *                 type: boolean
+ *               ninVerifiedAt:
+ *                 type: string
+ *                 format: date-time
+ *               facialCapture:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Buyer profile updated successfully
+ *       400:
+ *         description: Invalid or empty fields
+ *       403:
+ *         description: Buyer access only
+ *       404:
+ *         description: Buyer not found
+ */
+router.put("/profile", authMiddleware, onlyRole("buyer"), updateBuyerProfile);
+
+/**
+ * @swagger
  * /api/v1/users/email/{email}:
  *   get:
  *     summary: Get user by email
@@ -323,7 +377,7 @@ router.get("/email/:email", getUserByEmail);
  *         description: The MongoDB ID of the user
  *     responses:
  *       200:
- *         description: User found successfully. Provider accounts invited by a business include status with the staff invitation lifecycle state. For business accounts, data also includes staffOnDuty with the same count and staff fields as the business staff on-duty endpoint for any authenticated caller.
+ *         description: User found successfully. For business accounts, data also includes staffOnDuty with the same count and staff fields as the business staff on-duty endpoint for any authenticated caller.
  *       404:
  *         description: User not found
  */

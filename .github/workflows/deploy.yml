@@ -208,6 +208,9 @@ jobs:
             ADMIN_INVITE_URL=${{ secrets.ADMIN_INVITE_URL }}
             ADMIN_BOOTSTRAP_EMAILS=${{ secrets.ADMIN_BOOTSTRAP_EMAILS }}
             APPLE_CLIENT_IDS=${{ secrets.APPLE_CLIENT_IDS }}
+            DOJAH_NIN_URL=${{ secrets.DOJAH_NIN_URL }}
+            DOJAH_SECRET_KEY=${{ secrets.DOJAH_SECRET_KEY }}
+            DOJAH_APP_ID=${{ secrets.DOJAH_APP_ID }}
             ENVEOF
 
       - name: Deploy to EC2

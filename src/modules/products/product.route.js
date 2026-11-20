@@ -9,10 +9,12 @@ const {
 } = require('./product.controller');
 const {
   getCatalog,
+  createDeliveryQuote,
   createCheckout,
   verifyCheckout,
   getMyOrders,
   updateFulfillment,
+  disputeDelivery,
   confirmDelivery,
 } = require('./productOrder.controller');
 
@@ -45,9 +47,90 @@ router.get('/catalog', getCatalog);
 
 /**
  * @swagger
+ * /api/v1/products/delivery/quote:
+ *   post:
+ *     summary: Calculate delivery fare for an approved product
+ *     description: >-
+ *       Uses the seller's saved pickup coordinates and the supplied destination
+ *       coordinates with the existing transport pricing rules. The returned
+ *       deliveryFee is the transport fare subtotal and excludes the 5% user
+ *       platform fee and transport tax.
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [productId, destination]
+ *             properties:
+ *               productId:
+ *                 type: string
+ *                 example: 507f1f77bcf86cd799439011
+ *               modeOfDelivery:
+ *                 type: string
+ *                 enum: [Bike, Car]
+ *                 default: Bike
+ *               destination:
+ *                 type: object
+ *                 required: [latitude, longitude]
+ *                 properties:
+ *                   latitude: { type: number, example: 6.5244 }
+ *                   longitude: { type: number, example: 3.3792 }
+ *                   address: { type: string, example: Ikeja, Lagos }
+ *     responses:
+ *       200:
+ *         description: Delivery quote with pickup and delivery coordinates, available addresses, fee, route distance, and duration
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     quoteId: { type: string }
+ *                     pickup:
+ *                       type: object
+ *                       properties:
+ *                         coordinates:
+ *                           type: array
+ *                           description: Longitude, latitude
+ *                           items: { type: number }
+ *                         address: { type: string, nullable: true }
+ *                     deliveryAddress:
+ *                       type: object
+ *                       properties:
+ *                         coordinates:
+ *                           type: array
+ *                           description: Longitude, latitude
+ *                           items: { type: number }
+ *                         address: { type: string, nullable: true }
+ *                     deliveryFee: { type: number, example: 6000 }
+ *                     currency: { type: string, example: NGN }
+ *       400:
+ *         description: Invalid product, delivery mode, or destination coordinates
+ *       401:
+ *         description: Authentication required
+ *       404:
+ *         description: Approved product not found
+ *       409:
+ *         description: Seller pickup coordinates are not available
+ */
+router.post('/delivery/quote', authMiddleware, (req, res, next) => {
+  if (req.user.role !== 'buyer') return res.status(403).json({ success: false, message: 'Buyer access only' });
+  return next();
+}, createDeliveryQuote);
+
+/**
+ * @swagger
  * /api/v1/products/orders/checkout:
  *   post:
  *     summary: Create and pay for a product order without creating a service booking
+ *     description: quoteId is required for delivery and omitted for pickup. The quote supplies pickup and destination details; deliveryDetails supplies only recipient contact and instructions. Checkout adds a flat NGN 200 buyer platform fee. The 10% product commission is withheld from the item subtotal; the seller payout (held until delivery or pickup is confirmed) is item subtotal minus commission plus the full delivery fee, if applicable.
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
@@ -72,21 +155,25 @@ router.get('/catalog', getCatalog);
  *               fulfillmentType:
  *                 type: string
  *                 enum: [delivery, pickup]
- *               deliveryAddress:
+ *               quoteId:
+ *                 type: string
+ *                 description: Required for delivery. Omit for pickup.
+ *                 example: 68f0a31f8bc15387b034abcd
+ *               deliveryDetails:
  *                 type: object
+ *                 description: Required for delivery. The destination address and coordinates are taken from quoteId.
  *                 properties:
  *                   recipientName: { type: string }
  *                   phone: { type: string }
- *                   address: { type: string }
- *                   city: { type: string }
- *                   state: { type: string }
  *                   instructions: { type: string }
  *               pickupNote: { type: string }
  *     responses:
  *       201:
- *         description: Order created with a Paystack authorization URL
+ *         description: Order ID (orderId), order details including product commission, flat platform fee, seller payout, complete delivery quote details, and a Paystack authorization URL
  *       400:
- *         description: Invalid items, seller mix, delivery details, or unavailable product
+ *         description: Invalid items, seller mix, delivery details, expired/mismatched quote, or unavailable product
+ *       409:
+ *         description: Delivery quote expired or was already used
  *       401:
  *         description: Authentication required
  *       403:
@@ -142,6 +229,12 @@ router.post('/orders/:id/verify', authMiddleware, (req, res, next) => {
  *       - in: query
  *         name: limit
  *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+ *       - in: query
+ *         name: status
+ *         description: Filter orders by lifecycle status
+ *         schema:
+ *           type: string
+ *           enum: [pending_payment, paid, processing, shipped, ready_for_pickup, delivered, disputed, completed]
  *     responses:
  *       200:
  *         description: Paginated orders for the authenticated account
@@ -159,11 +252,12 @@ router.get('/orders', authMiddleware, (req, res, next) => {
  *   patch:
  *     summary: Update fulfillment for an order received by the authenticated seller
  *     description: >-
- *       Order lifecycle statuses are pending_payment, paid, processing, shipped,
- *       ready_for_pickup, and delivered. This seller endpoint accepts only the
- *       seller-managed transitions processing, shipped, and ready_for_pickup.
- *       Payment sets paid automatically; the buyer sets delivered through the
- *       confirm-delivery endpoint.
+ *       The seller moves delivery orders through processing, shipped, and delivered.
+ *       For pickup orders, the seller moves them through processing and
+ *       ready_for_pickup. The buyer can confirm delivery only after the seller
+ *       marks a delivery order delivered; pickup can be confirmed once ready.
+ *       Buyer confirmation moves the order to completed and releases the
+ *       seller's escrowed payout.
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
@@ -182,7 +276,7 @@ router.get('/orders', authMiddleware, (req, res, next) => {
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [processing, shipped, ready_for_pickup]
+ *                 enum: [processing, shipped, delivered, ready_for_pickup]
  *                 description: Seller-managed fulfillment statuses accepted by this endpoint
  *               trackingNumber: { type: string }
  *               note: { type: string }
@@ -203,9 +297,54 @@ router.patch('/orders/:id/fulfillment', authMiddleware, (req, res, next) => {
 
 /**
  * @swagger
+ * /api/v1/products/orders/{id}/dispute-delivery:
+ *   post:
+ *     summary: Dispute a seller-reported product delivery
+ *     description: Buyer-only. Available after the seller marks a delivery order delivered and before the buyer confirms it. The order remains disputed and seller escrow stays on hold while active super admins are emailed the order details and reason.
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 2000
+ *                 example: The package arrived damaged and one item is missing.
+ *     responses:
+ *       201:
+ *         description: Dispute submitted; super admins are notified by email
+ *       400:
+ *         description: Invalid order ID or missing/too-long reason
+ *       403:
+ *         description: Buyer account required
+ *       404:
+ *         description: Order not found
+ *       409:
+ *         description: Order is not eligible for a delivery dispute
+ */
+router.post('/orders/:id/dispute-delivery', authMiddleware, (req, res, next) => {
+  if (req.user.role !== 'buyer') return res.status(403).json({ success: false, message: 'Buyer access only' });
+  return next();
+}, disputeDelivery);
+
+/**
+ * @swagger
  * /api/v1/products/orders/{id}/confirm-delivery:
  *   post:
- *     summary: Confirm delivery and release the seller's escrowed funds
+ *     summary: Confirm seller-reported delivery or pickup and release escrowed funds
+ *     description: For delivery orders, the seller must first set fulfillment status to delivered. For pickup orders, the seller must set status to ready_for_pickup.
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
@@ -216,13 +355,13 @@ router.patch('/orders/:id/fulfillment', authMiddleware, (req, res, next) => {
  *         schema: { type: string }
  *     responses:
  *       200:
- *         description: Delivery confirmed and funds released to the seller wallet
+ *         description: Buyer confirmation recorded and funds released to the seller wallet
  *       403:
  *         description: Buyer account required
  *       404:
  *         description: Order not found
  *       409:
- *         description: Order is not ready for delivery confirmation
+ *         description: Seller has not marked a delivery order delivered, or a pickup order is not ready
  */
 router.post('/orders/:id/confirm-delivery', authMiddleware, (req, res, next) => {
   if (req.user.role !== 'buyer') return res.status(403).json({ success: false, message: 'Buyer access only' });

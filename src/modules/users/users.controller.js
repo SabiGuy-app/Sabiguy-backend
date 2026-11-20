@@ -102,6 +102,16 @@ exports.updateUserLocation = async (req, res) => {
   }
 };
 
+exports.updateBuyerProfile = async (req, res) => {
+  try {
+    const payload = await usersService.updateBuyerProfile(req.user.id, req.body);
+    return res.status(200).json(payload);
+  } catch (err) {
+    const statusCode = err.statusCode || 500;
+    return res.status(statusCode).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getPagination,
   ...exports,

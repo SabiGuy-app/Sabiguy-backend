@@ -711,8 +711,8 @@ router.get(
  *       - Providers who are active, toggled available, have sent a location in the last 10 minutes,
  *         and have no booking in progress that blocks a new one.
  *       - Businesses that are active, toggled available, online (location heartbeat in the last
- *         10 minutes), open now per their available days and business hours, and have at least the
- *         minimum number of online staff on duty.
+ *         10 minutes), and open now per their available days and business hours. Businesses are
+ *         included even when they have no staff on duty; `onDutyStaffCount` reports zero in that case.
  *
  *       The search radius is 7 km.
  *     tags: [Bookings]
@@ -877,7 +877,7 @@ router.get(
  *                         description: Provider accounts only
  *                       onDutyStaffCount:
  *                         type: integer
- *                         description: Business accounts only. Online staff currently on duty
+ *                         description: Business accounts only. Online staff currently on duty; may be zero
  *                       currentLocation:
  *                         type: object
  *                         properties:
@@ -946,8 +946,11 @@ router.post(
  *       Send at least one of `search`, `serviceName`, `jobService` or `businessName`.
  *       Filters are combined with AND.
  *
- *       - `search` is a partial, case-insensitive free-text search across names, service names
- *         and business categories.
+ *       - `search` is a partial, case-insensitive free-text search across names, service names,
+ *         business categories, and approved product names or descriptions. Matching products
+ *         are returned in the top-level `products` array, even if their seller does not qualify
+ *         for the provider/business results; eligible sellers include all of their approved
+ *         products in their own `products` array.
  *       - `serviceName` is an exact, case-insensitive service name filter.
  *       - `jobService` matches provider jobs and business categories or service names.
  *       - `businessName` is a partial, case-insensitive business-name filter.
@@ -1034,6 +1037,7 @@ router.post(
  *                 count:
  *                   type: integer
  *                   example: 2
+ *                   description: Number of provider and business accounts returned
  *                 providers:
  *                   type: array
  *                   items:
@@ -1065,7 +1069,7 @@ router.post(
  *                             type: integer
  *                       online:
  *                         type: boolean
- *                         description: Matches the admin online lists: providers must be available with a fresh location; businesses must have a fresh location
+ *                         description: "Matches the admin online lists: providers must be available with a fresh location; businesses must have a fresh location"
  *                       kycVerified:
  *                         type: boolean
  *                         example: true
@@ -1092,6 +1096,26 @@ router.post(
  *                       lastLocationUpdate:
  *                         type: string
  *                         format: date-time
+ *                       products:
+ *                         type: array
+ *                         description: All approved products belonging to this seller
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             _id:
+ *                               type: string
+ *                             name:
+ *                               type: string
+ *                             description:
+ *                               type: string
+ *                             productImage:
+ *                               type: string
+ *                             price:
+ *                               type: number
+ *                             quantity:
+ *                               type: integer
+ *                             currency:
+ *                               type: string
  *                       services:
  *                         type: array
  *                         items:
@@ -1102,6 +1126,43 @@ router.post(
  *                         description: Provider accounts only
  *                         items:
  *                           type: object
+ *                 productCount:
+ *                   type: integer
+ *                   description: Number of matching approved products returned (maximum 100)
+ *                 products:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       ownerType:
+ *                         type: string
+ *                         enum: [provider, business]
+ *                       owner:
+ *                         type: object
+ *                         nullable: true
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           fullName:
+ *                             type: string
+ *                           BusinessName:
+ *                             type: string
+ *                           profilePicture:
+ *                             type: string
+ *                       name:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                       productImage:
+ *                         type: string
+ *                       price:
+ *                         type: number
+ *                       quantity:
+ *                         type: integer
+ *                       currency:
+ *                         type: string
  *       400:
  *         description: Invalid fixedPrice or rating, invalid search length, or no search filter provided
  *       401:

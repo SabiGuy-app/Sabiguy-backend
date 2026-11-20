@@ -6,6 +6,7 @@ const Booking = require("../src/modules/bookings/Bookings.model");
 const Business = require("../src/modules/business/business.model");
 const Provider = require("../models/ServiceProvider");
 const Staff = require("../src/modules/business/staff.model");
+const Product = require("../src/modules/products/product.model");
 
 const BUSINESS_ID = "64b000000000000000000001";
 const STAFF_PROVIDER_ID = "64c000000000000000000001";
@@ -252,9 +253,69 @@ test("searchGeneralProviders searches without location or geo queries", async ()
     businessFind: Business.find,
     staffDistinct: Staff.distinct,
     bookingDistinct: Booking.distinct,
+    productFind: Product.find,
   };
   let providerQuery;
   let businessQuery;
+  const searchProducts = [
+    {
+      _id: "provider-match",
+      owner: { _id: "general-provider" },
+      ownerType: "provider",
+      name: "General Cream",
+      description: "Hair care",
+      price: 2500,
+      currency: "NGN",
+    },
+    {
+      _id: "business-match",
+      owner: { _id: BUSINESS_ID },
+      ownerType: "business",
+      name: "General Cream",
+      description: "Hair care",
+      price: 3000,
+      currency: "NGN",
+    },
+  ];
+  const sellerProducts = [
+    ...searchProducts.map((product) => ({
+      ...product,
+      owner: product.owner._id,
+    })),
+    {
+      _id: "provider-other-product",
+      owner: "general-provider",
+      ownerType: "provider",
+      name: "Hair Oil",
+      price: 1800,
+      currency: "NGN",
+    },
+    {
+      _id: "business-other-product",
+      owner: BUSINESS_ID,
+      ownerType: "business",
+      name: "Comb",
+      price: 500,
+      currency: "NGN",
+    },
+  ];
+  Product.find = (query) => {
+    const queryHasProductSearch = query.$or.some((clause) => clause.name || clause.description);
+    if (queryHasProductSearch) {
+      return {
+        select() { return this; },
+        populate() { return this; },
+        sort() { return this; },
+        limit() { return this; },
+        lean: async () => searchProducts,
+      };
+    }
+
+    return {
+      select() { return this; },
+      lean: async () => sellerProducts,
+    };
+  };
 
   Provider.find = (query) => {
     providerQuery = query;
@@ -268,7 +329,7 @@ test("searchGeneralProviders searches without location or geo queries", async ()
         service: [{ serviceName: "Braids" }],
         rating: { average: 4.8 },
         availability: { isAvailable: true },
-        isOnline: false,
+        isOnline: true,
         currentLocation: {
           type: "Point",
           coordinates: [3.4, 6.5],
@@ -288,14 +349,14 @@ test("searchGeneralProviders searches without location or geo queries", async ()
         BusinessName: "General Studio",
         service: [{ serviceName: "Braids" }],
         rating: { average: 4.5 },
-        availability: { isAvailable: false },
-        isOnline: false,
+        availability: { isAvailable: true },
+        isOnline: true,
         currentLocation: {
           type: "Point",
           coordinates: [3.4, 6.5],
         },
         lastLocationUpdate: new Date(),
-        lastSeenAt: new Date(0),
+        lastSeenAt: new Date(),
         kycVerified: true,
       }],
     };
@@ -315,6 +376,16 @@ test("searchGeneralProviders searches without location or geo queries", async ()
     assert.equal(response.body.location, undefined);
     assert.equal(response.body.providers[0].online, true);
     assert.equal(response.body.providers[1].online, true);
+    assert.equal(response.body.providers[0].products.length, 2);
+    assert.deepEqual(
+      response.body.providers[0].products.map((product) => product.name).sort(),
+      ["General Cream", "Hair Oil"],
+    );
+    assert.equal(response.body.providers[1].products.length, 2);
+    assert.deepEqual(
+      response.body.providers[1].products.map((product) => product.name).sort(),
+      ["Comb", "General Cream"],
+    );
     assert.equal(response.body.providers[0].kycVerified, true);
     assert.equal(response.body.providers[1].kycVerified, true);
     assert.ok(providerQuery.$and);
@@ -326,5 +397,6 @@ test("searchGeneralProviders searches without location or geo queries", async ()
     Business.find = originals.businessFind;
     Staff.distinct = originals.staffDistinct;
     Booking.distinct = originals.bookingDistinct;
+    Product.find = originals.productFind;
   }
 });

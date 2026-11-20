@@ -373,7 +373,7 @@ class ProviderController {
     }
   }
 
-  async addProfilePicture(req, res) {
+  async addFacialCapture(req, res) {
     try {
       const { imageUrl } = req.body;
 
@@ -387,8 +387,8 @@ class ProviderController {
       }
 
       const wasKycCompleted = Boolean(provider.kycCompleted);
-      // Update the provider's profile picture
-      provider.profilePicture = imageUrl;
+      // Update the provider's facial capture
+      provider.facialCapture = imageUrl;
       provider.kycLevel = Math.max(provider.kycLevel || 0, 3);
 
       await provider.save();
@@ -396,11 +396,11 @@ class ProviderController {
 
       res.status(200).json({
         success: true,
-        message: "Profile picture updated successfully",
-        profilePicture: provider.profilePicture,
+        message: "Facial capture updated successfully",
+        facialCapture: provider.facialCapture,
       });
     } catch (err) {
-      console.error("Profile picture error:", err);
+      console.error("Facial capture error:", err);
       res.status(500).json({ success: false, message: err.message });
     }
   }
@@ -416,6 +416,14 @@ class ProviderController {
       const provider = await Provider.findById(req.user.id);
       if (!provider) {
         return res.status(404).json({ message: "Provider not found" });
+      }
+
+      if (!provider.kycVerified) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "You will only be able to update your profile picture once your account is verified",
+        });
       }
 
       // Update the provider's profile picture
@@ -1500,7 +1508,7 @@ class ProviderController {
       );
       const { businessStatus } = req.query;
       const allowedBusinessStatuses = [
-        "needs_staff",
+        "booking_requested",
         "assigned",
         "staff_assigned",
         "in_progress",
@@ -1857,9 +1865,7 @@ class ProviderController {
       await notificationService.notifyUser(updatedBooking.userId, {
         type: "provider_accepted",
         title: "Provider Accepted Your Booking",
-        message: booking.pickupLocation
-          ? "A provider is on their way to your pickup location"
-          : "A provider accepted your service booking",
+        message: "A provider accepted your service booking",
         bookingId: updatedBooking._id,
         providerId,
         providerETA: providerETAMinutes,

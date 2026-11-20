@@ -25,6 +25,8 @@ const {
   setBusinessAvailability,
   updateBusinessLocation,
   getBookingsForBusiness,
+  startBusinessBooking,
+  completeBusinessBooking,
   acceptBooking,
   declineBooking,
 } = require("./business.controller");
@@ -390,6 +392,10 @@ router.post(
  *                 type: string
  *               businessAddress:
  *                 type: string
+ *               dateOfBirth:
+ *                 type: string
+ *                 format: date
+ *                 description: Business owner's date of birth, used to match NIN verification
  *     responses:
  *       200:
  *         description: Business profile updated successfully
@@ -462,23 +468,88 @@ router.put(
  *           schema:
  *             type: object
  *             properties:
- *               accountName:
- *                 type: string
- *                 example: "ABC Logistics"
- *               accountNumber:
- *                 type: string
- *                 example: "0123456789"
  *               bankName:
  *                 type: string
- *                 example: "Access Bank"
+ *                 example: "OPay Digital Services Limited (OPay)"
  *               bankCode:
  *                 type: string
- *                 example: "044"
+ *                 example: "999992"
+ *               accountNumber:
+ *                 type: string
+ *                 example: "7041629193"
+ *               accountName:
+ *                 type: string
+ *                 example: "JOSHUA  ODUSANYA"
  *               taxId:
  *                 type: string
+ *                 nullable: true
+ *                 example: "TIN-12345678"
+ *               paystackRecipientCode:
+ *                 type: string
+ *                 nullable: true
+ *                 example: null
+ *               verified:
+ *                 type: boolean
+ *                 example: false
+ *           example:
+ *             bankName: "OPay Digital Services Limited (OPay)"
+ *             bankCode: "999992"
+ *             accountNumber: "7041629193"
+ *             accountName: "JOSHUA  ODUSANYA"
+ *             taxId: "TIN-12345678"
+ *             paystackRecipientCode: null
+ *             verified: false
  *     responses:
  *       200:
  *         description: Bank info updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Payout account updated successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bankName:
+ *                       type: string
+ *                       example: "OPay Digital Services Limited (OPay)"
+ *                     bankCode:
+ *                       type: string
+ *                       example: "999992"
+ *                     accountNumber:
+ *                       type: string
+ *                       example: "7041629193"
+ *                     accountName:
+ *                       type: string
+ *                       example: "JOSHUA  ODUSANYA"
+ *                     taxId:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "TIN-12345678"
+ *                     paystackRecipientCode:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     verified:
+ *                       type: boolean
+ *                       example: false
+ *             example:
+ *               success: true
+ *               message: Payout account updated successfully
+ *               data:
+ *                 bankName: "OPay Digital Services Limited (OPay)"
+ *                 bankCode: "999992"
+ *                 accountNumber: "7041629193"
+ *                 accountName: "JOSHUA  ODUSANYA"
+ *                 taxId: "TIN-12345678"
+ *                 paystackRecipientCode: null
+ *                 verified: false
  *       400:
  *         description: Invalid or empty fields
  *       404:
@@ -511,17 +582,86 @@ router.put(
  *             properties:
  *               bankName:
  *                 type: string
+ *                 example: "OPay Digital Services Limited (OPay)"
  *               bankCode:
  *                 type: string
+ *                 example: "999992"
  *               accountNumber:
  *                 type: string
+ *                 example: "7041629193"
  *               accountName:
  *                 type: string
+ *                 example: "JOSHUA  ODUSANYA"
  *               taxId:
  *                 type: string
+ *                 nullable: true
+ *                 example: "TIN-12345678"
+ *               paystackRecipientCode:
+ *                 type: string
+ *                 nullable: true
+ *                 example: null
+ *               verified:
+ *                 type: boolean
+ *                 example: false
+ *           example:
+ *             bankName: "OPay Digital Services Limited (OPay)"
+ *             bankCode: "999992"
+ *             accountNumber: "7041629193"
+ *             accountName: "JOSHUA  ODUSANYA"
+ *             taxId: "TIN-12345678"
+ *             paystackRecipientCode: null
+ *             verified: false
  *     responses:
  *       200:
  *         description: Payout account updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Payout account updated successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bankName:
+ *                       type: string
+ *                       example: "OPay Digital Services Limited (OPay)"
+ *                     bankCode:
+ *                       type: string
+ *                       example: "999992"
+ *                     accountNumber:
+ *                       type: string
+ *                       example: "7041629193"
+ *                     accountName:
+ *                       type: string
+ *                       example: "JOSHUA  ODUSANYA"
+ *                     taxId:
+ *                       type: string
+ *                       nullable: true
+ *                       example: "TIN-12345678"
+ *                     paystackRecipientCode:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *                     verified:
+ *                       type: boolean
+ *                       example: false
+ *             example:
+ *               success: true
+ *               message: Payout account updated successfully
+ *               data:
+ *                 bankName: "OPay Digital Services Limited (OPay)"
+ *                 bankCode: "999992"
+ *                 accountNumber: "7041629193"
+ *                 accountName: "JOSHUA  ODUSANYA"
+ *                 taxId: "TIN-12345678"
+ *                 paystackRecipientCode: null
+ *                 verified: false
  *       400:
  *         description: Invalid or empty fields
  *       404:
@@ -1128,7 +1268,7 @@ router.get("/:businessId", authMiddleware, getBusinessById);
  *         description: Filter by business-facing status
  *         schema:
  *           type: string
- *           enum: [needs_staff, assigned, staff_assigned, in_progress, completed, cancelled]
+ *           enum: [booking_created, assigned, staff_assigned, in_progress, completed, cancelled]
  *       - in: query
  *         name: page
  *         schema:
@@ -1152,6 +1292,93 @@ router.get("/:businessId", authMiddleware, getBusinessById);
  *         description: Business not found
  */
 router.get("/:businessId/bookings", authMiddleware, getBookingsForBusiness);
+
+/**
+ * @swagger
+ * /api/v1/businesses/bookings/{bookingId}/start:
+ *   patch:
+ *     summary: Start a business booking as the business owner
+ *     description: Starts a paid business booking when no qualified staff member is currently available. The authenticated business owner must own the booking.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Business service started successfully
+ *       400:
+ *         description: Invalid business or booking ID
+ *       403:
+ *         description: Business owner access only
+ *       404:
+ *         description: Booking not found for this business
+ *       409:
+ *         description: Payment is incomplete or qualified staff are available
+ */
+router.patch(
+  "/bookings/:bookingId/start",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  startBusinessBooking,
+);
+
+/**
+ * @swagger
+ * /api/v1/businesses/bookings/{bookingId}/complete:
+ *   patch:
+ *     summary: Complete a business booking as the business owner
+ *     description: Marks a business booking complete after the owner started it or its assigned staff are no longer available. The customer is then asked to confirm completion.
+ *     tags: [Business]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: bookingId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               pictures:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               videos:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               jobCompletedNotes:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Business service marked complete
+ *       400:
+ *         description: Invalid business or booking ID or invalid completion evidence
+ *       403:
+ *         description: Business owner access only
+ *       404:
+ *         description: Booking not found or not in progress
+ *       409:
+ *         description: Assigned staff are still available to complete the service
+ */
+router.patch(
+  "/bookings/:bookingId/complete",
+  authMiddleware,
+  onlyRole("businessOwner"),
+  completeBusinessBooking,
+);
 
 /**
  * @swagger

@@ -41,6 +41,7 @@ const businessSchema = new mongoose.Schema(
     lastResetOtpSentAt: { type: Date, default: null },
     emailVerificationExpires: { type: Date },
     fullName: { type: String },
+    dateOfBirth: { type: String },
     accountType: {
       type: String,
       enum: ['individual', 'business'],
@@ -75,6 +76,10 @@ const businessSchema = new mongoose.Schema(
     },
     cacFile: { type: String },
     ninSlip: { type: String },
+    nin: { type: String, select: false },
+    ninImage: { type: String, default: null },
+    ninVerified: { type: Boolean, default: false },
+    ninVerifiedAt: { type: Date, default: null },
     cityOfOperation: { type: String },
     businessCategory: { type: String, required: false, default: null },
     businessPhotos: [{ type: String }],
@@ -125,6 +130,33 @@ const businessSchema = new mongoose.Schema(
     fcmToken: {
       type: String,
       select: false,
+    },
+    notificationPreferences: {
+      bookings: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: { type: [String], default: [] },
+      },
+      jobCompleted: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: { type: [String], default: [] },
+      },
+      chatMessages: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: false },
+        types: { type: [String], default: [] },
+      },
+      walletPayments: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: true },
+        types: { type: [String], default: [] },
+      },
+      promotions: {
+        push: { type: Boolean, default: true },
+        email: { type: Boolean, default: false },
+        types: { type: [String], default: [] },
+      },
     },
     kycCompleted: { type: Boolean, default: false },
     kycVerified: { type: Boolean, default: false },
