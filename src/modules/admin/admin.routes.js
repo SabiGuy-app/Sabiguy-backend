@@ -5,6 +5,7 @@ const authMiddleware = require("../../../middleware/authMiddleware");
 const AdminController = require("./admin.controller");
 const onlyRole = require("../../../middleware/roleMiddleware");
 const AdminWalletFundingController = require("../wallet/adminWalletFunding.controller");
+const ProductOrderController = require("../products/productOrder.controller");
 
 const adminCreateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1320,6 +1321,45 @@ router.post(
   authMiddleware,
   onlyRole("admin"),
   AdminWalletFundingController.verifyBatch,
+);
+
+/**
+ * @swagger
+ * /api/v1/admin/product-orders:
+ *   get:
+ *     summary: List all product orders for admin review
+ *     tags: [Admins]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         description: Optional order lifecycle status filter
+ *         schema:
+ *           type: string
+ *           enum: [pending_payment, paid, processing, shipped, ready_for_pickup, delivered, disputed, completed]
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Paginated product orders across all buyers and sellers
+ *       400:
+ *         description: Invalid status filter
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Admin account required
+ */
+router.get(
+  "/product-orders",
+  adminAuthLimiter,
+  authMiddleware,
+  onlyRole("admin"),
+  ProductOrderController.getAllOrdersForAdmin,
 );
 
 module.exports = router;

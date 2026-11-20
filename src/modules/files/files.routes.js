@@ -32,7 +32,7 @@ const upload = multer({ dest: 'uploads/' });
  *         required: true
  *         schema:
  *           type: string
- *           enum: [profile_pictures, work_visuals, identity_docs, certificates, productImages, other_files]
+ *           enum: [profile_pictures, work_visuals, identity_docs, certificates, facial_captures, other_files]
  *         description: File category (others will be stored as other_files)
  *         example: profile_pictures
  *     requestBody:

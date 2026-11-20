@@ -588,6 +588,32 @@ const getMyOrders = async (req, res) => {
   }
 };
 
+const getAllOrdersForAdmin = async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    if (status && !PRODUCT_ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: `status must be one of: ${PRODUCT_ORDER_STATUSES.join(', ')}` });
+    }
+    const filter = status ? { status } : {};
+    const [orders, total] = await Promise.all([
+      ProductOrder.find(filter)
+        .populate('buyer', 'fullName email phoneNumber')
+        .populate('seller', 'fullName BusinessName email phoneNumber')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      ProductOrder.countDocuments(filter),
+    ]);
+    return res.status(200).json({ success: true, data: orders, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 } });
+  } catch (error) {
+    console.error('Admin product order list error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch product orders' });
+  }
+};
+
 const updateFulfillment = async (req, res) => {
   const { id } = req.params;
   const { status, trackingNumber, note } = req.body || {};
@@ -800,4 +826,4 @@ const confirmDelivery = async (req, res) => {
   }
 };
 
-module.exports = { getCatalog, createDeliveryQuote, createCheckout, verifyCheckout, getMyOrders, updateFulfillment, disputeDelivery, confirmDelivery };
+module.exports = { getCatalog, createDeliveryQuote, createCheckout, verifyCheckout, getMyOrders, getAllOrdersForAdmin, updateFulfillment, disputeDelivery, confirmDelivery };

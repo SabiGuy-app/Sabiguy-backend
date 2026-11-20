@@ -392,6 +392,10 @@ router.post(
  *                 type: string
  *               businessAddress:
  *                 type: string
+ *               dateOfBirth:
+ *                 type: string
+ *                 format: date
+ *                 description: Business owner's date of birth, used to match NIN verification
  *     responses:
  *       200:
  *         description: Business profile updated successfully
@@ -1264,7 +1268,7 @@ router.get("/:businessId", authMiddleware, getBusinessById);
  *         description: Filter by business-facing status
  *         schema:
  *           type: string
- *           enum: [needs_staff, assigned, staff_assigned, in_progress, completed, cancelled]
+ *           enum: [booking_created, assigned, staff_assigned, in_progress, completed, cancelled]
  *       - in: query
  *         name: page
  *         schema:

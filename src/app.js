@@ -24,6 +24,7 @@ const businessDashboardRoutes = require('./modules/business/dashboard.routes');
 const productRoutes = require('./modules/products/product.route');
 const categoryRoutes = require('./modules/categories/category.routes');
 const mobileUpdatePolicyRoutes = require('./modules/mobile/updatePolicy.routes');
+const kycRoutes = require('./modules/kyc/kyc.routes');
 
 const createApp = () => {
   const app = express();
@@ -48,6 +49,7 @@ const createApp = () => {
   );
 
   app.use('/api/v1/auth', authRoutes);
+  app.use('/api/v1/kyc', kycRoutes);
   app.use('/api/v1/file', filesRoutes);
   app.use('/api/v1/provider', providerRoutes);
   app.use('/api/v1/users', usersRoutes);

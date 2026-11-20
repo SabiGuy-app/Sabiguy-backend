@@ -486,7 +486,7 @@ const assignStaffToBooking = async (businessId, bookingId, staffId) => {
     assignedAt: new Date(),
   });
   if (
-    booking.businessStatus === 'needs_staff' ||
+    booking.businessStatus === 'booking_created' ||
     booking.businessStatus === 'assigned' ||
     booking.businessStatus == null
   ) {

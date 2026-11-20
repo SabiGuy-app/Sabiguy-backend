@@ -687,6 +687,7 @@ const updateBusinessProfile = async (businessId, payload = {}) => {
     businessName,
     cityOfOperation,
     businessAddress,
+    dateOfBirth,
     latitude,
     longitude,
   } = payload;
@@ -705,6 +706,12 @@ const updateBusinessProfile = async (businessId, payload = {}) => {
     businessAddress,
     updates,
   );
+  if (dateOfBirth !== undefined) {
+    if (typeof dateOfBirth !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) || Number.isNaN(Date.parse(`${dateOfBirth}T00:00:00.000Z`))) {
+      throw new ValidationError('dateOfBirth must be a valid date in YYYY-MM-DD format');
+    }
+    updates.dateOfBirth = dateOfBirth;
+  }
   if (typeof businessAddress === 'string') {
     updates['currentLocation.address'] = businessAddress.trim();
   }
@@ -727,6 +734,7 @@ const updateBusinessProfile = async (businessId, payload = {}) => {
     businessName: updated.BusinessName,
     cityOfOperation: updated.cityOfOperation,
     businessAddress: updated.BusinessAddress,
+    dateOfBirth: updated.dateOfBirth,
     currentLocation: updated.currentLocation,
     lastLocationUpdate: updated.lastLocationUpdate,
   };
