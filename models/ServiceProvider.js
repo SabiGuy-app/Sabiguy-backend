@@ -100,6 +100,7 @@ const serviceProviderSchema = new mongoose.Schema(
       },
     ],
    facialCapture: { type: String, default: null },
+    profilePicture: { type: String, default: null },
     yearsOfExperience: { type: Number },
     availableDays: [{ type: String }],
     servicePlace: [{ type: String }],

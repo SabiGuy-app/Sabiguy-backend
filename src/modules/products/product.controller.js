@@ -172,6 +172,25 @@ const getProducts = async (req, res) => {
   }
 };
 
+const getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid product ID' });
+    }
+    const product = await Product.findOne({ _id: id, status: 'approved' })
+      .populate('owner', 'fullName BusinessName profilePicture')
+      .lean();
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Approved product not found' });
+    }
+    return res.status(200).json({ success: true, data: product });
+  } catch (error) {
+    console.error('Get product by ID error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch product' });
+  }
+};
+
 const getAllProducts = async (req, res) => {
   try {
     const { status, ownerType } = req.query;
@@ -393,6 +412,7 @@ const reviewProduct = async (req, res) => {
 module.exports = {
   createProduct,
   getProducts,
+  getProductById,
   getAllProducts,
   updateProduct,
   reviewProduct,
