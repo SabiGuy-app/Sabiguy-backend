@@ -4,6 +4,7 @@ const {
   createProduct,
   reviewProduct,
   getProducts,
+  getProductById,
   getAllProducts,
   updateProduct,
 } = require('./product.controller');
@@ -548,6 +549,24 @@ router.get('/all-products', authMiddleware, (req, res, next) => {
 /**
  * @swagger
  * /api/v1/products/{id}:
+ *   get:
+ *     summary: Get an approved product by ID
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Product ID
+ *     responses:
+ *       200:
+ *         description: Approved product details with seller display details
+ *       400:
+ *         description: Invalid product ID
+ *       404:
+ *         description: Approved product not found
+ *
  *   patch:
  *     summary: Edit a product owned by the authenticated provider or business
  *     tags: [Products]
@@ -594,6 +613,8 @@ router.get('/all-products', authMiddleware, (req, res, next) => {
  *       404:
  *         description: Product not found for this owner
  */
+router.get('/:id', getProductById);
+
 router.patch(
   '/:id',
   authMiddleware,

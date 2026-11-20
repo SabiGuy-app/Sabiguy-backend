@@ -71,7 +71,7 @@ const notifySellerOfPaidOrder = async (orderId, sellerModel) => {
     const pushData = {
       type: 'product_order_received',
       title: 'New product order',
-      message: `${buyerName} paid ${formatOrderAmount(sellerOrderAmount)} for ${itemSummary}. ${order.fulfillmentType === 'delivery' ? `Delivery: ${deliveryAddress.address || 'See order details'}; delivery fee ${formatOrderAmount(order.deliveryFee)}. Please arrange delivery with your personal rider. The delivery fee paid by the buyer is included in your order payout after delivery is confirmed.` : 'Fulfillment: pickup.'}`,
+      message: `${buyerName} paid ${formatOrderAmount(sellerOrderAmount)} for ${itemSummary}. ${order.fulfillmentType === 'delivery' ? `Delivery: ${deliveryAddress.address || 'See order details'}; delivery fee ${formatOrderAmount(order.deliveryFee)}. Please arrange delivery with your personal rider. The delivery fee paid by the buyer is included in your order payout after delivery is confirmed.` : 'Fulfillment: Pickup. Please prepare the order for buyer pickup.'}`,
       data: {
         orderId: String(order._id),
         orderNumber: order.orderNumber,
@@ -297,6 +297,10 @@ const createCheckout = async (req, res) => {
     }
     const products = await Product.find({ _id: { $in: [...quantities.keys()] }, status: 'approved' }).lean();
     if (products.length !== quantities.size) return res.status(400).json({ success: false, message: 'One or more products are unavailable' });
+    const unavailableStock = products.find((product) => Number(product.quantity || 0) < quantities.get(String(product._id)));
+    if (unavailableStock) {
+      return res.status(409).json({ success: false, message: `Insufficient stock for ${unavailableStock.name}`, data: { productId: unavailableStock._id, available: unavailableStock.quantity || 0, requested: quantities.get(String(unavailableStock._id)) } });
+    }
     const first = products[0];
     if (products.some((product) => String(product.owner) !== String(first.owner) || product.ownerType !== first.ownerType || product.currency !== 'NGN')) {
       return res.status(400).json({ success: false, message: 'An order must contain NGN products from one seller' });
@@ -458,6 +462,18 @@ const verifyCheckout = async (req, res) => {
     await session.withTransaction(async () => {
       const updated = await ProductOrder.findOneAndUpdate({ _id: order._id, status: 'pending_payment' }, { $set: { status: 'paid', paidAt: new Date() } }, { new: true, session });
       if (!updated) return;
+      for (const item of order.items) {
+        const inventoryUpdate = await Product.updateOne(
+          { _id: item.product, status: 'approved', quantity: { $gte: item.quantity } },
+          { $inc: { quantity: -item.quantity } },
+          { session },
+        );
+        if (inventoryUpdate.modifiedCount !== 1) {
+          const stockError = new Error(`Insufficient stock for ${item.name}; payment was received but inventory could not be committed`);
+          stockError.code = 'PRODUCT_STOCK_UNAVAILABLE';
+          throw stockError;
+        }
+      }
       const sellerPayout = Number(order.sellerPayout ?? order.subtotal);
       const platformFee = Number(order.platformFee || 0);
       const sellerWallet = await Wallet.findOneAndUpdate(
@@ -552,6 +568,9 @@ const verifyCheckout = async (req, res) => {
     return res.status(200).json({ success: true, message: 'Product order payment verified', data: paidOrder });
   } catch (error) {
     console.error('Product payment verification error:', error.response?.data || error);
+    if (error.code === 'PRODUCT_STOCK_UNAVAILABLE') {
+      return res.status(409).json({ success: false, message: error.message, resolution: 'Contact support to arrange a refund or restock before retrying verification.' });
+    }
     return res.status(500).json({ success: false, message: error.response?.data?.message || 'Failed to verify product payment' });
   } finally {
     await session.endSession();
@@ -790,13 +809,14 @@ const confirmDelivery = async (req, res) => {
     const buyer = await Buyer.findById(order.buyer).select('fullName phoneNumber').lean();
     const itemsSummary = formatOrderItems(order);
     const sellerOrderAmount = order.subtotal + (order.deliveryFee || 0);
+    const sellerOrderAmountLabel = order.fulfillmentType === 'delivery' ? 'Items + delivery fee' : 'Items subtotal';
     const fulfillmentDetails = order.fulfillmentType === 'delivery'
       ? `Delivery address: ${order.deliveryAddress?.address || 'See order details'}. Delivery fee: ${formatOrderAmount(order.deliveryFee)}.`
       : `Pickup${order.pickupNote ? ` note: ${order.pickupNote}` : ''}.`;
     await notify(sellerMethod, order.seller, {
       type: 'product_order_updated',
       title: 'Buyer confirmed order',
-      message: `${buyer?.fullName || 'The buyer'} confirmed order ${order.orderNumber}. Items: ${itemsSummary}. Items + delivery fee: ${formatOrderAmount(sellerOrderAmount)}. ${fulfillmentDetails} Your payout of ${formatOrderAmount(sellerPayout)} has been released to your wallet.`,
+      message: `${buyer?.fullName || 'The buyer'} confirmed order ${order.orderNumber}. Items: ${itemsSummary}. ${sellerOrderAmountLabel}: ${formatOrderAmount(sellerOrderAmount)}. ${fulfillmentDetails} Your payout of ${formatOrderAmount(sellerPayout)} has been released to your wallet.`,
       data: {
         orderId: String(order._id),
         orderNumber: order.orderNumber,
