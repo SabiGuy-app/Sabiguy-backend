@@ -48,7 +48,7 @@ class ProviderController {
 
   async ProfileInfo(req, res) {
     try {
-      const { gender, city, address, ninSlip, imageUrl } = req.body;
+      const { gender, city, address, nin, imageUrl } = req.body;
 
       const provider = await Provider.findById(req.user.id);
       if (!provider) {
@@ -59,7 +59,7 @@ class ProviderController {
       provider.gender = gender;
       provider.city = city;
       provider.address = address;
-      provider.ninSlip = ninSlip;
+      provider.nin= nin;
       provider.profilePicture = imageUrl;
       provider.kycLevel = Math.max(provider.kycLevel || 0, 2);
 

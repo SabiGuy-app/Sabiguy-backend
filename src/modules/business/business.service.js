@@ -317,13 +317,13 @@ const isValidUrl = (value) => {
 
 // 5. Create the authenticated business owner's business profile.
 const addBusinessDetails = async (businessId, payload) => {
-  const { businessName, businessAddress, cityOfOperation, ninUrl } = payload;
+  const { businessName, businessAddress, cityOfOperation, nin } = payload;
 
   const requiredFields = {
     businessName,
     businessAddress,
     cityOfOperation,
-    ninUrl,
+    nin,
   };
 
   const missingField = Object.entries(requiredFields).find(
@@ -331,10 +331,6 @@ const addBusinessDetails = async (businessId, payload) => {
   );
   if (missingField) {
     throw new ValidationError(`${missingField[0]} is required`);
-  }
-
-  if (!isValidUrl(ninUrl)) {
-    throw new ValidationError('ninUrl must be a valid URL');
   }
 
   const business = await businessRepository.findBusinessById(businessId);
@@ -353,7 +349,7 @@ const addBusinessDetails = async (businessId, payload) => {
     BusinessName: businessName,
     BusinessAddress: businessAddress,
     cityOfOperation,
-    ninSlip: ninUrl,
+    nin: nin,
     kycLevel: Math.max(business.kycLevel || 0, 2),
   });
   await notifyKycCompleted('business', updated, business.kycCompleted);
@@ -362,7 +358,7 @@ const addBusinessDetails = async (businessId, payload) => {
     businessName: updated.BusinessName,
     businessAddress: updated.BusinessAddress,
     cityOfOperation: updated.cityOfOperation,
-    ninUrl: updated.ninSlip,
+    nin: updated.nin,
   };
 };
 
