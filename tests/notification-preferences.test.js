@@ -140,3 +140,40 @@ test("business notifications use preferences and skip disabled booking types", a
     Object.assign(notificationService, originals);
   }
 });
+
+test("campaign bonus notifications use promotions preferences and send a push", async () => {
+  const originals = {
+    getPreferences: notificationService.getPreferences,
+    createNotification: notificationService.createNotification,
+    sendPushNotification: notificationService.sendPushNotification,
+  };
+  const sentPushes = [];
+  notificationService.getPreferences = async () =>
+    notificationService.getDefaultPreferences();
+  notificationService.createNotification = async (_userId, _model, data) => ({
+    type: data.type,
+  });
+  notificationService.sendPushNotification = async (_userId, _model, data) => {
+    sentPushes.push(data);
+  };
+
+  try {
+    const notification = await notificationService.notifyUser("buyer-id", {
+      type: "campaign_bonus_credited",
+      title: "You won!",
+      body: "Your promotional bonus has been credited.",
+      campaignId: "campaign-id",
+      creditId: "credit-id",
+      amount: 500,
+      expiresAt: new Date("2026-12-23T00:00:00.000Z"),
+    });
+
+    assert.equal(notification.type, "campaign_bonus_credited");
+    assert.equal(sentPushes.length, 1);
+    assert.equal(sentPushes[0].campaignId, "campaign-id");
+    assert.equal(sentPushes[0].creditId, "credit-id");
+    assert.equal(sentPushes[0].amount, 500);
+  } finally {
+    Object.assign(notificationService, originals);
+  }
+});

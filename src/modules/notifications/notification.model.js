@@ -54,6 +54,9 @@ const notificationSchema = new mongoose.Schema({
       'product_order_paid',
       'product_order_updated',
       'product_order_delivered',
+      'campaign_bonus_credited',
+      'campaign_bonus_reminder',
+      'campaign_bonus_expired',
     ]
   },
   title: {

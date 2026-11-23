@@ -119,6 +119,9 @@ class NotificationService {
       payment_received: "walletPayments",
       payment_sent: "walletPayments",
       test: "promotions",
+      campaign_bonus_credited: "promotions",
+      campaign_bonus_reminder: "promotions",
+      campaign_bonus_expired: "promotions",
       // Fleet/driver-invitation events don't have a dedicated preference
       // category yet, so they ride on "bookings" (closest existing fit).
       driver_invitation_received: "bookings",
@@ -496,6 +499,12 @@ class NotificationService {
         data: {
           type: data.type,
           bookingId: data.bookingId?.toString() || "",
+          campaignId: data.campaignId?.toString() || "",
+          creditId: data.creditId?.toString() || "",
+          amount: data.amount == null ? "" : String(data.amount),
+          expiresAt: data.expiresAt
+            ? new Date(data.expiresAt).toISOString()
+            : "",
           click_action: "FLUTTER_NOTIFICATION_CLICK",
         },
         android: {
