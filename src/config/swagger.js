@@ -275,7 +275,7 @@ const options = {
     path.join(__dirname, '..', 'modules', 'products', 'product.route.js'),
     path.join(__dirname, '..', 'modules', 'mobile', 'updatePolicy.routes.js'),
 
-    path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
+    // path.join(__dirname, '..', 'modules', 'admin', 'admin.routes.js'),
     path.join(
       __dirname,
       '..',
