@@ -272,6 +272,7 @@ const options = {
     path.join(__dirname, '..', 'modules', 'users', 'users.routes.js'),
     path.join(__dirname, '..', 'modules', 'categories', 'category.routes.js'),
     path.join(__dirname, '..', 'modules', 'wallet', 'wallet.routes.js'),
+    path.join(__dirname, '..', 'modules', 'campaigns', 'campaign.routes.js'),
     path.join(__dirname, '..', 'modules', 'products', 'product.route.js'),
     path.join(__dirname, '..', 'modules', 'mobile', 'updatePolicy.routes.js'),
 

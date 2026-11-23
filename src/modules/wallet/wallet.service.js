@@ -8,6 +8,7 @@ const discountService = require("../../services/discount.service");
 const {
   getPaidBookingStatus,
 } = require("../bookings/booking-scheduling.service");
+const campaignService = require("../campaigns/campaign.service");
 
 class WalletService {
   constructor() {
@@ -870,6 +871,11 @@ class WalletService {
       }
 
       const buyerWallet = await this.getOrCreateWallet(userId, "Buyer");
+      const promoCreditPreview = await campaignService.getUsableCreditAmount(
+        userId,
+        totalCharge,
+      );
+      const cashCharge = Math.max(0, totalCharge - promoCreditPreview);
 
       console.log("?? Buyer Wallet before payment:", {
         available: buyerWallet.balance.available,
@@ -877,12 +883,18 @@ class WalletService {
         total: buyerWallet.balance.total,
       });
 
-      if (buyerWallet.balance.available < totalCharge) {
+      if (buyerWallet.balance.available < cashCharge) {
         throw new Error(
           `Insufficient wallet balance. ` +
-            `Required: ${totalCharge}, Available: ?${buyerWallet.balance.available}`,
+            `Required: ${cashCharge}, Available: NGN${buyerWallet.balance.available}`,
         );
       }
+
+      const promotionalCredit = await campaignService.consumeCredits(
+        userId,
+        totalCharge,
+        bookingId,
+      );
 
       const buyerBalanceBefore = {
         available: buyerWallet.balance.available,
@@ -890,8 +902,8 @@ class WalletService {
         total: buyerWallet.balance.total,
       };
 
-      buyerWallet.balance.available -= totalCharge;
-      buyerWallet.balance.total -= totalCharge;
+      buyerWallet.balance.available -= cashCharge;
+      buyerWallet.balance.total -= cashCharge;
       buyerWallet.lastTransactionAt = new Date();
       await buyerWallet.save();
 
@@ -916,6 +928,10 @@ class WalletService {
         amount: totalCharge,
         agreedPrice,
         bookingId,
+        metadata: {
+          promotionalCreditApplied: promotionalCredit.applied,
+          cashPaidFromWallet: promotionalCredit.cashAmount,
+        },
         breakdown: {
           agreedPrice,
           serviceFee,
