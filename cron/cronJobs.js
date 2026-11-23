@@ -9,6 +9,7 @@ const connectToDB = require("../utils/db");
 const Booking = require("../src/modules/bookings/Bookings.model.js");
 const notificationService = require("./notificationService");
 const paymentService = require("../src/modules/payment/payment.service");
+const campaignService = require("../src/modules/campaigns/campaign.service");
 
 // Connect to database
 connectToDB().catch((err) => {
@@ -235,6 +236,27 @@ cron.schedule("0 */2 * * *", async () => {
     }
   } catch (error) {
     console.error("Error in auto-complete bookings cron:", error.message);
+  }
+});
+
+/**
+ * PROMOTIONAL CAMPAIGN BONUS REMINDERS AND EXPIRY
+ *
+ * Runs hourly so expiry and scheduled reminders are applied promptly.
+ */
+cron.schedule("0 * * * *", async () => {
+  try {
+    const result = await campaignService.processCreditExpiryAndReminders();
+    if (result.remindersSent > 0 || result.expired > 0) {
+      console.log(
+        `[${new Date().toISOString()}] Promotional credits: ${result.remindersSent} reminder(s), ${result.expired} expired`,
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Error processing promotional campaign credits:",
+      error.message,
+    );
   }
 });
 
