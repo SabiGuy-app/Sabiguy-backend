@@ -249,9 +249,11 @@ class WalletController {
       });
     } catch (error) {
       console.error("Pay from wallet controller error:", error);
-      return res.status(500).json({
+      return res.status(error.statusCode || 500).json({
         success: false,
         message: error.message || "Error processing wallet payment",
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.details ? { data: error.details } : {}),
         error: error.message,
       });
     }

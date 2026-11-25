@@ -13,6 +13,7 @@ const {
   createDeliveryQuote,
   createCheckout,
   verifyCheckout,
+  payProductOrderFromWallet,
   getMyOrders,
   updateFulfillment,
   disputeDelivery,
@@ -131,7 +132,7 @@ router.post('/delivery/quote', authMiddleware, (req, res, next) => {
  * /api/v1/products/orders/checkout:
  *   post:
  *     summary: Create and pay for a product order without creating a service booking
- *     description: quoteId is required for delivery and omitted for pickup. The quote supplies pickup and destination details; deliveryDetails supplies only recipient contact and instructions. Checkout adds a flat NGN 200 buyer platform fee. The 10% product commission is withheld from the item subtotal; the seller payout (held until delivery or pickup is confirmed) is item subtotal minus commission plus the full delivery fee, if applicable.
+ *     description: quoteId is required for delivery and omitted for pickup. The quote supplies pickup and destination details; deliveryDetails supplies only recipient contact and instructions. Checkout adds a flat NGN 200 buyer platform fee. The 10% product commission is withheld from the item subtotal; the seller payout (held until delivery or pickup is confirmed) is item subtotal minus commission plus the full delivery fee, if applicable. paymentMethod defaults to paystack; choose wallet to create the order without a Paystack authorization, then call the pay-from-wallet endpoint with the returned orderId.
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
@@ -156,6 +157,11 @@ router.post('/delivery/quote', authMiddleware, (req, res, next) => {
  *               fulfillmentType:
  *                 type: string
  *                 enum: [delivery, pickup]
+ *               paymentMethod:
+ *                 type: string
+ *                 enum: [paystack, wallet]
+ *                 default: paystack
+ *                 description: Choose wallet to pay using the buyer wallet in a follow-up request
  *               quoteId:
  *                 type: string
  *                 description: Required for delivery. Omit for pickup.
@@ -170,7 +176,7 @@ router.post('/delivery/quote', authMiddleware, (req, res, next) => {
  *               pickupNote: { type: string }
  *     responses:
  *       201:
- *         description: Order ID (orderId), order details including product commission, flat platform fee, seller payout, complete delivery quote details, and a Paystack authorization URL
+ *         description: Order ID (orderId), order details, fees, seller payout, and delivery quote details. Paystack orders include an authorization URL; wallet orders return null for it and should be paid through the wallet endpoint.
  *       400:
  *         description: Invalid items, seller mix, delivery details, expired/mismatched quote, or unavailable product
  *       409:
@@ -184,6 +190,40 @@ router.post('/orders/checkout', authMiddleware, (req, res, next) => {
   if (req.user.role !== 'buyer') return res.status(403).json({ success: false, message: 'Buyer access only' });
   return next();
 }, createCheckout);
+
+/**
+ * @swagger
+ * /api/v1/products/orders/{id}/pay-from-wallet:
+ *   post:
+ *     summary: Pay for a product order using the buyer's wallet
+ *     description: Pays the order total, reduces product stock, records the platform fees, and holds the seller payout until the buyer confirms delivery or pickup.
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Product order ID returned by checkout
+ *     responses:
+ *       200:
+ *         description: Wallet payment recorded and seller payout held in escrow
+ *       400:
+ *         description: Insufficient wallet balance or invalid order amount
+ *       401:
+ *         description: Authentication required
+ *       403:
+ *         description: Buyer account required or wallet unavailable
+ *       404:
+ *         description: Order not found
+ *       409:
+ *         description: Order is no longer awaiting payment, wallet balance changed, or product stock is unavailable
+ */
+router.post('/orders/:id/pay-from-wallet', authMiddleware, (req, res, next) => {
+  if (req.user.role !== 'buyer') return res.status(403).json({ success: false, message: 'Buyer access only' });
+  return next();
+}, payProductOrderFromWallet);
 
 /**
  * @swagger

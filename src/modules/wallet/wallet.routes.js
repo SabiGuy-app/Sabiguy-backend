@@ -170,6 +170,21 @@ router.get(
  *         description: Wallet payment successful
  *       400:
  *         description: Insufficient wallet balance or invalid booking
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: false }
+ *                 code: { type: string, example: INSUFFICIENT_WALLET_BALANCE }
+ *                 message: { type: string, example: Your NGN2,000 promotional credit will remain available. Add NGN500 to your wallet to complete this booking. }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     amountDueAfterPromo: { type: number, example: 3000 }
+ *                     walletAvailable: { type: number, example: 2500 }
+ *                     shortfallAmount: { type: number, example: 500 }
+ *                     promotionalCreditApplied: { type: number, example: 2000 }
  *       401:
  *         description: Unauthorized
  *       500:

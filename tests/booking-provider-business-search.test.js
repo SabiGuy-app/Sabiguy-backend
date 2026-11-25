@@ -262,7 +262,7 @@ test("searchGeneralProviders searches without location or geo queries", async ()
       _id: "provider-match",
       owner: { _id: "general-provider" },
       ownerType: "provider",
-      name: "General Cream",
+      name: "Hair Cream",
       description: "Hair care",
       price: 2500,
       currency: "NGN",
@@ -271,12 +271,13 @@ test("searchGeneralProviders searches without location or geo queries", async ()
       _id: "business-match",
       owner: { _id: BUSINESS_ID },
       ownerType: "business",
-      name: "General Cream",
+      name: "Hair Cream",
       description: "Hair care",
       price: 3000,
       currency: "NGN",
     },
   ];
+  const productSearchRegexes = [];
   const sellerProducts = [
     ...searchProducts.map((product) => ({
       ...product,
@@ -300,14 +301,24 @@ test("searchGeneralProviders searches without location or geo queries", async ()
     },
   ];
   Product.find = (query) => {
-    const queryHasProductSearch = query.$or.some((clause) => clause.name || clause.description);
+    const searchRegexes = query.$or
+      .map((clause) => clause.name || clause.description)
+      .filter(Boolean);
+    const queryHasProductSearch = searchRegexes.length > 0;
     if (queryHasProductSearch) {
+      productSearchRegexes.push(searchRegexes);
       return {
         select() { return this; },
         populate() { return this; },
         sort() { return this; },
         limit() { return this; },
-        lean: async () => searchProducts,
+        lean: async () =>
+          searchProducts.filter((product) =>
+            searchRegexes.some(
+              (regex) =>
+                regex.test(product.name) || regex.test(product.description || ""),
+            ),
+          ),
       };
     }
 
@@ -367,7 +378,7 @@ test("searchGeneralProviders searches without location or geo queries", async ()
   try {
     const response = mockResponse();
     await bookingController.searchGeneralProviders(
-      { body: { serviceName: "Braids", search: "general" } },
+      { body: { serviceName: "Braids", search: "haircream" } },
       response,
     );
 
@@ -379,12 +390,12 @@ test("searchGeneralProviders searches without location or geo queries", async ()
     assert.equal(response.body.providers[0].products.length, 2);
     assert.deepEqual(
       response.body.providers[0].products.map((product) => product.name).sort(),
-      ["General Cream", "Hair Oil"],
+      ["Hair Cream", "Hair Oil"],
     );
     assert.equal(response.body.providers[1].products.length, 2);
     assert.deepEqual(
       response.body.providers[1].products.map((product) => product.name).sort(),
-      ["Comb", "General Cream"],
+      ["Comb", "Hair Cream"],
     );
     assert.equal(response.body.providers[0].kycVerified, true);
     assert.equal(response.body.providers[1].kycVerified, true);
@@ -392,6 +403,31 @@ test("searchGeneralProviders searches without location or geo queries", async ()
     assert.ok(businessQuery.$and);
     assert.equal(providerQuery.$and[0].kycVerified, true);
     assert.equal(businessQuery.$and[0].kycVerified, true);
+    assert.ok(productSearchRegexes[0].some((regex) => regex.test("Hair Cream")));
+
+    searchProducts.push({
+      _id: "provider-hair-dressing",
+      owner: { _id: "general-provider" },
+      ownerType: "provider",
+      name: "Hair Dressing",
+      description: "Hair styling service",
+      price: 2500,
+      currency: "NGN",
+    });
+    const hairdresserResponse = mockResponse();
+    await bookingController.searchGeneralProviders(
+      { body: { search: "hairdresser" } },
+      hairdresserResponse,
+    );
+    assert.equal(hairdresserResponse.statusCode, 200);
+    assert.ok(
+      hairdresserResponse.body.products.some(
+        (product) => product.name === "Hair Dressing",
+      ),
+    );
+    assert.ok(
+      productSearchRegexes[1].some((regex) => regex.test("Hair Dressing")),
+    );
   } finally {
     Provider.find = originals.providerFind;
     Business.find = originals.businessFind;
