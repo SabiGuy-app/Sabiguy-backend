@@ -1832,14 +1832,30 @@ class BookingController {
       const businessNameRegex = normalizedBusinessName
         ? new RegExp(escapeRegex(normalizedBusinessName), "i")
         : null;
-      const searchRegex = normalizedSearch
-        ? new RegExp(escapeRegex(normalizedSearch), "i")
-        : null;
+      const compactSearch = normalizedSearch.replace(/\s+/g, "");
+      const searchTerms = compactSearch ? [compactSearch] : [];
+      if (compactSearch.endsWith("er") && compactSearch.length >= 6) {
+        searchTerms.push(`${compactSearch.slice(0, -2)}ing`);
+      } else if (compactSearch.endsWith("ing") && compactSearch.length >= 7) {
+        searchTerms.push(`${compactSearch.slice(0, -3)}er`);
+      }
+      const searchRegexes = searchTerms.map(
+        (term) =>
+          new RegExp(
+            Array.from(term, (character) => escapeRegex(character)).join(
+              "\\s*",
+            ),
+            "i",
+          ),
+      );
 
-      const productMatches = searchRegex
+      const productMatches = searchRegexes.length
         ? await Product.find({
             status: "approved",
-            $or: [{ name: searchRegex }, { description: searchRegex }],
+            $or: searchRegexes.flatMap((regex) => [
+              { name: regex },
+              { description: regex },
+            ]),
           })
             .select("owner ownerModel ownerType name description productImage price quantity currency")
             .populate("owner", "fullName BusinessName profilePicture")
@@ -1897,19 +1913,19 @@ class BookingController {
             ? { $and: providerServiceFilters }
             : {}),
       };
-      const providerSearchQuery = searchRegex
+      const providerSearchQuery = searchRegexes.length
         ? {
             $and: [
               providerQuery,
               {
-                $or: [
-                  { fullName: searchRegex },
-                  { BusinessName: searchRegex },
-                  { "service.serviceName": searchRegex },
+                $or: searchRegexes.flatMap((regex) => [
+                  { fullName: regex },
+                  { BusinessName: regex },
+                  { "service.serviceName": regex },
                   ...(productProviderIds.length
                     ? [{ _id: { $in: productProviderIds } }]
                     : []),
-                ],
+                ]),
               },
             ],
           }
@@ -2009,20 +2025,20 @@ class BookingController {
             ? { $and: businessServiceFilters }
             : {}),
       };
-      const businessSearchQuery = searchRegex
+      const businessSearchQuery = searchRegexes.length
         ? {
             $and: [
               businessQuery,
               {
-                $or: [
-                  { BusinessName: searchRegex },
-                  { fullName: searchRegex },
-                  { "service.serviceName": searchRegex },
-                  { businessCategory: searchRegex },
+                $or: searchRegexes.flatMap((regex) => [
+                  { BusinessName: regex },
+                  { fullName: regex },
+                  { "service.serviceName": regex },
+                  { businessCategory: regex },
                   ...(productBusinessIds.length
                     ? [{ _id: { $in: productBusinessIds } }]
                     : []),
-                ],
+                ]),
               },
             ],
           }

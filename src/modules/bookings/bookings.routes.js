@@ -947,7 +947,9 @@ router.post(
  *       Filters are combined with AND.
  *
  *       - `search` is a partial, case-insensitive free-text search across names, service names,
- *         business categories, and approved product names or descriptions. Matching products
+ *         business categories, and approved product names or descriptions. Spaces within the
+ *         search term are optional, so `haircream` also matches `Hair Cream`; common `-er`/`-ing`
+ *         forms are treated as variants, so `hairdresser` can match `Hair Dressing`. Matching products
  *         are returned in the top-level `products` array, even if their seller does not qualify
  *         for the provider/business results; eligible sellers include all of their approved
  *         products in their own `products` array.

@@ -884,10 +884,22 @@ class WalletService {
       });
 
       if (buyerWallet.balance.available < cashCharge) {
-        throw new Error(
-          `Insufficient wallet balance. ` +
-            `Required: ${cashCharge}, Available: NGN${buyerWallet.balance.available}`,
+        const shortfallAmount = cashCharge - buyerWallet.balance.available;
+        const message = promoCreditPreview > 0
+          ? `Your NGN${promoCreditPreview.toLocaleString()} promotional credit will remain available. Add NGN${shortfallAmount.toLocaleString()} to your wallet to complete this booking.`
+          : `Add NGN${shortfallAmount.toLocaleString()} to your wallet to complete this booking.`;
+        const error = new Error(
+          message,
         );
+        error.statusCode = 400;
+        error.code = "INSUFFICIENT_WALLET_BALANCE";
+        error.details = {
+          amountDueAfterPromo: cashCharge,
+          walletAvailable: buyerWallet.balance.available,
+          shortfallAmount,
+          promotionalCreditApplied: promoCreditPreview,
+        };
+        throw error;
       }
 
       const promotionalCredit = await campaignService.consumeCredits(
