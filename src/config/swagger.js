@@ -22,7 +22,7 @@ const options = {
         description: 'Production server',
       },
       {
-        url: 'https://api.nifesi.xyz',
+        url: 'https://vina.sabiguy.com/',
         description: 'AWS server',
       },
     ],

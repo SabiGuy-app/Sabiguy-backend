@@ -272,6 +272,10 @@ const createCheckout = async (req, res) => {
   let claimedQuoteId = null;
   try {
     const { items, fulfillmentType, deliveryDetails, pickupNote, quoteId } = req.body || {};
+    const paymentMethod = req.body?.paymentMethod || 'paystack';
+    if (!['paystack', 'wallet'].includes(paymentMethod)) {
+      return res.status(400).json({ success: false, message: 'paymentMethod must be paystack or wallet' });
+    }
     if (!Array.isArray(items) || !items.length || items.length > 30) {
       return res.status(400).json({ success: false, message: 'Provide between 1 and 30 product items' });
     }
@@ -339,7 +343,7 @@ const createCheckout = async (req, res) => {
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) return res.status(400).json({ success: false, message: 'Order total must be greater than zero' });
 
     const buyer = await Buyer.findById(req.user.id).select('email fullName');
-    if (!buyer?.email) return res.status(400).json({ success: false, message: 'A buyer email is required for checkout' });
+    if (!buyer || (paymentMethod === 'paystack' && !buyer.email)) return res.status(400).json({ success: false, message: 'A buyer email is required for Paystack checkout' });
     const paymentReference = `PRD_${Date.now()}_${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
     order = await ProductOrder.create({
       orderNumber: `SGP-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
@@ -367,6 +371,7 @@ const createCheckout = async (req, res) => {
       totalAmount,
       currency: 'NGN',
       paymentReference,
+      paymentMethod,
     });
 
     if (deliveryQuote) {
@@ -383,23 +388,29 @@ const createCheckout = async (req, res) => {
       claimedQuoteId = deliveryQuote._id;
     }
 
-    const payment = await axios.post(`${paystackBaseURL}/transaction/initialize`, {
-      email: buyer.email,
-      amount: Math.round(totalAmount * 100),
-      currency: 'NGN',
-      reference: paymentReference,
-      callback_url: `${process.env.FRONTEND_URL}/product-orders/callback`,
-      metadata: {
-        type: 'product_order', orderId: String(order._id), orderNumber: order.orderNumber,
-        buyerId: String(buyer._id), sellerId: String(first.owner), sellerModel: first.ownerModel,
-        productSubtotal: subtotal, deliveryFee, productCommission, buyerPlatformFee, platformFee, sellerPayout,
-        custom_fields: [{ display_name: 'Order Number', variable_name: 'order_number', value: order.orderNumber }],
-      },
-    }, { headers: { ...paystackHeaders(), 'Content-Type': 'application/json' } });
-    if (!payment.data?.status) throw new Error('Paystack did not initialize this payment');
+    let payment = null;
+    if (paymentMethod === 'paystack') {
+      const paymentResponse = await axios.post(`${paystackBaseURL}/transaction/initialize`, {
+        email: buyer.email,
+        amount: Math.round(totalAmount * 100),
+        currency: 'NGN',
+        reference: paymentReference,
+        callback_url: `${process.env.FRONTEND_URL}/product-orders/callback`,
+        metadata: {
+          type: 'product_order', orderId: String(order._id), orderNumber: order.orderNumber,
+          buyerId: String(buyer._id), sellerId: String(first.owner), sellerModel: first.ownerModel,
+          productSubtotal: subtotal, deliveryFee, productCommission, buyerPlatformFee, platformFee, sellerPayout,
+          custom_fields: [{ display_name: 'Order Number', variable_name: 'order_number', value: order.orderNumber }],
+        },
+      }, { headers: { ...paystackHeaders(), 'Content-Type': 'application/json' } });
+      if (!paymentResponse.data?.status) throw new Error('Paystack did not initialize this payment');
+      payment = paymentResponse.data.data;
+    }
     return res.status(201).json({
       success: true,
-      message: 'Product order created; complete payment to confirm it',
+      message: paymentMethod === 'wallet'
+        ? 'Product order created; pay from your wallet using the returned order ID'
+        : 'Product order created; complete payment to confirm it',
       data: {
         orderId: String(order._id),
         order,
@@ -421,9 +432,10 @@ const createCheckout = async (req, res) => {
           currency: deliveryQuote.currency,
           expiresAt: deliveryQuote.expiresAt,
         } : null,
-        authorizationUrl: payment.data.data.authorization_url,
-        accessCode: payment.data.data.access_code,
-        reference: payment.data.data.reference,
+        paymentMethod,
+        authorizationUrl: payment?.authorization_url || null,
+        accessCode: payment?.access_code || null,
+        reference: payment?.reference || null,
         productSubtotal: subtotal,
         deliveryFee,
         productCommission,
@@ -448,6 +460,7 @@ const verifyCheckout = async (req, res) => {
   try {
     const order = await ProductOrder.findOne({ _id: id, buyer: req.user.id }).lean();
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if ((order.paymentMethod || 'paystack') !== 'paystack') return res.status(409).json({ success: false, message: 'This order was created for wallet payment; use the pay-from-wallet endpoint' });
     if (order.status !== 'pending_payment') {
       if (order.paidAt) await notifySellerOfPaidOrder(order._id, order.sellerModel);
       return res.status(200).json({ success: true, message: 'Order payment already verified', data: order });
@@ -460,7 +473,7 @@ const verifyCheckout = async (req, res) => {
     }
 
     await session.withTransaction(async () => {
-      const updated = await ProductOrder.findOneAndUpdate({ _id: order._id, status: 'pending_payment' }, { $set: { status: 'paid', paidAt: new Date() } }, { new: true, session });
+      const updated = await ProductOrder.findOneAndUpdate({ _id: order._id, status: 'pending_payment' }, { $set: { status: 'paid', paidAt: new Date(), paymentMethod: 'paystack' } }, { new: true, session });
       if (!updated) return;
       for (const item of order.items) {
         const inventoryUpdate = await Product.updateOne(
@@ -572,6 +585,186 @@ const verifyCheckout = async (req, res) => {
       return res.status(409).json({ success: false, message: error.message, resolution: 'Contact support to arrange a refund or restock before retrying verification.' });
     }
     return res.status(500).json({ success: false, message: error.response?.data?.message || 'Failed to verify product payment' });
+  } finally {
+    await session.endSession();
+  }
+};
+
+const payProductOrderFromWallet = async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.isValidObjectId(id)) return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  const session = await mongoose.startSession();
+  let paidOrder;
+  let buyerWalletAfter;
+  try {
+    const order = await ProductOrder.findOne({ _id: id, buyer: req.user.id }).lean();
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.paymentMethod !== 'wallet') return res.status(409).json({ success: false, message: 'This order was not created for wallet payment; create a wallet-payment order at checkout' });
+    if (order.status !== 'pending_payment') {
+      if (order.paidAt) return res.status(200).json({ success: true, message: 'Order has already been paid', data: order });
+      return res.status(409).json({ success: false, message: 'This order is not awaiting payment' });
+    }
+    const totalAmount = Number(order.totalAmount);
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) return res.status(400).json({ success: false, message: 'Invalid order amount' });
+
+    await session.withTransaction(async () => {
+      const paymentTime = new Date();
+      const updatedOrder = await ProductOrder.findOneAndUpdate(
+        { _id: order._id, buyer: req.user.id, status: 'pending_payment' },
+        { $set: { status: 'paid', paidAt: paymentTime, paymentMethod: 'wallet' } },
+        { new: true, session },
+      );
+      if (!updatedOrder) {
+        const paymentError = new Error('This order is no longer awaiting payment');
+        paymentError.statusCode = 409;
+        throw paymentError;
+      }
+
+      for (const item of order.items) {
+        const inventoryUpdate = await Product.updateOne(
+          { _id: item.product, status: 'approved', quantity: { $gte: item.quantity } },
+          { $inc: { quantity: -item.quantity } },
+          { session },
+        );
+        if (inventoryUpdate.modifiedCount !== 1) {
+          const stockError = new Error(`Insufficient stock for ${item.name}`);
+          stockError.statusCode = 409;
+          stockError.code = 'PRODUCT_STOCK_UNAVAILABLE';
+          throw stockError;
+        }
+      }
+
+      const buyerWallet = await Wallet.findOne({ ownerId: order.buyer, ownerModel: 'Buyer' }).session(session);
+      const available = Number(buyerWallet?.balance?.available || 0);
+      const walletUnavailable = Boolean(buyerWallet && buyerWallet.status !== 'active');
+      if (!buyerWallet || walletUnavailable || available < totalAmount) {
+        const shortfallAmount = Math.max(totalAmount - available, 0);
+        const walletError = new Error(walletUnavailable
+          ? 'Your wallet is not available for payments'
+          : `Insufficient wallet balance. Add NGN${shortfallAmount.toLocaleString()} to complete this order.`);
+        walletError.statusCode = walletUnavailable ? 403 : 400;
+        walletError.code = walletUnavailable ? 'WALLET_UNAVAILABLE' : 'INSUFFICIENT_WALLET_BALANCE';
+        walletError.details = { totalAmount, walletAvailable: available, shortfallAmount };
+        throw walletError;
+      }
+      const buyerBalanceBefore = {
+        available: buyerWallet.balance.available,
+        pending: buyerWallet.balance.pending,
+        total: buyerWallet.balance.total,
+      };
+      const debitedWallet = await Wallet.findOneAndUpdate(
+        { _id: buyerWallet._id, status: 'active', 'balance.available': { $gte: totalAmount } },
+        { $inc: { 'balance.available': -totalAmount, 'balance.total': -totalAmount }, $set: { lastTransactionAt: paymentTime } },
+        { new: true, session },
+      );
+      if (!debitedWallet) {
+        const walletError = new Error('Wallet balance changed during payment. Please try again.');
+        walletError.statusCode = 409;
+        walletError.code = 'WALLET_BALANCE_CHANGED';
+        throw walletError;
+      }
+      buyerWalletAfter = {
+        available: debitedWallet.balance.available,
+        pending: debitedWallet.balance.pending,
+        total: debitedWallet.balance.total,
+      };
+
+      const sellerPayout = Number(order.sellerPayout ?? order.subtotal);
+      const platformFee = Number(order.platformFee || 0);
+      const sellerWallet = await Wallet.findOneAndUpdate(
+        { ownerId: order.seller, ownerModel: order.sellerModel },
+        { $inc: { 'balance.pending': sellerPayout, 'balance.total': sellerPayout }, $set: { lastTransactionAt: paymentTime }, $setOnInsert: { currency: order.currency } },
+        { new: true, upsert: true, setDefaultsOnInsert: true, session },
+      );
+      let platformWallet = null;
+      if (platformFee > 0) {
+        platformWallet = await Wallet.findOneAndUpdate(
+          { ownerId: PLATFORM_WALLET_ID, ownerModel: 'Platform' },
+          { $inc: { 'balance.available': platformFee, 'balance.total': platformFee }, $set: { lastTransactionAt: paymentTime }, $setOnInsert: { currency: order.currency } },
+          { new: true, upsert: true, setDefaultsOnInsert: true, session },
+        );
+      }
+
+      const paymentReference = `WPAY_PRD_${order._id}_${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
+      await Transaction.create([{
+        reference: paymentReference,
+        type: 'payment',
+        from: { userId: order.buyer, userModel: 'Buyer', walletId: buyerWallet._id },
+        to: { userId: PLATFORM_WALLET_ID, userModel: 'Platform', ...(platformWallet ? { walletId: platformWallet._id } : {}) },
+        amount: totalAmount,
+        breakdown: { subtotal: order.subtotal, deliveryFee: order.deliveryFee || 0, productCommission: order.productCommission || 0, buyerPlatformFee: order.buyerPlatformFee || 0, platformFee, sellerPayout, totalAmount, currency: order.currency },
+        balances: { before: buyerBalanceBefore, after: buyerWalletAfter },
+        productOrderId: order._id,
+        gateway: { name: 'internal', reference: paymentReference },
+        status: 'completed',
+        description: `Wallet payment for product order ${order.orderNumber}`,
+        paidAt: paymentTime,
+        completedAt: paymentTime,
+        metadata: { type: 'product_order', orderNumber: order.orderNumber, paymentMethod: 'wallet', escrowStatus: 'held' },
+      }], { session, ordered: true });
+      await Transaction.create([{
+        reference: `PESC_${order._id}`,
+        type: 'escrow_hold',
+        from: { userId: PLATFORM_WALLET_ID, userModel: 'Platform' },
+        to: { userId: order.seller, userModel: order.sellerModel, walletId: sellerWallet._id },
+        amount: sellerPayout,
+        breakdown: { productSubtotal: order.subtotal, productCommission: order.productCommission || 0, deliveryFee: order.deliveryFee || 0, sellerPayout },
+        productOrderId: order._id,
+        status: 'completed',
+        description: `Seller proceeds held for product order ${order.orderNumber}`,
+        completedAt: paymentTime,
+        metadata: { type: 'product_order', orderNumber: order.orderNumber },
+      }], { session, ordered: true });
+      const platformTransactions = [];
+      if (order.productCommission > 0) platformTransactions.push({
+        reference: `PCOM_${order._id}`,
+        type: 'commission',
+        from: { userId: order.seller, userModel: order.sellerModel },
+        to: { userId: PLATFORM_WALLET_ID, userModel: 'Platform', walletId: platformWallet._id },
+        amount: order.productCommission,
+        productOrderId: order._id,
+        status: 'completed',
+        description: `10% product commission for order ${order.orderNumber}`,
+        completedAt: paymentTime,
+        metadata: { type: 'product_order', orderNumber: order.orderNumber },
+      });
+      if (order.buyerPlatformFee > 0) platformTransactions.push({
+        reference: `PFLAT_${order._id}`,
+        type: 'platform_fee',
+        from: { userId: order.buyer, userModel: 'Buyer' },
+        to: { userId: PLATFORM_WALLET_ID, userModel: 'Platform', walletId: platformWallet._id },
+        amount: order.buyerPlatformFee,
+        productOrderId: order._id,
+        status: 'completed',
+        description: `Flat buyer platform fee for product order ${order.orderNumber}`,
+        completedAt: paymentTime,
+        metadata: { type: 'product_order', orderNumber: order.orderNumber },
+      });
+      if (platformTransactions.length) await Transaction.create(platformTransactions, { session, ordered: true });
+    });
+
+    paidOrder = await ProductOrder.findById(order._id).lean();
+    await notify('notifyUser', order.buyer, {
+      type: 'product_order_paid',
+      title: 'Product order paid',
+      message: `Wallet payment confirmed for ${order.orderNumber}. Items: ${formatOrderItems(order)}. Total paid: ${formatOrderAmount(order.totalAmount)}. The seller will prepare your order.`,
+      data: { ...getOrderNotificationData(paidOrder || order), paidAt: paidOrder?.paidAt || new Date(), paymentMethod: 'wallet' },
+    });
+    await notifySellerOfPaidOrder(order._id, order.sellerModel);
+    const buyerWallet = await Wallet.findOne({ ownerId: order.buyer, ownerModel: 'Buyer' }).lean();
+    return res.status(200).json({
+      success: true,
+      message: 'Product order paid from wallet; seller funds are held until delivery or pickup is confirmed',
+      data: { order: paidOrder, walletBalance: buyerWalletAfter || buyerWallet?.balance },
+    });
+  } catch (error) {
+    console.error('Product order wallet payment error:', error);
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to pay for product order from wallet',
+      ...(error.code ? { code: error.code } : {}),
+      ...(error.details ? { data: error.details } : {}),
+    });
   } finally {
     await session.endSession();
   }
@@ -846,4 +1039,4 @@ const confirmDelivery = async (req, res) => {
   }
 };
 
-module.exports = { getCatalog, createDeliveryQuote, createCheckout, verifyCheckout, getMyOrders, getAllOrdersForAdmin, updateFulfillment, disputeDelivery, confirmDelivery };
+module.exports = { getCatalog, createDeliveryQuote, createCheckout, verifyCheckout, payProductOrderFromWallet, getMyOrders, getAllOrdersForAdmin, updateFulfillment, disputeDelivery, confirmDelivery };

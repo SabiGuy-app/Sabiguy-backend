@@ -45,6 +45,7 @@ const productOrderSchema = new mongoose.Schema({
     index: true,
   },
   paymentReference: { type: String, required: true, unique: true },
+  paymentMethod: { type: String, enum: ['paystack', 'wallet'], default: 'paystack' },
   paidAt: { type: Date, default: null },
   sellerEmailNotifiedAt: { type: Date, default: null },
   sellerPushNotifiedAt: { type: Date, default: null },
