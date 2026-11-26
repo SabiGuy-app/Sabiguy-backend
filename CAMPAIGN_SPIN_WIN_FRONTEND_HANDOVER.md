@@ -13,7 +13,7 @@ The campaign must be created and activated by an admin before users can spin. A 
 3. On each spin tap, send a unique `Idempotency-Key`.
 4. Animate the wheel to the outcome returned by the API; do not select a prize in the app.
 5. After a winning second spin, show the result and expiry date, then refresh participation/credits.
-6. Show active campaign credits and their expiry countdown. Promotional credit is applied automatically during wallet-paid booking checkout.
+6. Show active campaign credits and their expiry countdown. Promotional credit is applied automatically during wallet-paid service-booking and product-order checkout, before regular wallet funds.
 
 The first spin is an engagement spin with no prize. The second spin determines the prize, credits a winner, and completes that user's campaign participation.
 

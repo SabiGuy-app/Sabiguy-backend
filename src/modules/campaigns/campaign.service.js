@@ -361,19 +361,22 @@ exports.getUsableCreditAmount = async (userId, amount) => {
   return usable;
 };
 
-exports.consumeCredits = async (userId, amount, bookingId) => {
+exports.consumeCredits = async (userId, amount, bookingId, { session } = {}) => {
   const chargeAmount = Number(amount);
   if (!Number.isFinite(chargeAmount) || chargeAmount <= 0) return { applied: 0, cashAmount: 0 };
 
   const now = new Date();
-  const credits = await PromotionalCredit.find({
+  let creditsQuery = PromotionalCredit.find({
     userId,
     status: "active",
     expiresAt: { $gt: now },
-  }).sort({ expiresAt: 1 });
+  });
+  if (session) creditsQuery = creditsQuery.session(session);
+  const credits = await creditsQuery.sort({ expiresAt: 1 });
 
   let remainingCharge = chargeAmount;
   let applied = 0;
+  const redemptions = [];
 
   for (const credit of credits) {
     if (remainingCharge <= 0) break;
@@ -385,19 +388,23 @@ exports.consumeCredits = async (userId, amount, bookingId) => {
     remainingCharge -= usable;
     applied += usable;
     if (credit.remainingAmount === 0) credit.status = "used";
-    await credit.save();
+    if (session) await credit.save({ session });
+    else await credit.save();
+    redemptions.push({ creditId: credit._id, amount: usable });
   }
 
   if (applied > 0) {
     await Wallet.updateOne(
       { ownerId: userId, ownerModel: "Buyer" },
       { $inc: { "balance.bonus": -applied, "balance.total": -applied } },
+      session ? { session } : undefined,
     );
   }
 
   return {
     applied,
     cashAmount: remainingCharge,
+    redemptions,
   };
 };
 

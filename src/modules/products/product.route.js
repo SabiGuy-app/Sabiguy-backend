@@ -196,7 +196,7 @@ router.post('/orders/checkout', authMiddleware, (req, res, next) => {
  * /api/v1/products/orders/{id}/pay-from-wallet:
  *   post:
  *     summary: Pay for a product order using the buyer's wallet
- *     description: Pays the order total, reduces product stock, records the platform fees, and holds the seller payout until the buyer confirms delivery or pickup.
+ *     description: Applies active campaign promotional credits first, then pays any remainder from the buyer's available wallet balance. Reduces product stock, records platform fees, and holds the seller payout until the buyer confirms delivery or pickup. If the combined promotional credit and wallet balance do not cover the total, payment fails and credits remain unused.
  *     tags: [Products]
  *     security:
  *       - bearerAuth: []
@@ -210,7 +210,23 @@ router.post('/orders/checkout', authMiddleware, (req, res, next) => {
  *       200:
  *         description: Wallet payment recorded and seller payout held in escrow
  *       400:
- *         description: Insufficient wallet balance or invalid order amount
+ *         description: Insufficient wallet balance after promotional credits or invalid order amount
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: false }
+ *                 code: { type: string, example: INSUFFICIENT_WALLET_BALANCE }
+ *                 message: { type: string, example: Your NGN2,000 promotional credit will remain available. Add NGN500 to your wallet to complete this order. }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalAmount: { type: number, example: 5000 }
+ *                     amountDueAfterPromo: { type: number, example: 3000 }
+ *                     walletAvailable: { type: number, example: 2500 }
+ *                     shortfallAmount: { type: number, example: 500 }
+ *                     promotionalCreditApplied: { type: number, example: 2000 }
  *       401:
  *         description: Authentication required
  *       403:
