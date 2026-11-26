@@ -539,7 +539,7 @@ class WalletService {
           const recipientNotification = {
             type: "payment_received",
             title: "Payment Secured in Escrow",
-            message: `NGN${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: NGN${subtotal.toLocaleString()}. Service charge (15%): NGN${originalProviderPlatformFee.toLocaleString()}. Complete the service to receive payment.`,
+            message: `NGN${normalizedBreakdown.providerReceives.toLocaleString()} has been secured in escrow for booking #${bookingId}. Booking fee: NGN${subtotal.toLocaleString()}. Service charge (7%): NGN${originalProviderPlatformFee.toLocaleString()}. Complete the service to receive payment.`,
             bookingId,
             amount: normalizedBreakdown.providerReceives,
             pendingBalance: recipientBalanceAfter.pending,

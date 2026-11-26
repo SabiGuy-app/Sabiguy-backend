@@ -11,21 +11,12 @@ const options = {
       description: 'API documentation for SabiGuy',
       version: packageJson.version || '1.0.0',
     },
-    servers: [
-      {
-        url: 'http://localhost:3000/',
-        description: 'Local server',
-      },
-
-      {
-        url: 'https://sabiguy.onrender.com/',
-        description: 'Production server',
-      },
-      {
-        url: 'https://vina.sabiguy.com/',
-        description: 'AWS server',
-      },
-    ],
+  servers: [
+  { url: '/', description: 'Current server' },
+  { url: 'http://localhost:3000/', description: 'Local server' },
+  { url: 'https://sabiguy.onrender.com/', description: 'Staging server' },
+  { url: 'https://vina.sabiguy.com/', description: 'AWS server' },
+],
     components: {
       securitySchemes: {
         bearerAuth: {

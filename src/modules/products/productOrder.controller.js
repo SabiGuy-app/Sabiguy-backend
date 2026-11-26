@@ -13,6 +13,7 @@ const Admin = require('../admin/Admin.model');
 const geolocationService = require('../../services/geolocation.service');
 const pricingService = require('../../services/pricing.service');
 const notificationService = require('../../services/notification.service');
+const campaignService = require('../campaigns/campaign.service');
 const { sendProductOrderSellerEmail, sendProductDeliveryDisputeEmail } = require('../../config/emailVerification');
 
 const paystackBaseURL = 'https://api.paystack.co';
@@ -637,24 +638,46 @@ const payProductOrderFromWallet = async (req, res) => {
       const buyerWallet = await Wallet.findOne({ ownerId: order.buyer, ownerModel: 'Buyer' }).session(session);
       const available = Number(buyerWallet?.balance?.available || 0);
       const walletUnavailable = Boolean(buyerWallet && buyerWallet.status !== 'active');
-      if (!buyerWallet || walletUnavailable || available < totalAmount) {
-        const shortfallAmount = Math.max(totalAmount - available, 0);
-        const walletError = new Error(walletUnavailable
-          ? 'Your wallet is not available for payments'
-          : `Insufficient wallet balance. Add NGN${shortfallAmount.toLocaleString()} to complete this order.`);
+      if (!buyerWallet || walletUnavailable) {
+        const walletError = new Error('Your wallet is not available for payments');
         walletError.statusCode = walletUnavailable ? 403 : 400;
-        walletError.code = walletUnavailable ? 'WALLET_UNAVAILABLE' : 'INSUFFICIENT_WALLET_BALANCE';
-        walletError.details = { totalAmount, walletAvailable: available, shortfallAmount };
+        walletError.code = 'WALLET_UNAVAILABLE';
         throw walletError;
       }
+
+      const promotionalCredit = await campaignService.consumeCredits(
+        order.buyer,
+        totalAmount,
+        order._id,
+        { session },
+      );
+      const walletCharge = promotionalCredit.cashAmount;
+      if (available < walletCharge) {
+        const shortfallAmount = walletCharge - available;
+        const message = promotionalCredit.applied > 0
+          ? `Your NGN${promotionalCredit.applied.toLocaleString()} promotional credit will remain available. Add NGN${shortfallAmount.toLocaleString()} to your wallet to complete this order.`
+          : `Add NGN${shortfallAmount.toLocaleString()} to your wallet to complete this order.`;
+        const walletError = new Error(message);
+        walletError.statusCode = 400;
+        walletError.code = 'INSUFFICIENT_WALLET_BALANCE';
+        walletError.details = {
+          totalAmount,
+          amountDueAfterPromo: walletCharge,
+          walletAvailable: available,
+          shortfallAmount,
+          promotionalCreditApplied: promotionalCredit.applied,
+        };
+        throw walletError;
+      }
+
       const buyerBalanceBefore = {
         available: buyerWallet.balance.available,
         pending: buyerWallet.balance.pending,
         total: buyerWallet.balance.total,
       };
       const debitedWallet = await Wallet.findOneAndUpdate(
-        { _id: buyerWallet._id, status: 'active', 'balance.available': { $gte: totalAmount } },
-        { $inc: { 'balance.available': -totalAmount, 'balance.total': -totalAmount }, $set: { lastTransactionAt: paymentTime } },
+        { _id: buyerWallet._id, status: 'active', 'balance.available': { $gte: walletCharge } },
+        { $inc: { 'balance.available': -walletCharge, 'balance.total': -walletCharge }, $set: { lastTransactionAt: paymentTime } },
         { new: true, session },
       );
       if (!debitedWallet) {
@@ -692,7 +715,7 @@ const payProductOrderFromWallet = async (req, res) => {
         from: { userId: order.buyer, userModel: 'Buyer', walletId: buyerWallet._id },
         to: { userId: PLATFORM_WALLET_ID, userModel: 'Platform', ...(platformWallet ? { walletId: platformWallet._id } : {}) },
         amount: totalAmount,
-        breakdown: { subtotal: order.subtotal, deliveryFee: order.deliveryFee || 0, productCommission: order.productCommission || 0, buyerPlatformFee: order.buyerPlatformFee || 0, platformFee, sellerPayout, totalAmount, currency: order.currency },
+        breakdown: { subtotal: order.subtotal, deliveryFee: order.deliveryFee || 0, productCommission: order.productCommission || 0, buyerPlatformFee: order.buyerPlatformFee || 0, platformFee, sellerPayout, totalAmount, promotionalCreditApplied: promotionalCredit.applied, cashPaidFromWallet: walletCharge, promotionalCreditRedemptions: promotionalCredit.redemptions, currency: order.currency },
         balances: { before: buyerBalanceBefore, after: buyerWalletAfter },
         productOrderId: order._id,
         gateway: { name: 'internal', reference: paymentReference },
@@ -700,7 +723,7 @@ const payProductOrderFromWallet = async (req, res) => {
         description: `Wallet payment for product order ${order.orderNumber}`,
         paidAt: paymentTime,
         completedAt: paymentTime,
-        metadata: { type: 'product_order', orderNumber: order.orderNumber, paymentMethod: 'wallet', escrowStatus: 'held' },
+        metadata: { type: 'product_order', orderNumber: order.orderNumber, paymentMethod: 'wallet', escrowStatus: 'held', promotionalCreditApplied: promotionalCredit.applied, cashPaidFromWallet: walletCharge, promotionalCreditRedemptions: promotionalCredit.redemptions },
       }], { session, ordered: true });
       await Transaction.create([{
         reference: `PESC_${order._id}`,
