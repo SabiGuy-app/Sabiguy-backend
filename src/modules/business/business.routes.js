@@ -975,7 +975,7 @@ router.put(
  * /api/v1/businesses/location:
  *   put:
  *     summary: Update business location (heartbeat)
- *     description: Updates the authenticated business owner's current location. Mirrors PUT /api/v1/provider/location. Requires verified KYC, and resolves currentLocation.address (an address sent by the app wins; otherwise the cached address is reused unless the business moved more than 500m, then it is reverse geocoded). The business app should call this regularly; it also marks the business as online for nearby search.
+ *     description: Updates the authenticated business owner's current location. Mirrors PUT /api/v1/provider/location. Requires verified KYC, and resolves currentLocation.address (a verified address sent by the app wins; otherwise the cached address is reused only near where it was resolved). If it cannot be reused, the location is reverse geocoded, with coordinates as the final fallback. The business app should call this regularly; it also marks the business as online for nearby search.
  *     tags: [Business]
  *     security:
  *       - bearerAuth: []

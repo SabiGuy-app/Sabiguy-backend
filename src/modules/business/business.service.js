@@ -1147,6 +1147,21 @@ const updateBusinessLocation = async (businessId, payload = {}) => {
       existingLocation: business.currentLocation,
     });
 
+  const oldAddressCoordinates = business.currentLocation?.addressCoordinates || [];
+  const keepAddressAnchor =
+    updates['currentLocation.address'] === business.currentLocation?.address &&
+    Number.isFinite(oldAddressCoordinates[0]) &&
+    Number.isFinite(oldAddressCoordinates[1]) &&
+    geolocationService.calculateDistance(
+      oldAddressCoordinates[1],
+      oldAddressCoordinates[0],
+      parsedLatitude,
+      parsedLongitude,
+    ) <= 0.5;
+  updates['currentLocation.addressCoordinates'] = keepAddressAnchor
+    ? oldAddressCoordinates
+    : [parsedLongitude, parsedLatitude];
+
   const updated = await businessRepository.saveBusinessDetails(
     businessId,
     updates,

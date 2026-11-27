@@ -9,6 +9,8 @@ const {
 } = require("../src/modules/business/business.service");
 
 const Buyer = require("../models/ServiceUser");
+const Provider = require("../models/ServiceProvider");
+const Business = require("../src/modules/business/business.model");
 const { updateUserLocation } = require("../src/modules/users/users.service");
 
 const BUSINESS_ID = "64b000000000000000000001";
@@ -17,6 +19,18 @@ const CACHED = {
   address: "12 Admiralty Way, Lekki Phase 1, Lagos",
   coordinates: [3.4723, 6.4474], // [lng, lat]
 };
+
+test("new geo-indexed accounts do not get malformed currentLocation defaults", () => {
+  assert.equal(
+    new Provider({ email: "provider@example.com" }).toObject().currentLocation,
+    undefined,
+  );
+  assert.equal(
+    new Business({ BusinessName: "Test business", accountType: "business" })
+      .toObject().currentLocation,
+    undefined,
+  );
+});
 
 // Replaces reverseGeocode for the duration of a test, counting calls.
 const withGeocode = async (impl, run) => {
