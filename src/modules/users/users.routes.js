@@ -388,7 +388,7 @@ router.get("/:id", authMiddleware, getUserById);
  * /api/v1/users/location:
  *   put:
  *     summary: Update user location
- *     description: Updates the authenticated buyer's current location and resolves currentLocation.address the same way as PUT /api/v1/provider/location. An address sent by the app wins, otherwise the saved address is reused unless the buyer moved more than 500m, and only then is it reverse geocoded.
+ *     description: Updates the authenticated buyer's current location and resolves currentLocation.address the same way as PUT /api/v1/provider/location. A verified address sent by the app wins; otherwise the saved address is reused only near where that address was resolved. If it cannot be reused, the location is reverse geocoded, with coordinates as the final fallback.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []

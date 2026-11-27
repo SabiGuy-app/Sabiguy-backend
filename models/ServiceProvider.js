@@ -147,6 +147,10 @@ const serviceProviderSchema = new mongoose.Schema(
         index: "2dsphere",
       },
       address: String, // Optional
+      addressCoordinates: {
+        type: [Number], // [longitude, latitude] where address was resolved
+        default: undefined,
+      },
     },
 
     lastLocationUpdate: {

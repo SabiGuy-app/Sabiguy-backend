@@ -59,6 +59,10 @@ const businessSchema = new mongoose.Schema(
         type: [Number],
       },
       address: { type: String },
+      addressCoordinates: {
+        type: [Number], // [longitude, latitude] where address was resolved
+        default: undefined,
+      },
     },
     lastLocationUpdate: { type: Date, default: Date.now },
     // Presence for fast-booking search. `isOnline` flips on with every

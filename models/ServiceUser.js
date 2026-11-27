@@ -124,6 +124,11 @@ const serviceUserSchema = new mongoose.Schema({
       default: [0, 0],
     },
     address: String, // Optional
+    addressCoordinates: {
+      type: [Number], // [longitude, latitude] where address was resolved
+      default: undefined,
+
+    },
   },
 
   notificationPreferences: {
