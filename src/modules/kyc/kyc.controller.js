@@ -92,17 +92,19 @@ async function verifyNin(req, res) {
     }
 
     const accountNameParts = normalizeName(account.fullName).split(" ").filter(Boolean);
-    const accountFirstName = accountNameParts[0];
-    const accountLastName = accountNameParts.at(-1);
-    const dojahFirstName = normalizeName(entity.first_name);
-    const dojahLastName = normalizeName(entity.last_name);
-    if (!accountFirstName || !accountLastName || !dojahFirstName || !dojahLastName) {
+    const dojahFirstNameParts = normalizeName(entity.first_name).split(" ").filter(Boolean);
+    const dojahLastNameParts = normalizeName(entity.last_name).split(" ").filter(Boolean);
+    if (!accountNameParts.length || !dojahFirstNameParts.length || !dojahLastNameParts.length) {
       return res.status(409).json({
         success: false,
         message: "Add your full name to your profile before verifying your NIN",
       });
     }
-    if (accountFirstName !== dojahFirstName || accountLastName !== dojahLastName) {
+    const accountNameSet = new Set(accountNameParts);
+    const ninNamesMatch = [...dojahFirstNameParts, ...dojahLastNameParts].every(
+      (namePart) => accountNameSet.has(namePart),
+    );
+    if (!ninNamesMatch) {
       return res.status(422).json({ success: false, message: "NIN details do not match your profile" });
     }
 

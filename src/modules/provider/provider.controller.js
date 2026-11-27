@@ -1134,6 +1134,25 @@ class ProviderController {
         existingLocation: existingProvider.currentLocation,
       });
 
+      const oldAddressCoordinates =
+        existingProvider.currentLocation?.addressCoordinates || [];
+      const hasAddressAnchor =
+        Number.isFinite(oldAddressCoordinates[0]) &&
+        Number.isFinite(oldAddressCoordinates[1]);
+      const keepAddressAnchor =
+        finalAddress === existingProvider.currentLocation?.address &&
+        hasAddressAnchor &&
+        geolocationService.calculateDistance(
+          oldAddressCoordinates[1],
+          oldAddressCoordinates[0],
+          Number(latitude),
+          Number(longitude),
+        ) <= 0.5;
+      const addressCoordinates =
+        keepAddressAnchor
+          ? oldAddressCoordinates
+          : [Number(longitude), Number(latitude)];
+
       const provider = await Provider.findByIdAndUpdate(
         providerId,
         {
@@ -1141,6 +1160,7 @@ class ProviderController {
             "currentLocation.type": "Point",
             "currentLocation.coordinates": [longitude, latitude],
             "currentLocation.address": finalAddress,
+            "currentLocation.addressCoordinates": addressCoordinates,
             lastLocationUpdate: new Date(),
           },
         },

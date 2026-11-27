@@ -466,10 +466,10 @@ class GeolocationService {
 
   /* ─────────────────────────────────────────────────────────────
      Address for a location heartbeat (providers and businesses).
-     1. A real address sent by the app wins.
-     2. Otherwise reuse the cached address unless moved > 500m.
-     3. Otherwise reverse geocode; if that fails or is vague, fall back
-        to the cache, then to "lat, lng". Never returns null.
+     1. Verify a real address sent by the app against the coordinates.
+     2. Reuse a cached address only near its stored addressCoordinates anchor.
+     3. Otherwise reverse geocode, then fall back to "lat, lng".
+        Never returns null.
   ───────────────────────────────────────────────────────────── */
   async resolveLocationAddress({
     latitude,
@@ -483,27 +483,37 @@ class GeolocationService {
       addr.trim() !== "" &&
       !this.isRawCoordinateString(addr);
 
-    if (isUsable(providedAddress)) return providedAddress.trim();
+    // if (isUsable(providedAddress)) return providedAddress.trim();
+
+     if (isUsable(providedAddress)) {
+    try {
+      const g = await this.geocodeAddress(providedAddress);
+      if (this.calculateDistance(latitude, longitude, g.latitude, g.longitude) <= 2) {
+        return providedAddress.trim();
+      }
+      console.warn("Provided address doesn't match coordinates, ignoring:", providedAddress);
+    } catch (e) {
+      console.warn("Could not verify provided address:", e.message);
+    }
+  }
 
     const cachedAddress = isUsable(existingLocation?.address)
       ? existingLocation.address
       : null;
-    const [oldLng, oldLat] = existingLocation?.coordinates || [];
-    const hasOldCoords =
-      Number.isFinite(oldLat) &&
-      Number.isFinite(oldLng) &&
-      !(oldLat === 0 && oldLng === 0);
+    // Keep the cache tied to where its address was resolved, not to the
+    // latest heartbeat coordinates.
+    const [addressLng, addressLat] = existingLocation?.addressCoordinates || [];
 
     if (
       cachedAddress &&
-      hasOldCoords &&
-      this.calculateDistance(oldLat, oldLng, latitude, longitude) <=
+      Number.isFinite(addressLat) &&
+      Number.isFinite(addressLng) &&
+      this.calculateDistance(addressLat, addressLng, latitude, longitude) <=
         reuseWithinKm
     ) {
       return cachedAddress;
     }
 
-    const fallback = cachedAddress || `${latitude}, ${longitude}`;
     try {
       const geoData = await this.reverseGeocode(longitude, latitude);
       if (isUsable(geoData?.formattedAddress)) return geoData.formattedAddress;
@@ -511,7 +521,7 @@ class GeolocationService {
     } catch (error) {
       console.warn("Reverse geocoding failed:", error.message);
     }
-    return fallback;
+    return `${latitude}, ${longitude}`;
   }
 
   isValidCoordinates(longitude, latitude) {

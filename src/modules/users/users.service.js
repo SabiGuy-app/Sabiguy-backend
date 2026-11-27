@@ -348,6 +348,22 @@ const updateUserLocation = async (buyerId, { latitude, longitude, address }) => 
     existingLocation: existingBuyer.currentLocation,
   });
 
+  const oldAddressCoordinates =
+    existingBuyer.currentLocation?.addressCoordinates || [];
+  const keepAddressAnchor =
+    finalAddress === existingBuyer.currentLocation?.address &&
+    Number.isFinite(oldAddressCoordinates[0]) &&
+    Number.isFinite(oldAddressCoordinates[1]) &&
+    geolocationService.calculateDistance(
+      oldAddressCoordinates[1],
+      oldAddressCoordinates[0],
+      Number(latitude),
+      Number(longitude),
+    ) <= 0.5;
+  const addressCoordinates = keepAddressAnchor
+    ? oldAddressCoordinates
+    : [Number(longitude), Number(latitude)];
+
   const buyer = await Buyer.findByIdAndUpdate(
     buyerId,
     {
@@ -355,6 +371,7 @@ const updateUserLocation = async (buyerId, { latitude, longitude, address }) => 
         'currentLocation.type': 'Point',
         'currentLocation.coordinates': [longitude, latitude],
         'currentLocation.address': finalAddress,
+        'currentLocation.addressCoordinates': addressCoordinates,
         lastLocationUpdate: new Date(),
       },
     },
